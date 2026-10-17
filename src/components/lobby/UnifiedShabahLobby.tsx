@@ -7,6 +7,7 @@ import { SHABAH_GAMES } from '../../data/shabahGames';
 import { sound } from '../../lib/audio';
 import { roomBus } from '../../lib/roomBus';
 import { getPersistedPlayerName } from '../../utils/playerSession';
+import { useRoomSync } from '../../hooks/useRoomSync';
 
 export interface ShabahLobbyPlayer {
   id: string;
@@ -160,7 +161,34 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
   const [remark, setRemark] = useState<string>('باقي أحد ولا نقفل الباب؟');
   const [gazeOffset, setGazeOffset] = useState<{ x: number; y: number } | null>(null);
 
-  const displayPlayers = localPlayers.length > 0 ? localPlayers : propPlayers || [];
+  const currentContestantReady =
+    propIsReady !== undefined
+      ? propIsReady
+      : Boolean(localPlayers.find((p) => p.id === currentPlayerId)?.isReady);
+
+  const { connectedPlayers: realtimePlayers, updateReadyState } = useRoomSync({
+    roomCode: cleanCode,
+    role,
+    playerId: currentPlayerId,
+    playerName: getPersistedPlayerName() || 'متسابق',
+    isReady: currentContestantReady,
+  });
+
+  const sourcePlayers =
+    realtimePlayers.length > 0
+      ? realtimePlayers
+      : localPlayers.length > 0
+      ? localPlayers
+      : propPlayers || [];
+
+  // Strict deduplication by ID
+  const playersMap = new Map<string, ShabahLobbyPlayer>();
+  sourcePlayers.forEach((p) => {
+    if (p && p.id && p.id !== 'host_tv') {
+      playersMap.set(p.id, p);
+    }
+  });
+  const displayPlayers = Array.from(playersMap.values());
 
   // Filter out fallback names if persisted name exists
   const sanitizedPlayers = displayPlayers.map((p, idx) => {
@@ -252,17 +280,12 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
   };
 
   // Contestant Ready toggle
-  const currentContestantReady =
-    propIsReady !== undefined
-      ? propIsReady
-      : Boolean(sanitizedPlayers.find((p) => p.id === currentPlayerId)?.isReady);
-
   const handleContestantToggleReady = () => {
     sound.playClick();
+    const nextReady = !currentContestantReady;
+    updateReadyState(nextReady);
     if (onToggleReady) {
       onToggleReady();
-    } else if (currentPlayerId) {
-      roomBus.togglePlayerReady(cleanCode, currentPlayerId);
     }
   };
 

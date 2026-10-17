@@ -1,18 +1,21 @@
 export const getOrCreatePlayerId = (): string => {
   let pid =
+    sessionStorage.getItem('shabah_player_id') ||
+    localStorage.getItem('shabah_player_id') ||
     sessionStorage.getItem('party_player_id') ||
-    sessionStorage.getItem('taq_session_player_id') ||
-    localStorage.getItem('shabah_player_id');
+    sessionStorage.getItem('taghesi_playerId') ||
+    localStorage.getItem('taghesi_playerId');
+
   if (!pid) {
-    pid =
-      'p_' +
-      (typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID().slice(0, 8)
-        : Math.random().toString(36).slice(2, 10));
+    pid = 'p_' + Math.random().toString(36).substring(2, 9);
   }
-  sessionStorage.setItem('party_player_id', pid);
-  sessionStorage.setItem('taq_session_player_id', pid);
+
+  sessionStorage.setItem('shabah_player_id', pid);
   localStorage.setItem('shabah_player_id', pid);
+  sessionStorage.setItem('party_player_id', pid);
+  localStorage.setItem('taghesi_playerId', pid);
+  sessionStorage.setItem('taghesi_playerId', pid);
+
   return pid;
 };
 

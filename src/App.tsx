@@ -1,5 +1,4 @@
-import React, { useEffect } from 'react';
-import { arabicDict } from './utils/arabicDictionary';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { LandingPage } from './pages/LandingPage';
 import { NameEntryView } from './pages/NameEntryView';
@@ -7,10 +6,6 @@ import { TVScreenView } from './pages/TVScreenView';
 import { PlayerMobileView } from './pages/PlayerMobileView';
 
 export function App() {
-  useEffect(() => {
-    arabicDict.init();
-  }, []);
-
   return (
     <Router>
       <Routes>

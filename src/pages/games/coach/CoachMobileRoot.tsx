@@ -23,6 +23,7 @@ import {
   getOrCreatePlayerName,
   getPersistedPlayerName,
 } from '../../../utils/playerSession';
+import { useRoomSync } from '../../../hooks/useRoomSync';
 
 export const CoachMobileRoot: React.FC = () => {
   const { code: rawCode } = useParams<{ code?: string }>();
@@ -31,6 +32,14 @@ export const CoachMobileRoot: React.FC = () => {
 
   const [playerId] = useState(() => getOrCreatePlayerId());
   const [playerName] = useState(() => getPersistedPlayerName() || getOrCreatePlayerName('متسابق'));
+
+  // Maintain continuous presence across all Coach game phases
+  useRoomSync({
+    roomCode,
+    role: 'contestant',
+    playerId,
+    playerName,
+  });
 
   const [coachState, setCoachState] = useState<CoachRoomState>(() =>
     createInitialCoachState(roomCode, 'draft')

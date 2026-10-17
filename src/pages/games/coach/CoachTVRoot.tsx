@@ -28,6 +28,7 @@ import { CoachTopBar } from './components/CoachTopBar';
 import { CoachDraftTVView } from './components/CoachDraftTVView';
 import { CoachBingoTVView } from './components/CoachBingoTVView';
 import { sound } from '../../../lib/audio';
+import { useRoomSync } from '../../../hooks/useRoomSync';
 
 export const CoachTVRoot: React.FC = () => {
   const { code: rawCode } = useParams<{ code?: string }>();
@@ -36,6 +37,12 @@ export const CoachTVRoot: React.FC = () => {
 
   const { room } = useRoom(roomCode);
   const activeRoom = room || roomBus.getRoom(roomCode);
+
+  // Stable Supabase Realtime presence connection for TV Host
+  const { connectedPlayers: realtimeContestants } = useRoomSync({
+    roomCode,
+    role: 'host',
+  });
 
   // Synchronized Coach State
   const [coachState, setCoachState] = useState<CoachRoomState>(() =>
@@ -55,8 +62,13 @@ export const CoachTVRoot: React.FC = () => {
   // Active condition for draft mode
   const [currentCondition, setCurrentCondition] = useState(() => DRAFT_CONDITIONS_BANK[0]);
 
-  // Connected contestants (max 10)
-  const contestants = (activeRoom?.players || [])
+  // Connected contestants (max 10) with TV Sync stability:
+  const mergedContestants =
+    realtimeContestants.length > 0
+      ? realtimeContestants
+      : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv');
+
+  const contestants = mergedContestants
     .slice(0, 10)
     .map((p) => ({ id: p.id, name: p.name || 'متسابق' }));
 

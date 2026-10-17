@@ -36,26 +36,9 @@ class ArabicDictionaryService {
   }
 
   public async init(): Promise<void> {
-    if (this.isLoaded) return;
-    if (this.loadPromise) return this.loadPromise;
-
-    this.loadPromise = (async () => {
-      try {
-        const res = await fetch('/data/arabic_words.json');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const words: string[] = await res.json();
-        words.forEach((w) => {
-          const norm = this.normalize(w);
-          if (norm) this.wordsSet.add(norm);
-        });
-        this.isLoaded = true;
-        console.log(`[ArabicDictionary] Loaded ${this.wordsSet.size} Arabic words.`);
-      } catch (err) {
-        console.warn('[ArabicDictionary] Fetch warn, relying on bundled dataset:', err);
-      }
-    })();
-
-    return this.loadPromise;
+    // Legacy dictionary fetching completely removed.
+    this.isLoaded = true;
+    return Promise.resolve();
   }
 
   public isValid(word: string, length?: number): boolean {

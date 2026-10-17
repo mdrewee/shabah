@@ -10,6 +10,8 @@ import {
   getPersistedPlayerName,
 } from '../utils/playerSession';
 
+import { useRoomSync } from '../hooks/useRoomSync';
+
 export const PlayerMobileView: React.FC = () => {
   const params = useParams<{ code?: string; roomId?: string; id?: string }>();
   const roomCode = (params.code || params.roomId || params.id || 'SHBH').trim().toUpperCase();
@@ -18,6 +20,14 @@ export const PlayerMobileView: React.FC = () => {
   const [playerId] = useState<string>(() => getOrCreatePlayerId());
   const [playerName] = useState<string>(() => {
     return getPersistedPlayerName() || getOrCreatePlayerName('متسابق');
+  });
+
+  // Maintain stable Supabase Realtime presence channel across mobile screens
+  useRoomSync({
+    roomCode,
+    role: 'contestant',
+    playerId,
+    playerName,
   });
 
   // Ensure room exists locally and player is registered
