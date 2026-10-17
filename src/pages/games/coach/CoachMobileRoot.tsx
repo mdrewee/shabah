@@ -75,11 +75,37 @@ export const CoachMobileRoot: React.FC = () => {
       navigate('/');
     });
 
+    const unsubClosed = roomBus.on('ROOM_CLOSED', () => {
+      sound.playTick();
+      navigate('/');
+    });
+
+    const unsubReturn = roomBus.on('RETURN_TO_LOBBY', () => {
+      sound.playClick();
+      setCoachState((prev) => {
+        const next = {
+          ...prev,
+          phase: 'LOBBY' as CoachGamePhase,
+          roundNumber: 1,
+          timerSeconds: 45,
+          claimedPlayers: {},
+          squads: {},
+          verdict: null,
+          bingoWinnerId: null,
+          bingoWinnerName: null,
+        };
+        savePersistedCoachState(roomCode, next);
+        return next;
+      });
+    });
+
     return () => {
       unsubSync();
       unsubClaimed();
       unsubMode();
       unsubTerminated();
+      unsubClosed();
+      unsubReturn();
     };
   }, [roomCode, navigate]);
 

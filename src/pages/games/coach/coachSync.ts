@@ -154,3 +154,48 @@ export function getRandomRoulettePlayer(excludeIds: string[] = []): BingoRoulett
     traits: picked.traits || [],
   };
 }
+
+/**
+ * Validate whether a roulette player matches a specific bingo cell condition
+ */
+export function doesPlayerMatchBingoCell(
+  player: BingoRoulettePlayer | null | undefined,
+  cell: BingoCell
+): boolean {
+  if (!player || !cell) return false;
+  const target = cell.targetValue.toLowerCase().trim();
+
+  // 1. Club check
+  if (cell.type === 'club') {
+    if (player.currentClub && (player.currentClub.toLowerCase().includes(target) || target.includes(player.currentClub.toLowerCase()))) {
+      return true;
+    }
+    if (player.clubs && player.clubs.some((c) => c.toLowerCase().includes(target) || target.includes(c.toLowerCase()))) {
+      return true;
+    }
+  }
+
+  // 2. Nationality check
+  if (cell.type === 'country') {
+    if (player.nationality && (player.nationality.toLowerCase().includes(target) || target.includes(player.nationality.toLowerCase()))) {
+      return true;
+    }
+  }
+
+  // 3. Trophy check
+  if (cell.type === 'trophy') {
+    if (player.trophies && player.trophies.some((t) => t.toLowerCase().includes(target) || target.includes(t.toLowerCase()))) {
+      return true;
+    }
+  }
+
+  // 4. Trait check (e.g. أصلع, كابتن, أشول, رقم 10, أسمر)
+  if (cell.type === 'trait') {
+    if (player.traits && player.traits.some((t) => t.toLowerCase().includes(target) || target.includes(t.toLowerCase()))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+

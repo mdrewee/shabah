@@ -2,13 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
-  process?.env?.VITE_SUPABASE_URL ||
   'https://gvzhhpdylhnwdkslcnsu.supabase.co';
 
 const supabaseKey =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) ||
-  process?.env?.VITE_SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2emhocGR5bGhud2Rrc2xjbnN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1Mzc5NDAsImV4cCI6MjA5NzExMzk0MH0.7wtnULiU1JqMRckRH5IOFCbjgvIKVD0JihI4-LyjshU';
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) || '';
 
 // Singleton Supabase Client Instance (prevents GoTrueClient duplicate instantiation warning)
 export const supabase = createClient(supabaseUrl, supabaseKey);

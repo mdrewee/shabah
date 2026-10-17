@@ -20,7 +20,7 @@ import {
   generateBingoCard,
   getRandomRoulettePlayer,
 } from './coachSync';
-import { evaluateAllSquads } from './coachEvaluationEngine';
+import { evaluateAllSquads, evaluateAllSquadsWithAI } from './coachEvaluationEngine';
 import { normalizeFootballSearch } from './footballDataService';
 import { DRAFT_CONDITIONS_BANK, getRandomDraftCondition } from '../../../data/draftConditions';
 import { CoachLobby } from './CoachLobby';
@@ -253,7 +253,24 @@ export const CoachTVRoot: React.FC = () => {
         verdict,
       };
       setCoachState(nextState);
+      savePersistedCoachState(roomCode, nextState);
       roomBus.emit('COACH_STATE_SYNC', roomCode, nextState);
+
+      // Async AI Roast & tactical evaluation from Gemini
+      evaluateAllSquadsWithAI(updatedSquads)
+        .then((aiVerdict) => {
+          if (aiVerdict && aiVerdict.evaluations.length > 0) {
+            setCoachState((prev) => {
+              const withAi = { ...prev, verdict: aiVerdict };
+              savePersistedCoachState(roomCode, withAi);
+              roomBus.emit('COACH_STATE_SYNC', roomCode, withAi);
+              return withAi;
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn('AI evaluation error, keeping deterministic verdict:', err);
+        });
     } else {
       // Advance to next round
       sound.playClick();
@@ -315,8 +332,30 @@ export const CoachTVRoot: React.FC = () => {
     }
   };
 
+  const handleReturnToLobby = () => {
+    sound.playClick();
+    const nextState: CoachRoomState = {
+      ...coachState,
+      phase: 'LOBBY',
+      roundNumber: 1,
+      timerSeconds: 45,
+      claimedPlayers: {},
+      squads: {},
+      verdict: null,
+      bingoWinnerId: null,
+      bingoWinnerName: null,
+      currentRoulettePlayer: null,
+      rouletteHistory: [],
+    };
+    setCoachState(nextState);
+    savePersistedCoachState(roomCode, nextState);
+    roomBus.emit('RETURN_TO_LOBBY', roomCode, {});
+    roomBus.emit('COACH_STATE_SYNC', roomCode, nextState);
+  };
+
   const handleExit = () => {
     sound.playClick();
+    roomBus.emit('ROOM_CLOSED', roomCode, { reason: 'HOST_CLOSED' });
     roomBus.emit('ROOM_TERMINATED', roomCode, { reason: 'HOST_CLOSED' });
     navigate('/');
   };
@@ -364,6 +403,7 @@ export const CoachTVRoot: React.FC = () => {
         }
         isHost
         onSkipTimer={coachState.phase === 'DRAFTING' ? advanceDraftRound : advanceBingoRoulette}
+        onReturnToLobby={handleReturnToLobby}
         onExit={handleExit}
       />
 

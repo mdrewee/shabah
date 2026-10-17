@@ -13,6 +13,7 @@ interface CoachTopBarProps {
   remark?: string;
   isHost?: boolean;
   onSkipTimer?: () => void;
+  onReturnToLobby?: () => void;
   onExit: () => void;
 }
 
@@ -26,6 +27,7 @@ export const CoachTopBar: React.FC<CoachTopBarProps> = ({
   remark = 'ركّز بالاختيار ولا تعك في المراكز!',
   isHost = false,
   onSkipTimer,
+  onReturnToLobby,
   onExit,
 }) => {
   return (
@@ -47,7 +49,7 @@ export const CoachTopBar: React.FC<CoachTopBarProps> = ({
           </span>
         </div>
 
-        {/* Action Controls: [تخطي المؤقت] + Contextual Exit */}
+        {/* Action Controls: [تخطي المؤقت] + [العودة للوبي] + Contextual Exit */}
         <div className="flex items-center gap-2">
           {isHost && timerSeconds !== undefined && timerSeconds > 0 && onSkipTimer && (
             <button
@@ -56,6 +58,16 @@ export const CoachTopBar: React.FC<CoachTopBarProps> = ({
               className="px-3 py-1 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-black border border-neutral-700 cursor-pointer transition-transform active:scale-95"
             >
               تخطي المؤقت
+            </button>
+          )}
+
+          {isHost && onReturnToLobby && (
+            <button
+              type="button"
+              onClick={onReturnToLobby}
+              className="px-3 py-1 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-black border border-neutral-700 cursor-pointer transition-transform active:scale-95"
+            >
+              العودة للوبي
             </button>
           )}
 

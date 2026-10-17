@@ -114,7 +114,28 @@ export const NameEntryView: React.FC = () => {
 
     // Case 2: Joining an existing Room by Code ([دخول] or QR Scan)
     const targetRoomCode = queryRoom || generateRoomCode();
-    if (!roomBus.getRoom(targetRoomCode)) {
+    const existing = roomBus.getRoom(targetRoomCode);
+    let roomExists = Boolean(existing && !existing.isTerminated);
+    if (!roomExists) {
+      const coachRaw = localStorage.getItem(`shabah_coach_state_${targetRoomCode}`);
+      if (coachRaw) {
+        try {
+          const parsed = JSON.parse(coachRaw);
+          if (parsed && parsed.phase !== 'TERMINATED') {
+            roomExists = true;
+          }
+        } catch {}
+      }
+    }
+
+    if (queryRoom && !roomExists) {
+      setErrorMsg('كود الغرفة غير صحيح أو تم إغلاقها من قِبل المضيف');
+      setMood('angry');
+      sound.playTick();
+      return;
+    }
+
+    if (!existing) {
       roomBus.createRoom(targetRoomCode);
     }
 

@@ -13,6 +13,7 @@ import {
   hybridFootballSearch,
   FootballSearchResult,
   normalizeFootballSearch,
+  SILHOUETTE_SVG,
 } from '../footballDataService';
 import { formatPercent, toArabicNumber } from '../../../../utils/numberFormat';
 import { sound } from '../../../../lib/audio';
@@ -313,11 +314,23 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                           : 'bg-white hover:bg-neutral-50 border-neutral-200 text-[#0A0A0A] cursor-pointer active:scale-98'
                       }`}
                     >
-                      <div className="flex flex-col">
-                        <span className="font-black text-xs sm:text-sm">{p.name}</span>
-                        <span className="text-[10px] text-neutral-500">
-                          {p.currentClub || p.nationality || ''} • {p.position || 'لاعب'}
-                        </span>
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-neutral-100 border border-neutral-300 flex items-center justify-center overflow-hidden shrink-0">
+                          <img
+                            src={p.photoUrl || SILHOUETTE_SVG}
+                            alt={p.name}
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src = SILHOUETTE_SVG;
+                            }}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-black text-xs sm:text-sm">{p.name}</span>
+                          <span className="text-[10px] text-neutral-500">
+                            {p.currentClub || p.nationality || ''} • {p.position || 'لاعب'}
+                          </span>
+                        </div>
                       </div>
 
                       {isClaimedByOther ? (

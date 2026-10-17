@@ -62,9 +62,12 @@ export const HomeView: React.FC = () => {
   const [roomCode, setRoomCode] = useState('');
   const [codeError, setCodeError] = useState<string | null>(null);
 
-  // Touch swipe tracking for Coverflow
-  const touchStartXRef = useRef<number | null>(null);
-  const touchDeltaXRef = useRef<number>(0);
+  // Touch swipe tracking for Coverflow with non-passive listener
+  const carouselContainerRef = useRef<HTMLDivElement>(null);
+  const activeIndexRef = useRef(activeIndex);
+  useEffect(() => {
+    activeIndexRef.current = activeIndex;
+  }, [activeIndex]);
 
   useEffect(() => {
     const onScroll = () => {
@@ -91,9 +94,9 @@ export const HomeView: React.FC = () => {
   const selectCardIndex = (nextIdx: number) => {
     const total = SHABAH_GAMES.length;
     const normalized = ((nextIdx % total) + total) % total;
-    if (normalized === activeIndex) return;
+    if (normalized === activeIndexRef.current) return;
 
-    const dir = nextIdx > activeIndex ? -1 : 1;
+    const dir = nextIdx > activeIndexRef.current ? -1 : 1;
     setSwipeGaze({ x: dir * 6, y: 2 });
     setActiveIndex(normalized);
     sound.playTick();
@@ -103,30 +106,67 @@ export const HomeView: React.FC = () => {
     }, 450);
   };
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartXRef.current = e.touches[0].clientX;
-    touchDeltaXRef.current = 0;
-  };
+  // Non-passive Touch isolation for Coverflow
+  useEffect(() => {
+    const el = carouselContainerRef.current;
+    if (!el) return;
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (touchStartXRef.current === null) return;
-    touchDeltaXRef.current = e.touches[0].clientX - touchStartXRef.current;
-  };
+    let startX = 0;
+    let startY = 0;
+    let deltaX = 0;
+    let isHorizontal = false;
 
-  const handleTouchEnd = () => {
-    if (touchStartXRef.current === null) return;
-    const delta = touchDeltaXRef.current;
-    touchStartXRef.current = null;
-    touchDeltaXRef.current = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      deltaX = 0;
+      isHorizontal = false;
+    };
 
-    if (Math.abs(delta) > 38) {
-      if (delta > 0) {
-        selectCardIndex(activeIndex + 1);
-      } else {
-        selectCardIndex(activeIndex - 1);
+    const onTouchMove = (e: TouchEvent) => {
+      const curX = e.touches[0].clientX;
+      const curY = e.touches[0].clientY;
+      const dx = curX - startX;
+      const dy = curY - startY;
+      deltaX = dx;
+
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+
+      if (absX > absY && absX > 6) {
+        isHorizontal = true;
+        if (e.cancelable) {
+          e.preventDefault();
+        }
       }
-    }
-  };
+    };
+
+    const onTouchEnd = () => {
+      if (isHorizontal && Math.abs(deltaX) > 35) {
+        if (deltaX > 0) {
+          selectCardIndex(activeIndexRef.current + 1);
+        } else {
+          selectCardIndex(activeIndexRef.current - 1);
+        }
+      }
+      startX = 0;
+      startY = 0;
+      deltaX = 0;
+      isHorizontal = false;
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, []);
 
   // Requirement 2: Open modal on card or [العب] click
   const openGameJoinModal = (game: ShabahGame) => {
@@ -174,7 +214,7 @@ export const HomeView: React.FC = () => {
     navigate(`/game/${joinModalGame.id}/${code}`);
   };
 
-  // Code entry join
+  // Code entry join with room existence verification
   const handleJoinByCode = (e: React.FormEvent) => {
     e.preventDefault();
     setCodeError(null);
@@ -184,6 +224,28 @@ export const HomeView: React.FC = () => {
       sound.playTick();
       return;
     }
+
+    // Verify room exists before navigating
+    const local = roomBus.getRoom(cleanCode);
+    let exists = Boolean(local && !local.isTerminated);
+    if (!exists) {
+      const coachRaw = localStorage.getItem(`shabah_coach_state_${cleanCode}`);
+      if (coachRaw) {
+        try {
+          const parsed = JSON.parse(coachRaw);
+          if (parsed && parsed.phase !== 'TERMINATED') {
+            exists = true;
+          }
+        } catch {}
+      }
+    }
+
+    if (!exists) {
+      setCodeError('كود الغرفة غير صحيح أو الغرفة غير موجودة حالياً');
+      sound.playTick();
+      return;
+    }
+
     sound.playClick();
     navigate(`/enter-name?room=${encodeURIComponent(cleanCode)}`);
   };
@@ -323,11 +385,9 @@ export const HomeView: React.FC = () => {
         className="w-full max-w-5xl mx-auto pt-12 pb-6 px-4 flex flex-col items-center relative z-20"
       >
         <div
-          className="relative w-full h-[500px] sm:h-[535px] flex items-center justify-center select-none"
-          style={{ perspective: '1000px' }}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
+          ref={carouselContainerRef}
+          className="relative w-full h-[500px] sm:h-[535px] flex items-center justify-center select-none touch-pan-y"
+          style={{ perspective: '1000px', touchAction: 'pan-y' }}
         >
           {/* Previous Arrow */}
           <button

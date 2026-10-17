@@ -10,6 +10,7 @@ import {
 import { resolveFootballerByName, normalizeFootballSearch } from './footballDataService';
 import { FootballPlayer } from '../../../data/footballMasterData';
 import { formatPercent } from '../../../utils/numberFormat';
+import { generateWithGemini } from '../../../config/gemini';
 
 // Knowledge sets for factual verification
 const GK_LIST = ['بوفون', 'كاسياس', 'نوير', 'كورتوا', 'اليغري', 'اليسون', 'ايدرسون', 'دي خيا', 'ياسين بونو', 'العويس', 'المعيوف', 'تير شتيغن', 'دوناروما', 'نافاس', 'بارتيز', 'بيتر تشيك', 'لوريس', 'اوليفر كان', 'اوبلاك', 'ايميليانو مارتينيز', 'اونانا', 'رامسديل', 'سومر', 'مينيان', 'شيزني', 'ياشين', 'شمايكل', 'فان در سار', 'الحبسي', 'الدعيع', 'الشناوي', 'الحضري', 'برافو', 'سوباسيتش'];
@@ -300,3 +301,85 @@ export function evaluateAllSquads(squads: Record<string, CoachSquad>): CoachVerd
     coachBanner,
   };
 }
+
+/**
+ * 5. Batch Gemini AI evaluation for contestant squads & sarcastic tactical breakdown
+ */
+export async function evaluateAllSquadsWithAI(
+  squads: Record<string, CoachSquad>
+): Promise<CoachVerdict> {
+  // First calculate baseline deterministic results
+  const deterministicVerdict = evaluateAllSquads(squads);
+  if (deterministicVerdict.evaluations.length === 0) {
+    return deterministicVerdict;
+  }
+
+  try {
+    const squadsData = Object.values(squads).map((s) => ({
+      playerId: s.playerId,
+      playerName: s.playerName,
+      slots: Object.entries(s.slots).map(([slotKey, pick]) => ({
+        slot: slotKey,
+        player: pick?.playerName || 'خانة فارغة',
+        condition: pick?.conditionTitle || '',
+        isCustom: pick?.isCustom || false,
+      })),
+    }));
+
+    const systemPrompt = `
+أنت "الشبح المدرب"، أسطورة التدريب التكتيكي الساخر والداهية في لعبة "شبح".
+مهمتك: تقييم تشكيلات اللاعبين الـ 5 لكل متسابق بعد انتهاء الجولات الـ 5.
+تحلل الخانات، وتكشف أي عك كروي أو لاعب يلعب في غير مركزه، وتتحقق من الأسماء المكتوبة يدوياً، وتولد تعليقاً ساخراً لاذعاً وممتعاً بالعامية السعودية لكل تشكيلة.
+
+شروط الإخراج:
+- JSON حصراً:
+{
+  "winnerPlayerId": "string",
+  "coachBanner": "string (سطر إعلان البطل بحماس كروي ساخر)",
+  "evaluations": [
+    {
+      "playerId": "string",
+      "critique": "string (سطرين جلد وتحليل تكتيكي ساخر بالعامية السعودية)",
+      "totalPercentage": 85
+    }
+  ]
+}
+`.trim();
+
+    const userPrompt = `التشكيلات المقدمة:\n${JSON.stringify(squadsData, null, 2)}`;
+
+    const responseText = await generateWithGemini(userPrompt, {
+      systemPrompt,
+      temperature: 0.75,
+      jsonMode: true,
+      maxOutputTokens: 1200,
+    });
+
+    if (responseText) {
+      const parsed = JSON.parse(responseText);
+      if (parsed?.evaluations && Array.isArray(parsed.evaluations)) {
+        parsed.evaluations.forEach((aiEval: any) => {
+          const match = deterministicVerdict.evaluations.find(
+            (e) => e.playerId === aiEval.playerId
+          );
+          if (match) {
+            if (aiEval.critique) match.critique = aiEval.critique;
+            if (typeof aiEval.totalPercentage === 'number' && aiEval.totalPercentage >= 0 && aiEval.totalPercentage <= 100) {
+              // Blend AI score with factual score
+              match.totalPercentage = Math.round((match.totalPercentage + aiEval.totalPercentage) / 2);
+            }
+          }
+        });
+
+        if (parsed.coachBanner) {
+          deterministicVerdict.coachBanner = parsed.coachBanner;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Coach AI Evaluation] Fallback to deterministic evaluation:', err);
+  }
+
+  return deterministicVerdict;
+}
+

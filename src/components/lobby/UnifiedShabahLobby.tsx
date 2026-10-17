@@ -118,6 +118,9 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
     const unsubGameStart = roomBus.on('GAME_STARTED', () => {
       sound.playSuccess();
       setGameStartedNotification(true);
+      if (onStartGame) {
+        onStartGame();
+      }
     });
 
     return () => {
@@ -174,7 +177,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
 
   const readyCount = sanitizedPlayers.filter((p) => p.isReady).length;
   const totalCount = sanitizedPlayers.length;
-  const canHostStart = totalCount >= minPlayers;
+  const canHostStart = readyCount >= 2;
 
   const prevPlayersCountRef = useRef<number>(totalCount);
   const prevReadyCountRef = useRef<number>(readyCount);
@@ -512,7 +515,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                       : 'bg-neutral-200 text-neutral-500 cursor-not-allowed border-2 border-neutral-300'
                   }`}
                 >
-                  بدء اللعبة
+                  {canHostStart ? 'بدء اللعبة' : 'بدء اللعبة (يتطلب جاهزية متسابقَين على الأقل)'}
                 </button>
               )}
             </div>
