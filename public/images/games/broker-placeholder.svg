@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 260" fill="none">
+  <defs>
+    <linearGradient id="shabahGradBroker" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#B56BFF" />
+      <stop offset="40%" stop-color="#38BDF8" />
+      <stop offset="75%" stop-color="#4ADE80" />
+      <stop offset="100%" stop-color="#BEF264" />
+    </linearGradient>
+    <pattern id="gridBroker" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1.2" fill="#0A0A0A" fill-opacity="0.14" />
+    </pattern>
+  </defs>
+  <rect width="320" height="260" fill="#F8FAFC" />
+  <rect width="320" height="260" fill="url(#gridBroker)" />
+
+  <circle cx="160" cy="128" r="86" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="4" />
+
+  <!-- Ghost Silhouette (No Mouth!) -->
+  <path
+    d="M 160 46 C 122 46 102 74 102 114 L 102 174 C 102 186 112 192 121 184 C 130 176 138 176 146 185 C 153 193 167 193 174 185 C 182 176 190 176 199 184 C 208 192 218 186 218 174 L 218 114 C 218 74 198 46 160 46 Z"
+    fill="#FFFFFF"
+    stroke="url(#shabahGradBroker)"
+    stroke-width="11"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M 160 46 C 122 46 102 74 102 114 L 102 174 C 102 186 112 192 121 184 C 130 176 138 176 146 185 C 153 193 167 193 174 185 C 182 176 190 176 199 184 C 208 192 218 186 218 174 L 218 114 C 218 74 198 46 160 46 Z"
+    fill="#FFFFFF"
+    stroke="#0A0A0A"
+    stroke-width="6"
+    stroke-linejoin="round"
+  />
+
+  <!-- Happy Crescent Eyes (⌒ ⌒) - Strictly NO mouth -->
+  <path d="M 128 110 Q 139 94 150 110" stroke="#0A0A0A" stroke-width="7.5" stroke-linecap="round" fill="none" />
+  <path d="M 170 110 Q 181 94 192 110" stroke="#0A0A0A" stroke-width="7.5" stroke-linecap="round" fill="none" />
+
+  <!-- Price Tag Badge -->
+  <g transform="translate(198, 134) rotate(14)">
+    <rect x="0" y="0" width="66" height="38" rx="10" fill="url(#shabahGradBroker)" stroke="#0A0A0A" stroke-width="4" />
+    <circle cx="15" cy="19" r="4" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="3" />
+    <line x1="28" y1="14" x2="52" y2="14" stroke="#0A0A0A" stroke-width="4" stroke-linecap="round" />
+    <line x1="28" y1="24" x2="44" y2="24" stroke="#0A0A0A" stroke-width="4" stroke-linecap="round" />
+  </g>
+</svg>

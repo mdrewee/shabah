@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 260" fill="none">
+  <defs>
+    <linearGradient id="shabahGradCoach" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#B56BFF" />
+      <stop offset="40%" stop-color="#38BDF8" />
+      <stop offset="75%" stop-color="#4ADE80" />
+      <stop offset="100%" stop-color="#BEF264" />
+    </linearGradient>
+    <pattern id="gridCoach" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1.2" fill="#0A0A0A" fill-opacity="0.14" />
+    </pattern>
+  </defs>
+  <rect width="320" height="260" fill="#F8FAFC" />
+  <rect width="320" height="260" fill="url(#gridCoach)" />
+
+  <!-- Tactical Pitch Frame -->
+  <rect x="52" y="34" width="216" height="192" rx="24" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="4" />
+  <line x1="52" y1="130" x2="268" y2="130" stroke="#0A0A0A" stroke-width="2.5" stroke-dasharray="6 6" opacity="0.25" />
+  <circle cx="160" cy="130" r="36" stroke="#0A0A0A" stroke-width="2.5" opacity="0.25" />
+
+  <!-- Ghost Silhouette (No Mouth!) -->
+  <path
+    d="M 160 48 C 124 48 105 74 105 114 L 105 172 C 105 184 114 190 123 182 C 132 174 139 174 147 183 C 154 190 166 190 173 183 C 181 174 188 174 197 182 C 206 190 215 184 215 172 L 215 114 C 215 74 196 48 160 48 Z"
+    fill="#FFFFFF"
+    stroke="url(#shabahGradCoach)"
+    stroke-width="11"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M 160 48 C 124 48 105 74 105 114 L 105 172 C 105 184 114 190 123 182 C 132 174 139 174 147 183 C 154 190 166 190 173 183 C 181 174 188 174 197 182 C 206 190 215 184 215 172 L 215 114 C 215 74 196 48 160 48 Z"
+    fill="#FFFFFF"
+    stroke="#0A0A0A"
+    stroke-width="6"
+    stroke-linejoin="round"
+  />
+
+  <!-- Focused Coach Eyes (Tilted inward) - Strictly NO mouth -->
+  <path d="M 129 98 L 151 106 C 151 116 145 121 139 121 C 132 121 128 114 129 98 Z" fill="#0A0A0A" />
+  <path d="M 191 98 L 169 106 C 169 116 175 121 181 121 C 188 121 192 114 191 98 Z" fill="#0A0A0A" />
+
+  <!-- Tactical 5 Formation Dots -->
+  <circle cx="80" cy="72" r="9" fill="url(#shabahGradCoach)" stroke="#0A0A0A" stroke-width="3.5" />
+  <circle cx="240" cy="72" r="9" fill="url(#shabahGradCoach)" stroke="#0A0A0A" stroke-width="3.5" />
+  <circle cx="80" cy="188" r="9" fill="url(#shabahGradCoach)" stroke="#0A0A0A" stroke-width="3.5" />
+  <circle cx="240" cy="188" r="9" fill="url(#shabahGradCoach)" stroke="#0A0A0A" stroke-width="3.5" />
+</svg>

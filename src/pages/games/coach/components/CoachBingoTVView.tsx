@@ -1,0 +1,142 @@
+import React, { useState } from 'react';
+import { BingoRoulettePlayer, BingoCard } from '../types';
+import { SILHOUETTE_SVG } from '../footballDataService';
+import { toArabicNumber } from '../../../../utils/numberFormat';
+import { Trophy, Award, Users } from 'lucide-react';
+
+interface ContestantItem {
+  id: string;
+  name: string;
+}
+
+interface CoachBingoTVViewProps {
+  currentRoulettePlayer: BingoRoulettePlayer | null;
+  contestants: ContestantItem[];
+  bingoCards: Record<string, BingoCard>;
+  winnerName?: string | null;
+  onNextPlayer?: () => void;
+  secondsRemaining?: number;
+}
+
+export const CoachBingoTVView: React.FC<CoachBingoTVViewProps> = ({
+  currentRoulettePlayer,
+  contestants,
+  bingoCards,
+  winnerName,
+  onNextPlayer,
+  secondsRemaining,
+}) => {
+  const [imgError, setImgError] = useState(false);
+
+  // If there is a winner, celebrate with Shabah Winner card
+  if (winnerName) {
+    return (
+      <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center py-12 px-4 select-none">
+        <div className="w-full shabah-border-wrap animate-in zoom-in-95 duration-300">
+          <div className="shabah-border-inner">
+            <div className="shabah-surface p-8 sm:p-12 flex flex-col items-center text-center gap-4">
+              <div className="w-20 h-20 rounded-full bg-emerald-500 text-white flex items-center justify-center text-3xl shadow-lg">
+                🏆
+              </div>
+
+              <span className="px-4 py-1.5 rounded-full bg-[#0A0A0A] text-white text-xs sm:text-sm font-black">
+                بينقو كروي ٤×٤ مكتمل!
+              </span>
+
+              <h2 className="text-3xl sm:text-5xl font-black text-[#0A0A0A]">
+                الفائز: {winnerName}
+              </h2>
+
+              <p className="text-base sm:text-lg font-bold text-neutral-700 max-w-md">
+                أكمل ٤ خلايا صحيحة في خط فوز معتمد وحسم التحدي الكروي ببراعة!
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const p = currentRoulettePlayer;
+
+  return (
+    <div className="w-full max-w-5xl mx-auto flex flex-col items-center gap-6 py-4 px-4 select-none">
+      {/* 1. Large Photo Roulette Card */}
+      <div className="w-full max-w-xl shabah-border-wrap">
+        <div className="shabah-border-inner">
+          <div className="shabah-surface p-6 sm:p-8 flex flex-col items-center text-center relative overflow-hidden">
+            {/* Top counter & timer */}
+            <div className="w-full flex items-center justify-between mb-4">
+              <span className="px-3 py-1 rounded-full bg-[#0A0A0A] text-white text-xs font-black">
+                روليت اللاعبين المباشر
+              </span>
+              {secondsRemaining !== undefined && (
+                <span className="font-mono text-xs font-black px-2.5 py-1 rounded-lg bg-neutral-100 text-[#0A0A0A]">
+                  اللاعب القادم: {toArabicNumber(secondsRemaining)} ث
+                </span>
+              )}
+            </div>
+
+            {/* High-Resolution Cutout Photo */}
+            <div className="w-48 h-48 sm:w-56 sm:h-56 relative flex items-center justify-center my-2">
+              <img
+                src={!imgError && p?.photoUrl ? p.photoUrl : SILHOUETTE_SVG}
+                alt={p?.name || 'لاعب'}
+                onError={() => setImgError(true)}
+                className="max-w-full max-h-full object-contain filter drop-shadow-xl"
+              />
+            </div>
+
+            {/* Full Arabic Name */}
+            <h3 className="text-2xl sm:text-4xl font-black text-[#0A0A0A] mb-1">
+              {p?.name || 'جاري سحب اللاعب...'}
+            </h3>
+
+            {/* Club & Country Badges */}
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+              {p?.currentClub && (
+                <span className="px-3 py-1 rounded-xl bg-neutral-100 border border-neutral-300 text-xs font-black text-[#0A0A0A]">
+                  النادي: {p.currentClub}
+                </span>
+              )}
+              {p?.nationality && (
+                <span className="px-3 py-1 rounded-xl bg-neutral-100 border border-neutral-300 text-xs font-black text-[#0A0A0A]">
+                  المنتخب: {p.nationality}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Contestants Live Grid Progress Tracker */}
+      <div className="w-full max-w-4xl flex flex-col gap-2">
+        <h4 className="text-xs font-black text-neutral-400 px-2 flex items-center gap-1.5">
+          <Users className="w-4 h-4" />
+          <span>تقدم المتسابقين في بطاقات البينقو:</span>
+        </h4>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 w-full">
+          {contestants.map((c) => {
+            const card = bingoCards[c.id];
+            const markedCount = card?.cells.filter((cell) => cell.isMarked).length || 0;
+
+            return (
+              <div
+                key={c.id}
+                className="bg-neutral-900 border border-neutral-800 rounded-xl p-3 flex flex-col items-center text-center gap-1.5"
+              >
+                <span className="text-white font-black text-xs truncate max-w-full">
+                  {c.name}
+                </span>
+                <span className="text-xs font-black px-2 py-0.5 rounded-full bg-white/10 text-emerald-400">
+                  {toArabicNumber(markedCount)} / ١٦
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};

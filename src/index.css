@@ -1,0 +1,171 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'PanoramaNaskh';
+  src: url('/subset-NTPanoramaNaskh-Regular.woff2') format('woff2'),
+       url('/fonts/subset-NTPanoramaNaskh-Regular.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  html,
+  body,
+  button,
+  input,
+  textarea,
+  select {
+    font-family: 'PanoramaNaskh', system-ui, -apple-system, sans-serif !important;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    direction: rtl;
+    background-color: #000000;
+    color: #FFFFFF;
+  }
+
+  body {
+    background-color: #000000;
+    color: #FFFFFF;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+  }
+}
+
+/* ==========================================================================
+   CORE VISUAL IDENTITY ("هوية شبح" — حدود شبح الثلاثية)
+   1. Outer Iridescent Gradient Ring:
+      linear-gradient(135deg, #A855F7 0%, #6366F1 25%, #38BDF8 50%, #4ADE80 75%, #A3E635 100%)
+   2. Middle Dark Stroke Ring: Solid #0A0A0A (4px to 6px gap)
+   3. Inner White Surface: #FFFFFF (with primary text in #0A0A0A)
+   ========================================================================== */
+
+.shabah-card {
+  position: relative;
+  background: #FFFFFF;
+  color: #0A0A0A;
+  border-radius: 24px;
+  border: 5px solid #0A0A0A;
+  box-shadow: 0 0 0 3.5px #A855F7, 0 0 0 3.5px transparent;
+  background-clip: padding-box;
+}
+
+.shabah-card::before {
+  content: '';
+  position: absolute;
+  inset: -8.5px;
+  border-radius: 30px;
+  background: linear-gradient(135deg, #A855F7 0%, #6366F1 25%, #38BDF8 50%, #4ADE80 75%, #A3E635 100%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Wrapper classes for the exact 3-layer multi-stop iridescent outer ring */
+.shabah-border-wrap {
+  padding: 3.5px;
+  border-radius: 30px;
+  background: linear-gradient(135deg, #A855F7 0%, #6366F1 25%, #38BDF8 50%, #4ADE80 75%, #A3E635 100%);
+}
+
+.shabah-border-inner {
+  background: #0A0A0A;
+  padding: 5.5px;
+  border-radius: 26.5px;
+  height: 100%;
+}
+
+.shabah-surface {
+  background: #FFFFFF;
+  color: #0A0A0A;
+  border-radius: 21px;
+  height: 100%;
+}
+
+/* Compact pill/badge variant with the same 3-layer Shabah border */
+.shabah-pill-wrap {
+  padding: 2.5px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #A855F7 0%, #6366F1 25%, #38BDF8 50%, #4ADE80 75%, #A3E635 100%);
+}
+
+.shabah-pill-inner {
+  background: #0A0A0A;
+  padding: 3.5px;
+  border-radius: 9999px;
+}
+
+.shabah-pill-surface {
+  background: #FFFFFF;
+  color: #0A0A0A;
+  border-radius: 9999px;
+}
+
+.shabah-gradient-text {
+  background: linear-gradient(135deg, #B56BFF 0%, #38BDF8 45%, #4ADE80 80%, #BEF264 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Hide scrollbars cleanly for horizontal card carousel */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Strict Animation Rule: ZERO animate-bounce, ZERO animate-pulse, ZERO animate-ping */
+.animate-bounce,
+.animate-pulse,
+.animate-ping {
+  animation: none !important;
+}
+
+/* Iridescent Hover Effect for Black Primary Buttons */
+.shabah-btn-black {
+  position: relative;
+  background-color: #0A0A0A;
+  color: #FFFFFF;
+  border: 2px solid #0A0A0A;
+  transition: all 300ms ease;
+}
+
+.shabah-btn-black:hover:not(:disabled) {
+  background: linear-gradient(135deg, #B56BFF 0%, #38BDF8 40%, #4ADE80 75%, #BEF264 100%) !important;
+  color: #0A0A0A !important;
+  border-color: #0A0A0A;
+  box-shadow: 0 0 16px rgba(181, 107, 255, 0.4);
+}
+
+.shabah-btn-black:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Shabah Logo Typography with White Fill & Iridescent Gradient Border */
+.shabah-wordmark-container {
+  overflow: visible !important;
+  padding-bottom: 0.35em !important;
+  line-height: 1.4 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shabah-title-white {
+  color: #FFFFFF;
+  filter: drop-shadow(0 0 1px #B56BFF) drop-shadow(0 0 2px #38BDF8) drop-shadow(0 0 4px #4ADE80);
+  -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.85);
+  line-height: 1.4;
+  padding-bottom: 0.35em;
+  overflow: visible;
+}
+

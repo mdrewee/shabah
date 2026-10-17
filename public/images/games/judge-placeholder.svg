@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 260" fill="none">
+  <defs>
+    <linearGradient id="shabahGradJudge" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#B56BFF" />
+      <stop offset="40%" stop-color="#38BDF8" />
+      <stop offset="75%" stop-color="#4ADE80" />
+      <stop offset="100%" stop-color="#BEF264" />
+    </linearGradient>
+    <pattern id="gridJudge" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1.2" fill="#0A0A0A" fill-opacity="0.14" />
+    </pattern>
+  </defs>
+  <rect width="320" height="260" fill="#F8FAFC" />
+  <rect width="320" height="260" fill="url(#gridJudge)" />
+
+  <!-- Decorative Court Pillar & Scales -->
+  <circle cx="160" cy="126" r="88" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="4" />
+  <circle cx="160" cy="126" r="78" stroke="url(#shabahGradJudge)" stroke-width="4" stroke-dasharray="10 6" />
+
+  <!-- Ghost Silhouette (No Mouth!) -->
+  <path
+    d="M 160 44 C 122 44 102 72 102 114 L 102 174 C 102 186 112 192 121 184 C 130 176 138 176 146 185 C 153 193 167 193 174 185 C 182 176 190 176 199 184 C 208 192 218 186 218 174 L 218 114 C 218 72 198 44 160 44 Z"
+    fill="#FFFFFF"
+    stroke="url(#shabahGradJudge)"
+    stroke-width="11"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M 160 44 C 122 44 102 72 102 114 L 102 174 C 102 186 112 192 121 184 C 130 176 138 176 146 185 C 153 193 167 193 174 185 C 182 176 190 176 199 184 C 208 192 218 186 218 174 L 218 114 C 218 72 198 44 160 44 Z"
+    fill="#FFFFFF"
+    stroke="#0A0A0A"
+    stroke-width="6"
+    stroke-linejoin="round"
+  />
+
+  <!-- Judging Eyes (One narrowed, one wide) - Strictly NO mouth -->
+  <rect x="128" y="103" width="22" height="8" rx="4" fill="#0A0A0A" transform="rotate(8 139 107)" />
+  <ellipse cx="180" cy="106" rx="10" ry="15" fill="#0A0A0A" />
+
+  <!-- Judge Gavel Floating Badge -->
+  <g transform="translate(205, 132) rotate(-24)">
+    <rect x="0" y="18" width="48" height="10" rx="5" fill="#0A0A0A" />
+    <rect x="34" y="4" width="22" height="38" rx="6" fill="url(#shabahGradJudge)" stroke="#0A0A0A" stroke-width="4" />
+  </g>
+</svg>

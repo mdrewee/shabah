@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 260" fill="none">
+  <defs>
+    <linearGradient id="shabahGradGuide" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#B56BFF" />
+      <stop offset="40%" stop-color="#38BDF8" />
+      <stop offset="75%" stop-color="#4ADE80" />
+      <stop offset="100%" stop-color="#BEF264" />
+    </linearGradient>
+    <pattern id="gridGuide" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1.2" fill="#0A0A0A" fill-opacity="0.14" />
+    </pattern>
+  </defs>
+  <rect width="320" height="260" fill="#F8FAFC" />
+  <rect width="320" height="260" fill="url(#gridGuide)" />
+
+  <!-- Globe Ring -->
+  <circle cx="160" cy="128" r="88" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="4" />
+  <ellipse cx="160" cy="128" rx="88" ry="34" stroke="#0A0A0A" stroke-width="2.5" stroke-dasharray="6 6" opacity="0.25" />
+
+  <!-- Ghost Silhouette (No Mouth!) -->
+  <path
+    d="M 160 46 C 122 46 102 74 102 114 L 102 174 C 102 186 112 192 121 184 C 130 176 138 176 146 185 C 153 193 167 193 174 185 C 182 176 190 176 199 184 C 208 192 218 186 218 174 L 218 114 C 218 74 198 46 160 46 Z"
+    fill="#FFFFFF"
+    stroke="url(#shabahGradGuide)"
+    stroke-width="11"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M 160 46 C 122 46 102 74 102 114 L 102 174 C 102 186 112 192 121 184 C 130 176 138 176 146 185 C 153 193 167 193 174 185 C 182 176 190 176 199 184 C 208 192 218 186 218 174 L 218 114 C 218 74 198 46 160 46 Z"
+    fill="#FFFFFF"
+    stroke="#0A0A0A"
+    stroke-width="6"
+    stroke-linejoin="round"
+  />
+
+  <!-- Surprised/Curious Round Eyes - Strictly NO mouth -->
+  <circle cx="139" cy="105" r="12" fill="#0A0A0A" />
+  <circle cx="181" cy="105" r="12" fill="#0A0A0A" />
+
+  <!-- Compass Pin Badge -->
+  <g transform="translate(206, 130)">
+    <circle cx="22" cy="22" r="22" fill="url(#shabahGradGuide)" stroke="#0A0A0A" stroke-width="4" />
+    <polygon points="22,8 28,22 22,36 16,22" fill="#0A0A0A" />
+  </g>
+</svg>
