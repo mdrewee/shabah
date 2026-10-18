@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { X, Copy, Check } from 'lucide-react';
 import { ShabahGhost, ShabahMood } from '../mascot/ShabahGhost';
 import { QRCodeView } from '../common/QRCodeView';
@@ -25,6 +25,7 @@ export interface UnifiedShabahLobbyProps {
   gameRulesSummary?: string | string[];
   players?: ShabahLobbyPlayer[];
   role?: 'host' | 'contestant';
+  isPlayerHost?: boolean;
   currentPlayerId?: string;
   isReady?: boolean;
   onToggleReady?: () => void;
@@ -44,6 +45,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
   gameRulesSummary,
   players: propPlayers,
   role = 'host',
+  isPlayerHost = false,
   currentPlayerId,
   isReady: propIsReady,
   onToggleReady,
@@ -54,6 +56,8 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
   extraControls,
 }) => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isHostRole = role === 'host' || Boolean(isPlayerHost) || searchParams.get('host') === '1';
   const cleanCode = (roomCode || '').trim().toUpperCase();
 
   // Find game info from approved 5 games
@@ -215,7 +219,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
 
   const readyCount = sanitizedPlayers.filter((p) => p.isReady).length;
   const totalCount = sanitizedPlayers.length;
-  const canHostStart = readyCount >= 2;
+  const canHostStart = readyCount >= 1 || (totalCount >= 1 && isHostRole);
 
   const prevPlayersCountRef = useRef<number>(totalCount);
   const prevReadyCountRef = useRef<number>(readyCount);
@@ -304,11 +308,13 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
     sound.playClick();
     sound.playSuccess();
     setGameStartedNotification(true);
-    roomBus.emit('GAME_STARTED', cleanCode, {
+    const startPayload = {
       startedAt: Date.now(),
       gameId: matchedGame.id,
       gameTitle: matchedGame.title,
-    });
+      roomCode: cleanCode,
+    };
+    roomBus.broadcastGameStarted(cleanCode, startPayload);
     if (onStartGame) {
       onStartGame();
     }
@@ -316,8 +322,8 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
 
   const joinUrl =
     typeof window !== 'undefined'
-      ? `${window.location.origin}/?room=${encodeURIComponent(cleanCode)}`
-      : `/?room=${encodeURIComponent(cleanCode)}`;
+      ? `${window.location.origin}/enter-name?room=${encodeURIComponent(cleanCode)}`
+      : `/enter-name?room=${encodeURIComponent(cleanCode)}`;
 
   return (
     <div
@@ -526,17 +532,34 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
           <div className="shabah-border-inner">
             <div className="shabah-surface p-3 sm:p-4">
               {role === 'contestant' ? (
-                <button
-                  type="button"
-                  onClick={handleContestantToggleReady}
-                  className={`w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] cursor-pointer ${
-                    currentContestantReady
-                      ? 'bg-white text-[#0A0A0A] border-[3px] border-[#0A0A0A] hover:bg-neutral-100'
-                      : 'shabah-btn-black'
-                  }`}
-                >
-                  {currentContestantReady ? 'إلغاء الجاهزية' : 'أنا جاهز'}
-                </button>
+                <div className="flex flex-col gap-2.5 w-full">
+                  <button
+                    type="button"
+                    onClick={handleContestantToggleReady}
+                    className={`w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] cursor-pointer ${
+                      currentContestantReady
+                        ? 'bg-white text-[#0A0A0A] border-[3px] border-[#0A0A0A] hover:bg-neutral-100'
+                        : 'shabah-btn-black'
+                    }`}
+                  >
+                    {currentContestantReady ? 'إلغاء الجاهزية' : 'أنا جاهز'}
+                  </button>
+
+                  {isHostRole && (
+                    <button
+                      type="button"
+                      disabled={!canHostStart}
+                      onClick={handleHostStartGame}
+                      className={`w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] ${
+                        canHostStart
+                          ? 'shabah-btn-black cursor-pointer shadow-[0_0_20px_rgba(74,222,128,0.35)]'
+                          : 'bg-neutral-200 text-neutral-500 cursor-not-allowed border-2 border-neutral-300'
+                      }`}
+                    >
+                      {canHostStart ? 'بدء اللعبة (كمضيف)' : 'بدء اللعبة (في انتظار جاهزية متسابق على الأقل)'}
+                    </button>
+                  )}
+                </div>
               ) : (
                 <button
                   type="button"
@@ -548,7 +571,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                       : 'bg-neutral-200 text-neutral-500 cursor-not-allowed border-2 border-neutral-300'
                   }`}
                 >
-                  {canHostStart ? 'بدء اللعبة' : 'بدء اللعبة (يتطلب جاهزية متسابقَين على الأقل)'}
+                  {canHostStart ? 'بدء اللعبة' : 'بدء اللعبة (في انتظار جاهزية متسابق على الأقل)'}
                 </button>
               )}
             </div>

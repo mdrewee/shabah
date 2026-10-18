@@ -10,6 +10,7 @@ import {
   setPersistedPlayerName,
 } from '../utils/playerSession';
 import { createRoom, checkRoomExists, normalizeRoomCode } from '../services/roomService';
+import { normalizeGameId } from '../utils/gameIds';
 
 function generateRoomCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -133,8 +134,10 @@ export const NameEntryView: React.FC = () => {
       }
 
       const existing = roomBus.getRoom(targetRoomCode);
-      if (!existing) {
-        roomBus.createRoom(targetRoomCode);
+      const room = existing || roomBus.createRoom(targetRoomCode);
+      if (check && (check as any).gameId) {
+        room.selectedGameId = normalizeGameId((check as any).gameId);
+        roomBus.writeLocal(room);
       }
 
       const res = roomBus.joinRoom(targetRoomCode, cleanName, 'falcon', pid);

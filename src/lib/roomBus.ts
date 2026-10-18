@@ -239,6 +239,108 @@ class RoomBus {
     }
   }
 
+  public broadcastGameStarted(roomCode: string, payload: any): void {
+    const clean = cleanRoomCode(roomCode);
+    this.emit('GAME_STARTED', clean, payload);
+    const ch = this.ensureSupabaseChannel(clean);
+    if (ch) {
+      try {
+        ch.send({
+          type: 'broadcast',
+          event: 'GAME_STARTED',
+          payload
+        });
+      } catch (e) {
+        console.warn('broadcastGameStarted error:', e);
+      }
+    }
+  }
+
+  public broadcastReturnToLobby(roomCode: string): void {
+    const clean = cleanRoomCode(roomCode);
+    this.emit('RETURN_TO_LOBBY', clean, {});
+    const ch = this.ensureSupabaseChannel(clean);
+    if (ch) {
+      try {
+        ch.send({
+          type: 'broadcast',
+          event: 'RETURN_TO_LOBBY',
+          payload: { roomCode: clean }
+        });
+      } catch (e) {
+        console.warn('broadcastReturnToLobby error:', e);
+      }
+    }
+  }
+
+  public broadcastCoachSync(roomCode: string, state: any): void {
+    const clean = cleanRoomCode(roomCode);
+    this.emit('COACH_STATE_SYNC', clean, state);
+    const ch = this.ensureSupabaseChannel(clean);
+    if (ch) {
+      try {
+        ch.send({
+          type: 'broadcast',
+          event: 'COACH_STATE_SYNC',
+          payload: state
+        });
+      } catch (e) {
+        console.warn('broadcastCoachSync error:', e);
+      }
+    }
+  }
+
+  public broadcastBrokerSync(roomCode: string, state: any): void {
+    const clean = cleanRoomCode(roomCode);
+    this.emit('BROKER_STATE_SYNC', clean, state);
+    const ch = this.ensureSupabaseChannel(clean);
+    if (ch) {
+      try {
+        ch.send({
+          type: 'broadcast',
+          event: 'BROKER_STATE_SYNC',
+          payload: state
+        });
+      } catch (e) {
+        console.warn('broadcastBrokerSync error:', e);
+      }
+    }
+  }
+
+  public broadcastBrokerBid(roomCode: string, payload: any): void {
+    const clean = cleanRoomCode(roomCode);
+    this.emit('BROKER_BID_SUBMITTED', clean, payload);
+    const ch = this.ensureSupabaseChannel(clean);
+    if (ch) {
+      try {
+        ch.send({
+          type: 'broadcast',
+          event: 'BROKER_BID_SUBMITTED',
+          payload
+        });
+      } catch (e) {
+        console.warn('broadcastBrokerBid error:', e);
+      }
+    }
+  }
+
+  public broadcastCoachPick(roomCode: string, payload: any): void {
+    const clean = cleanRoomCode(roomCode);
+    this.emit('COACH_PICK_SUBMITTED', clean, payload);
+    const ch = this.ensureSupabaseChannel(clean);
+    if (ch) {
+      try {
+        ch.send({
+          type: 'broadcast',
+          event: 'COACH_PICK_SUBMITTED',
+          payload
+        });
+      } catch (e) {
+        console.warn('broadcastCoachPick error:', e);
+      }
+    }
+  }
+
   private channel: BroadcastChannel | null = null;
   private typedListeners: Map<string, Set<(event: RoomEventPayload) => void>> = new Map();
   private subscribers: Set<(msg: BusMessage) => void> = new Set();
@@ -537,9 +639,9 @@ class RoomBus {
     }
 
     // 2. Prevent duplicate channel instances across the Supabase client
-    const topic = `room:${cleanCode}`;
+    const topic = `room_${cleanCode}`;
     const existing = supabase.getChannels().find(
-      (c: any) => c.topic === topic || c.topic === `realtime:${topic}` || c.topic === `room_${cleanCode}` || c.topic === `realtime:room_${cleanCode}`
+      (c: any) => c.topic === topic || c.topic === `realtime:${topic}` || c.topic === `room:${cleanCode}` || c.topic === `realtime:room:${cleanCode}`
     );
     if (existing) {
       this.supabaseChannels.set(cleanCode, existing);
@@ -689,6 +791,30 @@ class RoomBus {
 
       ch.on('broadcast', { event: 'ROUND_STARTED' }, ({ payload }) => {
         this.emit('ROUND_STARTED', cleanCode, payload);
+      });
+
+      ch.on('broadcast', { event: 'GAME_STARTED' }, ({ payload }) => {
+        this.emit('GAME_STARTED', cleanCode, payload);
+      });
+
+      ch.on('broadcast', { event: 'RETURN_TO_LOBBY' }, () => {
+        this.emit('RETURN_TO_LOBBY', cleanCode, {});
+      });
+
+      ch.on('broadcast', { event: 'COACH_STATE_SYNC' }, ({ payload }) => {
+        this.emit('COACH_STATE_SYNC', cleanCode, payload);
+      });
+
+      ch.on('broadcast', { event: 'BROKER_STATE_SYNC' }, ({ payload }) => {
+        this.emit('BROKER_STATE_SYNC', cleanCode, payload);
+      });
+
+      ch.on('broadcast', { event: 'BROKER_BID_SUBMITTED' }, ({ payload }) => {
+        this.emit('BROKER_BID_SUBMITTED', cleanCode, payload);
+      });
+
+      ch.on('broadcast', { event: 'COACH_PICK_SUBMITTED' }, ({ payload }) => {
+        this.emit('COACH_PICK_SUBMITTED', cleanCode, payload);
       });
 
       ch.on('broadcast', { event: 'room_event' }, ({ payload }) => {
@@ -1389,9 +1515,26 @@ class RoomBus {
       room = this.createRoom(roomId);
     }
 
-    const existingIndex = room.players.findIndex(
-      (p) => (customId && p.id === customId) || p.name.trim().toLowerCase() === name.trim().toLowerCase()
-    );
+    // Match strictly by customId first
+    let existingIndex = -1;
+    if (customId) {
+      existingIndex = room.players.findIndex((p) => p.id === customId);
+    }
+
+    let finalName = name.trim();
+    // If player does not match an existing ID, ensure their name doesn't overwrite another player's slot
+    if (existingIndex < 0) {
+      const nameCollision = room.players.some(
+        (p) => (!customId || p.id !== customId) && p.name.trim().toLowerCase() === finalName.toLowerCase()
+      );
+      if (nameCollision) {
+        let count = 2;
+        while (room.players.some((p) => p.name.trim().toLowerCase() === `${finalName} (${count})`.toLowerCase())) {
+          count++;
+        }
+        finalName = `${finalName} (${count})`;
+      }
+    }
 
     if (existingIndex < 0 && room.flagState && room.flagState.gameState !== 'LOBBY') {
       return null;
@@ -1406,7 +1549,7 @@ class RoomBus {
     const existingP = existingIndex >= 0 ? room.players[existingIndex] : null;
     const player: Player = {
       id: playerId,
-      name: name.trim(),
+      name: finalName,
       avatar: existingP ? existingP.avatar : avatar,
       team: existingP ? existingP.team : assignedTeam,
       joinedAt: existingP ? existingP.joinedAt : Date.now(),
@@ -2304,48 +2447,43 @@ class RoomBus {
   // --- Flag Game Specific Methods ---
 
   
+  public setPlayerReady(roomId: string, playerId: string, isReady: boolean): boolean {
+    const clean = cleanRoomCode(roomId);
+    const room = this.getRoom(clean);
+    if (room) {
+      const p = room.players.find((pl) => pl.id === playerId);
+      if (p) {
+        p.isReady = isReady;
+
+        // Sync across all game states
+        if (room.flagState?.players?.[playerId]) {
+          room.flagState.players[playerId].isReady = isReady;
+        }
+        if (room.landmarkState?.players?.[playerId]) {
+          room.landmarkState.players[playerId].isReady = isReady;
+        }
+        if (room.trajectoryState?.players?.[playerId]) {
+          room.trajectoryState.players[playerId].isReady = isReady;
+        }
+        if (room.tourismState?.players?.[playerId]) {
+          room.tourismState.players[playerId].isReady = isReady;
+        }
+
+        this.saveRoom(room);
+        this.broadcastPlayerReadyUpdate(clean, playerId, isReady, p.name);
+        return isReady;
+      }
+    }
+    this.broadcastPlayerReadyUpdate(clean, playerId, isReady);
+    return isReady;
+  }
+
   public togglePlayerReady(roomId: string, playerId: string): boolean {
     const clean = cleanRoomCode(roomId);
-    if (!this.isHosting(clean)) {
-      this.sendIntent(clean, 'PLAYER_TOGGLE_READY', playerId);
-      // Optimistic update
-      const r = this.getRoom(clean);
-      if (r) {
-        const pl = r.players.find((p) => p.id === playerId);
-        if (pl) {
-          pl.isReady = !pl.isReady;
-          this.saveRoom(r);
-          return pl.isReady;
-        }
-      }
-      return false;
-    }
-
     const room = this.getRoom(clean);
-    if (!room) return false;
-
-    const p = room.players.find((pl) => pl.id === playerId);
-    if (p) {
-      p.isReady = !p.isReady;
-
-      // Sync across all game states
-      if (room.flagState?.players?.[playerId]) {
-        room.flagState.players[playerId].isReady = p.isReady;
-      }
-      if (room.landmarkState?.players?.[playerId]) {
-        room.landmarkState.players[playerId].isReady = p.isReady;
-      }
-      if (room.trajectoryState?.players?.[playerId]) {
-        room.trajectoryState.players[playerId].isReady = p.isReady;
-      }
-      if (room.tourismState?.players?.[playerId]) {
-        room.tourismState.players[playerId].isReady = p.isReady;
-      }
-
-      this.saveRoom(room);
-      return p.isReady;
-    }
-    return false;
+    const p = room?.players.find((pl) => pl.id === playerId);
+    const nextReady = p ? !p.isReady : true;
+    return this.setPlayerReady(clean, playerId, nextReady);
   }
 
   public toggleFlagReady(roomId: string, playerId: string) {

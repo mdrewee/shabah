@@ -152,7 +152,7 @@ export const CoachTVRoot: React.FC = () => {
           },
         };
 
-        roomBus.emit('COACH_STATE_SYNC', roomCode, nextState);
+        roomBus.broadcastCoachSync(roomCode, nextState);
         return nextState;
       });
     });
@@ -169,7 +169,7 @@ export const CoachTVRoot: React.FC = () => {
           bingoWinnerId: payload.playerId,
           bingoWinnerName: payload.playerName,
         };
-        roomBus.emit('COACH_STATE_SYNC', roomCode, nextState);
+        roomBus.broadcastCoachSync(roomCode, nextState);
         return nextState;
       });
     });
@@ -266,7 +266,7 @@ export const CoachTVRoot: React.FC = () => {
       };
       setCoachState(nextState);
       savePersistedCoachState(roomCode, nextState);
-      roomBus.emit('COACH_STATE_SYNC', roomCode, nextState);
+      roomBus.broadcastCoachSync(roomCode, nextState);
 
       // Async AI Roast & tactical evaluation from Gemini
       evaluateAllSquadsWithAI(updatedSquads)
@@ -275,7 +275,7 @@ export const CoachTVRoot: React.FC = () => {
             setCoachState((prev) => {
               const withAi = { ...prev, verdict: aiVerdict };
               savePersistedCoachState(roomCode, withAi);
-              roomBus.emit('COACH_STATE_SYNC', roomCode, withAi);
+              roomBus.broadcastCoachSync(roomCode, withAi);
               return withAi;
             });
           }
@@ -298,7 +298,7 @@ export const CoachTVRoot: React.FC = () => {
         activeConditionTitle: nextCondition.title,
       };
       setCoachState(nextState);
-      roomBus.emit('COACH_STATE_SYNC', roomCode, nextState);
+      roomBus.broadcastCoachSync(roomCode, nextState);
     }
   };
 
@@ -321,7 +321,7 @@ export const CoachTVRoot: React.FC = () => {
         verdict: null,
       };
       setCoachState(nextState);
-      roomBus.emit('COACH_STATE_SYNC', roomCode, nextState);
+      roomBus.broadcastCoachSync(roomCode, nextState);
     } else {
       // Bingo Mode Start
       const firstPlayer = getRandomRoulettePlayer();
@@ -340,7 +340,7 @@ export const CoachTVRoot: React.FC = () => {
         bingoWinnerName: null,
       };
       setCoachState(nextState);
-      roomBus.emit('COACH_STATE_SYNC', roomCode, nextState);
+      roomBus.broadcastCoachSync(roomCode, nextState);
     }
   };
 
@@ -361,8 +361,8 @@ export const CoachTVRoot: React.FC = () => {
     };
     setCoachState(nextState);
     savePersistedCoachState(roomCode, nextState);
-    roomBus.emit('RETURN_TO_LOBBY', roomCode, {});
-    roomBus.emit('COACH_STATE_SYNC', roomCode, nextState);
+    roomBus.broadcastReturnToLobby(roomCode);
+    roomBus.broadcastCoachSync(roomCode, nextState);
   };
 
   const handleExit = () => {

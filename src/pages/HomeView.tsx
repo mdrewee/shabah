@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronDown, Tv } from 'lucide-react';
 import { ShabahGhost, ShabahMood } from '../components/mascot/ShabahGhost';
 import { ShabahWordmark } from '../components/mascot/ShabahWordmark';
@@ -37,7 +37,19 @@ function generateRoomCode(): string {
 
 export const HomeView: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const gamesSectionRef = useRef<HTMLElement | null>(null);
+
+  // Auto-redirect if URL contains room query (e.g. from QR code scan)
+  useEffect(() => {
+    const raw = searchParams.get('room') || searchParams.get('code');
+    if (raw) {
+      const clean = normalizeRoomCode(raw);
+      if (clean) {
+        navigate(`/enter-name?room=${encodeURIComponent(clean)}`, { replace: true });
+      }
+    }
+  }, [searchParams, navigate]);
 
   // Scroll tracking (0 -> 240px)
   const [scrollY, setScrollY] = useState(0);
@@ -144,7 +156,7 @@ export const HomeView: React.FC = () => {
       roomBus.joinRoom(code, cleanName, 'falcon', pid);
 
       sound.playClick();
-      navigate(`/room/${code}/play`);
+      navigate(`/room/${code}/play?host=1`);
     } finally {
       setIsCreatingRoom(false);
     }

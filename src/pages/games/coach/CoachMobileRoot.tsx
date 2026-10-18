@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useRoom, roomBus } from '../../../lib/roomBus';
 import {
   CoachGameMode,
@@ -27,8 +27,10 @@ import { useRoomSync } from '../../../hooks/useRoomSync';
 
 export const CoachMobileRoot: React.FC = () => {
   const { code: rawCode } = useParams<{ code?: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const roomCode = (rawCode || 'SHBH').trim().toUpperCase();
+  const isPlayerHost = searchParams.get('host') === '1';
 
   const [playerId] = useState(() => getOrCreatePlayerId());
   const [playerName] = useState(() => getPersistedPlayerName() || getOrCreatePlayerName('متسابق'));
@@ -144,7 +146,7 @@ export const CoachMobileRoot: React.FC = () => {
       };
       setCoachState(nextState);
       savePersistedCoachState(roomCode, nextState);
-      roomBus.emit('COACH_STATE_SYNC', roomCode, nextState);
+      roomBus.broadcastCoachSync(roomCode, nextState);
     } else {
       const firstPlayer = getRandomRoulettePlayer();
       const cards: Record<string, BingoCard> = {
@@ -161,7 +163,7 @@ export const CoachMobileRoot: React.FC = () => {
       };
       setCoachState(nextState);
       savePersistedCoachState(roomCode, nextState);
-      roomBus.emit('COACH_STATE_SYNC', roomCode, nextState);
+      roomBus.broadcastCoachSync(roomCode, nextState);
     }
   };
 
@@ -172,12 +174,13 @@ export const CoachMobileRoot: React.FC = () => {
   };
 
   const handleConfirmPick = (slotKey: CoachSlotKey, pick: CoachPlayerPick) => {
-    // Emit pick to TV Host and other peers
-    roomBus.emit('COACH_PICK_SUBMITTED', roomCode, {
+    // Broadcast pick to TV Host and other peers
+    roomBus.broadcastCoachPick(roomCode, {
       playerId,
       playerName,
       slotKey,
       pick,
+      roomCode,
     });
 
     // Update local state optimistically
@@ -259,6 +262,7 @@ export const CoachMobileRoot: React.FC = () => {
       <CoachLobby
         roomCode={roomCode}
         role="contestant"
+        isPlayerHost={isPlayerHost}
         selectedMode={coachState.mode}
         onSelectMode={handleSelectMode}
         onStartGame={handleStartGame}
@@ -286,7 +290,8 @@ export const CoachMobileRoot: React.FC = () => {
             ? 'طابق اللاعب الحالي مع الخانات المتوفرة ببطاقتك!'
             : 'اختر لاعباً يحقق شرط الجولة ولم يختره غيرك!'
         }
-        isHost={false}
+        isHost={isPlayerHost}
+        onReturnToLobby={() => roomBus.broadcastReturnToLobby(roomCode)}
         onExit={handleExit}
       />
 

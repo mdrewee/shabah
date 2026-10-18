@@ -246,6 +246,66 @@ class SoundEngine {
     }
   }
 
+  // Crisp Cash Register "Cha-Ching" sound FX for Broker game
+  public playCash() {
+    if (this.isMuted) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    try {
+      // 1. Initial metallic drawer chime
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'triangle';
+      osc1.frequency.setValueAtTime(1400, ctx.currentTime);
+      osc1.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.05);
+      gain1.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start();
+      osc1.stop(ctx.currentTime + 0.06);
+
+      // 2. High bright cash register bell (Ching! ~2093Hz -> 2637Hz)
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(2093, ctx.currentTime + 0.04);
+      osc2.frequency.setValueAtTime(2637, ctx.currentTime + 0.1);
+      gain2.gain.setValueAtTime(0.3, ctx.currentTime + 0.04);
+      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(ctx.currentTime + 0.04);
+      osc2.stop(ctx.currentTime + 0.55);
+    } catch {
+      // ignore
+    }
+  }
+
+  // Quick sarcastic reject buzzer
+  public playBuzz() {
+    if (this.isMuted) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(160, ctx.currentTime);
+      osc.frequency.linearRampToValueAtTime(120, ctx.currentTime + 0.18);
+      gain.gain.setValueAtTime(0.22, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.18);
+    } catch {
+      // ignore
+    }
+  }
+
   // Failure sound effect for double failure on question
   public playFailBuzzer() {
     if (this.isMuted) return;

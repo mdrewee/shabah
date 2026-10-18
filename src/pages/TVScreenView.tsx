@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { useRoom, roomBus } from '../lib/roomBus';
 import { UnifiedShabahLobby } from '../components/lobby/UnifiedShabahLobby';
 import { CoachTVRoot } from './games/coach/CoachTVRoot';
+import { BrokerTVRoot } from './games/broker/BrokerTVRoot';
 import { SHABAH_GAMES } from '../data/shabahGames';
 
 export const TVScreenView: React.FC = () => {
@@ -46,6 +47,10 @@ export const TVScreenView: React.FC = () => {
 
   if (matchedGame.id === 'ai-coach') {
     return <CoachTVRoot />;
+  }
+
+  if (matchedGame.id === 'ai-broker' || matchedGameId === 'the-scammer' || matchedGameId === 'ai-broker') {
+    return <BrokerTVRoot />;
   }
 
   return (

@@ -7,6 +7,7 @@ import { Shield, Grid3X3, Check } from 'lucide-react';
 interface CoachLobbyProps {
   roomCode: string;
   role: 'host' | 'contestant';
+  isPlayerHost?: boolean;
   selectedMode: CoachGameMode;
   onSelectMode: (mode: CoachGameMode) => void;
   onStartGame: () => void;
@@ -17,6 +18,7 @@ interface CoachLobbyProps {
 export const CoachLobby: React.FC<CoachLobbyProps> = ({
   roomCode,
   role,
+  isPlayerHost,
   selectedMode: propSelectedMode,
   onSelectMode,
   onStartGame,
@@ -87,6 +89,7 @@ export const CoachLobby: React.FC<CoachLobbyProps> = ({
       gameId="ai-coach"
       gameTitle="الشبح المدرب"
       role={role}
+      isPlayerHost={isPlayerHost}
       currentPlayerId={currentPlayerId}
       extraControls={modeControls}
       onStartGame={onStartGame}
