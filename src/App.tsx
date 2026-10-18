@@ -4,11 +4,26 @@ import { LandingPage } from './pages/LandingPage';
 import { NameEntryView } from './pages/NameEntryView';
 import { TVScreenView } from './pages/TVScreenView';
 import { PlayerMobileView } from './pages/PlayerMobileView';
+import OfficeDashboard from './pages/OfficeDashboard';
+import AdminDashboard from './pages/AdminDashboard';
+import PropertyView from './pages/PropertyView';
+import LoginPage from './pages/LoginPage';
+import ProfilePage from './pages/ProfilePage';
+import SubscriptionPage from './pages/SubscriptionPage';
 
 export function App() {
   return (
     <Router>
       <Routes>
+        {/* Mayyaz Real Estate Routes */}
+        <Route path="/office" element={<OfficeDashboard />} />
+        <Route path="/dashboard" element={<OfficeDashboard />} />
+        <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/view/:propertyId" element={<PropertyView />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/subscription" element={<SubscriptionPage />} />
+
         {/* 1. Home View (Shabah Hero + Coverflow 5 Games + Room Code Box) */}
         <Route path="/" element={<LandingPage />} />
 

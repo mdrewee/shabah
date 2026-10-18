@@ -8,6 +8,7 @@ import { sound } from '../../lib/audio';
 import { roomBus } from '../../lib/roomBus';
 import { getPersistedPlayerName } from '../../utils/playerSession';
 import { useRoomSync } from '../../hooks/useRoomSync';
+import { createRoom } from '../../services/roomService';
 
 export interface ShabahLobbyPlayer {
   id: string;
@@ -82,6 +83,15 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
   });
 
   const [gameStartedNotification, setGameStartedNotification] = useState(false);
+
+  // Authoritative registration in Supabase for cross-device & mobile discovery
+  useEffect(() => {
+    if (role === 'host' && cleanCode) {
+      createRoom(cleanCode, matchedGame.id, currentPlayerId).catch((err) => {
+        console.warn('[UnifiedShabahLobby] Supabase room register warning:', err);
+      });
+    }
+  }, [cleanCode, role, matchedGame.id, currentPlayerId]);
 
   useEffect(() => {
     const syncFromRoom = () => {

@@ -1337,6 +1337,25 @@ class RoomBus {
     };
 
     this.saveRoom(newRoom);
+
+    // Sync to authoritative Supabase rooms table for cross-device support
+    supabase
+      .from('rooms')
+      .upsert(
+        {
+          room_code: code,
+          game_id: gameModeId || 'ai-coach',
+          status: 'lobby',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'room_code' }
+      )
+      .then(({ error }) => {
+        if (error) console.warn('[RoomBus] Supabase room sync:', error.message);
+      })
+      .catch((e) => console.warn('[RoomBus] Supabase room sync err:', e));
+
     return newRoom;
   }
 

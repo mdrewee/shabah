@@ -1,14 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronLeft, ChevronDown, Tv } from 'lucide-react';
+import { ChevronDown, Tv } from 'lucide-react';
 import { ShabahGhost, ShabahMood } from '../components/mascot/ShabahGhost';
 import { ShabahWordmark } from '../components/mascot/ShabahWordmark';
 import { MatrixSpotlightCanvas } from '../components/effects/MatrixSpotlightCanvas';
 import { GameEntryModal } from '../components/modals/GameEntryModal';
+import { CoverflowCarousel } from '../components/home/CoverflowCarousel';
+import { ContainerScroll } from '../components/ui/container-scroll-animation';
 import { SHABAH_GAMES, ShabahGame } from '../data/shabahGames';
 import { sound } from '../lib/audio';
 import { roomBus } from '../lib/roomBus';
 import { getPersistedPlayerName, setPersistedPlayerName, getOrCreatePlayerId } from '../utils/playerSession';
+import { createRoom, checkRoomExists, normalizeRoomCode } from '../services/roomService';
 
 const HERO_PHRASES: Array<{
   text: string;
@@ -61,9 +64,9 @@ export const HomeView: React.FC = () => {
   // Compact Room Code state
   const [roomCode, setRoomCode] = useState('');
   const [codeError, setCodeError] = useState<string | null>(null);
+  const [isVerifyingRoom, setIsVerifyingRoom] = useState(false);
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
 
-  // Touch swipe tracking for Coverflow with non-passive listener
-  const carouselContainerRef = useRef<HTMLDivElement>(null);
   const activeIndexRef = useRef(activeIndex);
   useEffect(() => {
     activeIndexRef.current = activeIndex;
@@ -106,68 +109,6 @@ export const HomeView: React.FC = () => {
     }, 450);
   };
 
-  // Non-passive Touch isolation for Coverflow
-  useEffect(() => {
-    const el = carouselContainerRef.current;
-    if (!el) return;
-
-    let startX = 0;
-    let startY = 0;
-    let deltaX = 0;
-    let isHorizontal = false;
-
-    const onTouchStart = (e: TouchEvent) => {
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      deltaX = 0;
-      isHorizontal = false;
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      const curX = e.touches[0].clientX;
-      const curY = e.touches[0].clientY;
-      const dx = curX - startX;
-      const dy = curY - startY;
-      deltaX = dx;
-
-      const absX = Math.abs(dx);
-      const absY = Math.abs(dy);
-
-      if (absX > absY && absX > 6) {
-        isHorizontal = true;
-        if (e.cancelable) {
-          e.preventDefault();
-        }
-      }
-    };
-
-    const onTouchEnd = () => {
-      if (isHorizontal && Math.abs(deltaX) > 35) {
-        if (deltaX > 0) {
-          selectCardIndex(activeIndexRef.current + 1);
-        } else {
-          selectCardIndex(activeIndexRef.current - 1);
-        }
-      }
-      startX = 0;
-      startY = 0;
-      deltaX = 0;
-      isHorizontal = false;
-    };
-
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd, { passive: true });
-    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
-
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
-      el.removeEventListener('touchcancel', onTouchEnd);
-    };
-  }, []);
-
   // Requirement 2: Open modal on card or [العب] click
   const openGameJoinModal = (game: ShabahGame) => {
     sound.playClick();
@@ -177,9 +118,9 @@ export const HomeView: React.FC = () => {
   };
 
   // Requirement 2 - Action A: Enter as contestant
-  const handleConfirmContestantEntry = (e: React.FormEvent) => {
+  const handleConfirmContestantEntry = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!joinModalGame) return;
+    if (!joinModalGame || isCreatingRoom) return;
 
     const cleanName = playerNameInput.trim();
     if (!cleanName || cleanName === 'لاعب') {
@@ -192,62 +133,74 @@ export const HomeView: React.FC = () => {
     const code = generateRoomCode();
     const pid = getOrCreatePlayerId();
 
-    const room = roomBus.createRoom(code);
-    room.selectedGameId = joinModalGame.id;
-    roomBus.writeLocal(room);
-    roomBus.joinRoom(code, cleanName, 'falcon', pid);
+    setIsCreatingRoom(true);
+    try {
+      // Authoritative Supabase room creation so mobile devices can find the room
+      await createRoom(code, joinModalGame.id, pid);
 
-    sound.playClick();
-    navigate(`/room/${code}/play`);
+      const room = roomBus.createRoom(code);
+      room.selectedGameId = joinModalGame.id;
+      roomBus.writeLocal(room);
+      roomBus.joinRoom(code, cleanName, 'falcon', pid);
+
+      sound.playClick();
+      navigate(`/room/${code}/play`);
+    } finally {
+      setIsCreatingRoom(false);
+    }
   };
 
   // Requirement 2 - Action B: Enter in Screen/TV Host Mode without name
-  const handleEnterTVMode = () => {
-    if (!joinModalGame) return;
+  const handleEnterTVMode = async () => {
+    if (!joinModalGame || isCreatingRoom) return;
     sound.playClick();
     const code = generateRoomCode();
+    const pid = getOrCreatePlayerId();
 
-    const room = roomBus.createRoom(code);
-    room.selectedGameId = joinModalGame.id;
-    roomBus.writeLocal(room);
+    setIsCreatingRoom(true);
+    try {
+      // Authoritative Supabase room creation
+      await createRoom(code, joinModalGame.id, pid);
 
-    navigate(`/game/${joinModalGame.id}/${code}`);
+      const room = roomBus.createRoom(code);
+      room.selectedGameId = joinModalGame.id;
+      roomBus.writeLocal(room);
+
+      navigate(`/game/${joinModalGame.id}/${code}`);
+    } finally {
+      setIsCreatingRoom(false);
+    }
   };
 
-  // Code entry join with room existence verification
-  const handleJoinByCode = (e: React.FormEvent) => {
+  // Code entry join with Supabase cross-device room verification
+  const handleJoinByCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setCodeError(null);
-    const cleanCode = roomCode.trim().toUpperCase();
+    const cleanCode = normalizeRoomCode(roomCode);
     if (!cleanCode || cleanCode.length < 3) {
       setCodeError('اكتب كود الغرفة الصحيح أولاً');
       sound.playTick();
       return;
     }
 
-    // Verify room exists before navigating
-    const local = roomBus.getRoom(cleanCode);
-    let exists = Boolean(local && !local.isTerminated);
-    if (!exists) {
-      const coachRaw = localStorage.getItem(`shabah_coach_state_${cleanCode}`);
-      if (coachRaw) {
-        try {
-          const parsed = JSON.parse(coachRaw);
-          if (parsed && parsed.phase !== 'TERMINATED') {
-            exists = true;
-          }
-        } catch {}
+    setIsVerifyingRoom(true);
+    try {
+      const check = await checkRoomExists(cleanCode);
+      if (!check.exists) {
+        setCodeError(check.error || 'كود الغرفة غير صحيح أو الغرفة غير موجودة حالياً');
+        sound.playTick();
+        return;
       }
-    }
 
-    if (!exists) {
-      setCodeError('كود الغرفة غير صحيح أو الغرفة غير موجودة حالياً');
-      sound.playTick();
-      return;
+      sound.playClick();
+      navigate(`/enter-name?room=${encodeURIComponent(cleanCode)}`);
+    } catch {
+      // Graceful fallback to prevent locking out players on unexpected network blip
+      sound.playClick();
+      navigate(`/enter-name?room=${encodeURIComponent(cleanCode)}`);
+    } finally {
+      setIsVerifyingRoom(false);
     }
-
-    sound.playClick();
-    navigate(`/enter-name?room=${encodeURIComponent(cleanCode)}`);
   };
 
   const scrollToGames = () => {
@@ -259,14 +212,6 @@ export const HomeView: React.FC = () => {
     }
   };
 
-  // Compute circular offset (-2, -1, 0, +1, +2)
-  const getRelativeOffset = (index: number): number => {
-    const total = SHABAH_GAMES.length;
-    let diff = index - activeIndex;
-    if (diff > total / 2) diff -= total;
-    if (diff < -total / 2) diff += total;
-    return diff;
-  };
 
   return (
     <div
@@ -334,257 +279,94 @@ export const HomeView: React.FC = () => {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="min-h-screen w-full flex flex-col items-center justify-center px-4 relative z-20">
-        <div
-          style={{
-            opacity: Math.max(0, 1 - scrollProgress * 1.15),
-            transform: `translate3d(0, ${-scrollProgress * 60}px, 0) scale(${1 - scrollProgress * 0.45})`,
-          }}
-          className="flex flex-col items-center justify-center text-center will-change-transform"
+      {/* 3D ContainerScroll Stage: Combine Hero Title + 3D Coverflow Console */}
+      <div ref={gamesSectionRef} className="w-full relative z-20">
+        <ContainerScroll
+          titleComponent={
+            <div className="flex flex-col items-center justify-center text-center">
+              {/* Shabah Mascot with interactive gaze */}
+              <div className="w-40 h-40 sm:w-56 sm:h-56 flex items-center justify-center">
+                <ShabahGhost
+                  mood={currentPhrase.mood}
+                  gazeOffset={swipeGaze || currentPhrase.gaze}
+                  className="w-full h-full"
+                />
+              </div>
+
+              {/* Auto-cycling Speech Bubble */}
+              <div className="my-3 shabah-pill-wrap">
+                <div className="shabah-pill-inner">
+                  <div className="shabah-pill-surface px-6 py-2 text-sm sm:text-base font-black text-[#0A0A0A] min-w-[180px] text-center">
+                    {currentPhrase.text}
+                  </div>
+                </div>
+              </div>
+
+              {/* White text + Iridescent border wordmark */}
+              <div className="mt-1">
+                <ShabahWordmark size="xl" />
+              </div>
+            </div>
+          }
         >
-          {/* Auto-cycling Speech Bubble */}
-          <div className="mb-4 shabah-pill-wrap">
-            <div className="shabah-pill-inner">
-              <div className="shabah-pill-surface px-6 py-2 text-sm sm:text-base font-black text-[#0A0A0A] min-w-[180px] text-center">
-                {currentPhrase.text}
+          {/* 5 Official Games Coverflow with Interactive GlowCards */}
+          <CoverflowCarousel
+            games={SHABAH_GAMES}
+            activeIndex={activeIndex}
+            onActiveIndexChange={selectCardIndex}
+            onPlayGame={openGameJoinModal}
+            onExplainGame={(game) => {
+              sound.playClick();
+              setExplainedGame(game);
+            }}
+          />
+
+          {/* Compact Room Code Box directly underneath */}
+          <div className="w-full mt-4 pb-4 px-4 relative z-20">
+            <div className="max-w-md w-full mx-auto shabah-border-wrap">
+              <div className="shabah-border-inner">
+                <form
+                  onSubmit={handleJoinByCode}
+                  className="shabah-surface p-4 sm:p-5 flex flex-col"
+                >
+                  <h3 className="text-sm font-black text-[#0A0A0A] mb-2 text-center">
+                    عندك كود غرفة؟
+                  </h3>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={roomCode}
+                      onChange={(e) => setRoomCode(normalizeRoomCode(e.target.value))}
+                      placeholder="اكتب الكود هنا..."
+                      maxLength={6}
+                      autoCapitalize="characters"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      disabled={isVerifyingRoom}
+                      className="flex-1 h-12 px-4 rounded-xl bg-white border-2 border-[#0A0A0A] text-[#0A0A0A] placeholder-neutral-400 text-center font-black tracking-widest uppercase focus:outline-none disabled:opacity-50"
+                    />
+
+                    <button
+                      type="submit"
+                      disabled={isVerifyingRoom}
+                      className="h-12 px-6 rounded-xl font-black shabah-btn-black cursor-pointer shrink-0 disabled:opacity-50 flex items-center justify-center min-w-[70px]"
+                    >
+                      {isVerifyingRoom ? 'نتأكد...' : 'دخول'}
+                    </button>
+                  </div>
+
+                  {codeError && (
+                    <p className="text-xs font-black text-red-600 text-center mt-2">
+                      {codeError}
+                    </p>
+                  )}
+                </form>
               </div>
             </div>
           </div>
-
-          {/* Large Shabah Mascot */}
-          <div className="w-52 h-52 sm:w-64 sm:h-64 flex items-center justify-center">
-            <ShabahGhost
-              mood={currentPhrase.mood}
-              gazeOffset={swipeGaze || currentPhrase.gaze}
-              className="w-full h-full"
-            />
-          </div>
-
-          {/* Requirement 1: White text + Iridescent border + overflow visible & no tail clipping */}
-          <div className="mt-1">
-            <ShabahWordmark size="xl" />
-          </div>
-        </div>
-
-        {/* Scroll Cue */}
-        <button
-          type="button"
-          onClick={scrollToGames}
-          style={{ opacity: Math.max(0, 1 - scrollProgress * 2) }}
-          className="absolute bottom-8 flex flex-col items-center gap-1.5 text-neutral-400 hover:text-white transition-colors cursor-pointer"
-        >
-          <span className="text-xs font-black">انزل للألعاب</span>
-          <ChevronDown className="w-5 h-5" />
-        </button>
-      </section>
-
-      {/* Coverflow Game Cards Section (Requirement 4: Focused lighting on active card) */}
-      <section
-        ref={gamesSectionRef}
-        className="w-full max-w-5xl mx-auto pt-12 pb-6 px-4 flex flex-col items-center relative z-20"
-      >
-        <div
-          ref={carouselContainerRef}
-          className="relative w-full h-[500px] sm:h-[535px] flex items-center justify-center select-none touch-pan-y"
-          style={{ perspective: '1000px', touchAction: 'pan-y' }}
-        >
-          {/* Previous Arrow */}
-          <button
-            type="button"
-            onClick={() => selectCardIndex(activeIndex - 1)}
-            aria-label="اللعبة السابقة"
-            className="hidden md:flex absolute right-4 lg:right-8 z-40 w-12 h-12 rounded-full bg-white text-[#0A0A0A] border-[3px] border-[#0A0A0A] items-center justify-center hover:scale-105 active:scale-95 transition-transform cursor-pointer"
-          >
-            <ChevronRight className="w-6 h-6 stroke-[2.75]" />
-          </button>
-
-          {/* Next Arrow */}
-          <button
-            type="button"
-            onClick={() => selectCardIndex(activeIndex + 1)}
-            aria-label="اللعبة التالية"
-            className="hidden md:flex absolute left-4 lg:left-8 z-40 w-12 h-12 rounded-full bg-white text-[#0A0A0A] border-[3px] border-[#0A0A0A] items-center justify-center hover:scale-105 active:scale-95 transition-transform cursor-pointer"
-          >
-            <ChevronLeft className="w-6 h-6 stroke-[2.75]" />
-          </button>
-
-          {/* Cards Deck */}
-          {SHABAH_GAMES.map((game, idx) => {
-            const offset = getRelativeOffset(idx);
-            const isCenter = offset === 0;
-            const isRight = offset === -1;
-            const isLeft = offset === 1;
-
-            let transformStyle = 'perspective(1000px) translateX(0%) scale(0.7) translateZ(-200px)';
-            let zIndexClass = 'z-10';
-            let opacityStyle = 0;
-            let filterStyle = 'none';
-            let pointerEventsClass = 'pointer-events-none';
-
-            // Requirement 4: Center card is fully illuminated (brightness-100, opacity-100).
-            // Side cards are explicitly dimmed (brightness-40, opacity-35, scale-85).
-            if (isCenter) {
-              transformStyle = 'perspective(1000px) translateX(0%) scale(1) rotateY(0deg) translateZ(0px)';
-              zIndexClass = 'z-30';
-              opacityStyle = 1;
-              filterStyle = 'brightness(1)';
-              pointerEventsClass = 'pointer-events-auto';
-            } else if (isRight) {
-              transformStyle = 'perspective(1000px) translateX(55%) scale(0.85) rotateY(-32deg)';
-              zIndexClass = 'z-20';
-              opacityStyle = 0.35;
-              filterStyle = 'brightness(0.4)';
-              pointerEventsClass = 'pointer-events-auto cursor-pointer';
-            } else if (isLeft) {
-              transformStyle = 'perspective(1000px) translateX(-55%) scale(0.85) rotateY(32deg)';
-              zIndexClass = 'z-20';
-              opacityStyle = 0.35;
-              filterStyle = 'brightness(0.4)';
-              pointerEventsClass = 'pointer-events-auto cursor-pointer';
-            }
-
-            return (
-              <div
-                key={game.id}
-                onClick={() => {
-                  if (isCenter) {
-                    openGameJoinModal(game);
-                  } else {
-                    selectCardIndex(idx);
-                  }
-                }}
-                style={{
-                  transform: transformStyle,
-                  opacity: opacityStyle,
-                  filter: filterStyle,
-                  transformStyle: 'preserve-3d',
-                }}
-                className={`absolute transition-all duration-300 ease-out flex flex-col items-center ${zIndexClass} ${pointerEventsClass}`}
-              >
-                {/* Top Badge */}
-                <div className="mb-2.5 shabah-pill-wrap">
-                  <div className="shabah-pill-inner">
-                    <div className="shabah-pill-surface px-5 py-1 text-xs sm:text-sm font-black text-[#0A0A0A]">
-                      {game.badgeText}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card Container */}
-                <div className="w-[285px] sm:w-[320px] h-[430px] sm:h-[460px] shabah-border-wrap">
-                  <div className="shabah-border-inner">
-                    <div className="shabah-surface p-5 flex flex-col justify-between h-full">
-                      {/* Game Title */}
-                      <h2 className="text-2xl sm:text-3xl font-black text-[#0A0A0A] text-center tracking-tight">
-                        {game.title}
-                      </h2>
-
-                      {/* Illustration Frame */}
-                      <div className="w-full flex-1 my-3 rounded-2xl bg-[#0A0A0A]/5 border-2 border-[#0A0A0A] overflow-hidden flex items-center justify-center">
-                        <img
-                          src={game.placeholderImage}
-                          alt={game.title}
-                          draggable={false}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-
-                      {/* Bottom Buttons: [العب] (Requirement 7: shabah-btn-black) and [شرح] */}
-                      <div className="flex items-center gap-2.5 w-full">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!isCenter) {
-                              selectCardIndex(idx);
-                              return;
-                            }
-                            openGameJoinModal(game);
-                          }}
-                          className="flex-1 py-3.5 rounded-xl text-white font-black text-lg shabah-btn-black cursor-pointer"
-                        >
-                          العب
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            sound.playClick();
-                            setExplainedGame(game);
-                          }}
-                          className="px-4 py-3.5 rounded-xl bg-white text-[#0A0A0A] border-2 border-[#0A0A0A] font-black text-sm transition-transform duration-150 active:scale-[0.98] hover:bg-neutral-100 cursor-pointer"
-                        >
-                          شرح
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Dots */}
-        <div className="flex items-center justify-center gap-2 mt-2">
-          {SHABAH_GAMES.map((game, idx) => {
-            const isActive = idx === activeIndex;
-            return (
-              <button
-                key={game.id}
-                type="button"
-                aria-label={game.title}
-                onClick={() => selectCardIndex(idx)}
-                className={`h-2.5 rounded-full transition-all duration-200 cursor-pointer ${
-                  isActive ? 'w-8 bg-white' : 'w-2.5 bg-neutral-700 hover:bg-neutral-500'
-                }`}
-              />
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Compact Room Code Box */}
-      <section className="w-full mt-4 px-4 relative z-20">
-        <div className="max-w-md w-[92%] mx-auto shabah-border-wrap">
-          <div className="shabah-border-inner">
-            <form
-              onSubmit={handleJoinByCode}
-              className="shabah-surface p-4 sm:p-5 flex flex-col"
-            >
-              <h3 className="text-sm font-black text-[#0A0A0A] mb-2 text-center">
-                عندك كود غرفة؟
-              </h3>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={roomCode}
-                  onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                  placeholder="اكتب الكود هنا..."
-                  maxLength={6}
-                  className="flex-1 h-12 px-4 rounded-xl bg-white border-2 border-[#0A0A0A] text-[#0A0A0A] placeholder-neutral-400 text-center font-black tracking-widest uppercase focus:outline-none"
-                />
-
-                <button
-                  type="submit"
-                  className="h-12 px-6 rounded-xl font-black shabah-btn-black cursor-pointer shrink-0"
-                >
-                  دخول
-                </button>
-              </div>
-
-              {codeError && (
-                <p className="text-xs font-black text-red-600 text-center mt-2">
-                  {codeError}
-                </p>
-              )}
-            </form>
-          </div>
-        </div>
-      </section>
+        </ContainerScroll>
+      </div>
 
       {/* Game Entry Modal (مودال كتابة الاسم + زر وضع الشاشة النقي) */}
       <GameEntryModal

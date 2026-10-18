@@ -9,6 +9,7 @@ import {
   getPersistedPlayerName,
   setPersistedPlayerName,
 } from '../utils/playerSession';
+import { createRoom, checkRoomExists, normalizeRoomCode } from '../services/roomService';
 
 function generateRoomCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -46,13 +47,13 @@ export const NameEntryView: React.FC = () => {
   const [searchParams] = useSearchParams();
   const params = useParams<{ code?: string }>();
 
-  const queryRoom = (searchParams.get('room') || searchParams.get('code') || params.code || '')
-    .trim()
-    .toUpperCase();
+  const rawRoom = searchParams.get('room') || searchParams.get('code') || params.code || '';
+  const queryRoom = normalizeRoomCode(rawRoom);
   const queryGame = (searchParams.get('game') || '').trim();
 
   const [playerName, setPlayerName] = useState<string>(() => getPersistedPlayerName());
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [mood, setMood] = useState<ShabahMood>('judging');
   const [gazeOffset, setGazeOffset] = useState<{ x: number; y: number } | null>(null);
 
@@ -69,8 +70,9 @@ export const NameEntryView: React.FC = () => {
     }
   }, [playerName]);
 
-  const handleConfirm = (e: React.FormEvent) => {
+  const handleConfirm = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErrorMsg(null);
 
     const cleanName = playerName.trim();
@@ -84,79 +86,78 @@ export const NameEntryView: React.FC = () => {
     setPersistedPlayerName(cleanName);
     const pid = getOrCreatePlayerId();
 
-    // Case 1: Creating/Starting a Game from Home ([العب])
-    if (queryGame && !queryRoom) {
-      const code = generateRoomCode();
-      const engineGameId = mapShabahIdToEngineId(queryGame);
+    setIsSubmitting(true);
+    try {
+      // Case 1: Creating/Starting a Game from Home ([العب])
+      if (queryGame && !queryRoom) {
+        const code = generateRoomCode();
+        const engineGameId = mapShabahIdToEngineId(queryGame);
 
-      const room = roomBus.createRoom(code);
-      room.selectedGameId = engineGameId;
-      roomBus.writeLocal(room);
+        await createRoom(code, engineGameId, pid);
 
-      if (engineGameId === 'geo-blind-tourism') {
-        roomBus.initTourismGame(code);
+        const room = roomBus.createRoom(code);
+        room.selectedGameId = engineGameId;
+        roomBus.writeLocal(room);
+
+        if (engineGameId === 'geo-blind-tourism') {
+          roomBus.initTourismGame(code);
+        }
+
+        sessionStorage.setItem(
+          `taghesi_player_${code}`,
+          JSON.stringify({ id: pid, name: cleanName, roomCode: code })
+        );
+        localStorage.setItem(
+          `taghesi_player_${code}`,
+          JSON.stringify({ id: pid, name: cleanName, roomCode: code })
+        );
+
+        sound.playClick();
+        const canonicalGameId = selectedGame ? selectedGame.id : 'ai-judge';
+        navigate(`/game/${canonicalGameId}/${code}`, { replace: true });
+        return;
+      }
+
+      // Case 2: Joining an existing Room by Code ([دخول] or QR Scan)
+      const targetRoomCode = queryRoom || generateRoomCode();
+      if (queryRoom) {
+        const check = await checkRoomExists(targetRoomCode);
+        if (!check.exists) {
+          setErrorMsg(check.error || 'كود الغرفة غير صحيح أو تم إغلاقها من قِبل المضيف');
+          setMood('angry');
+          sound.playTick();
+          return;
+        }
+      } else {
+        await createRoom(targetRoomCode, 'ai-coach', pid);
+      }
+
+      const existing = roomBus.getRoom(targetRoomCode);
+      if (!existing) {
+        roomBus.createRoom(targetRoomCode);
+      }
+
+      const res = roomBus.joinRoom(targetRoomCode, cleanName, 'falcon', pid);
+      if (!res.ok) {
+        setErrorMsg(res.reason || 'تعذر الانضمام للغرفة، تأكد من الكود');
+        setMood('surprised');
+        return;
       }
 
       sessionStorage.setItem(
-        `taghesi_player_${code}`,
-        JSON.stringify({ id: pid, name: cleanName, roomCode: code })
+        `taghesi_player_${targetRoomCode}`,
+        JSON.stringify({ id: pid, name: cleanName, roomCode: targetRoomCode })
       );
       localStorage.setItem(
-        `taghesi_player_${code}`,
-        JSON.stringify({ id: pid, name: cleanName, roomCode: code })
+        `taghesi_player_${targetRoomCode}`,
+        JSON.stringify({ id: pid, name: cleanName, roomCode: targetRoomCode })
       );
 
       sound.playClick();
-      const canonicalGameId = selectedGame ? selectedGame.id : 'ai-judge';
-      navigate(`/game/${canonicalGameId}/${code}`, { replace: true });
-      return;
+      navigate(`/room/${targetRoomCode}/play`, { replace: true });
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // Case 2: Joining an existing Room by Code ([دخول] or QR Scan)
-    const targetRoomCode = queryRoom || generateRoomCode();
-    const existing = roomBus.getRoom(targetRoomCode);
-    let roomExists = Boolean(existing && !existing.isTerminated);
-    if (!roomExists) {
-      const coachRaw = localStorage.getItem(`shabah_coach_state_${targetRoomCode}`);
-      if (coachRaw) {
-        try {
-          const parsed = JSON.parse(coachRaw);
-          if (parsed && parsed.phase !== 'TERMINATED') {
-            roomExists = true;
-          }
-        } catch {}
-      }
-    }
-
-    if (queryRoom && !roomExists) {
-      setErrorMsg('كود الغرفة غير صحيح أو تم إغلاقها من قِبل المضيف');
-      setMood('angry');
-      sound.playTick();
-      return;
-    }
-
-    if (!existing) {
-      roomBus.createRoom(targetRoomCode);
-    }
-
-    const res = roomBus.joinRoom(targetRoomCode, cleanName, 'falcon', pid);
-    if (!res.ok) {
-      setErrorMsg(res.reason || 'تعذر الانضمام للغرفة، تأكد من الكود');
-      setMood('surprised');
-      return;
-    }
-
-    sessionStorage.setItem(
-      `taghesi_player_${targetRoomCode}`,
-      JSON.stringify({ id: pid, name: cleanName, roomCode: targetRoomCode })
-    );
-    localStorage.setItem(
-      `taghesi_player_${targetRoomCode}`,
-      JSON.stringify({ id: pid, name: cleanName, roomCode: targetRoomCode })
-    );
-
-    sound.playClick();
-    navigate(`/room/${targetRoomCode}/play`, { replace: true });
   };
 
   return (
@@ -235,9 +236,10 @@ export const NameEntryView: React.FC = () => {
 
             <button
               type="submit"
-              className="w-full py-4 rounded-xl text-[#FFFFFF] text-base sm:text-lg font-black shabah-btn-black cursor-pointer"
+              disabled={isSubmitting}
+              className="w-full py-4 rounded-xl text-[#FFFFFF] text-base sm:text-lg font-black shabah-btn-black cursor-pointer disabled:opacity-50 flex items-center justify-center"
             >
-              تأكيد ودخول اللوبي
+              {isSubmitting ? 'نتأكد من الغرفة...' : 'تأكيد ودخول اللوبي'}
             </button>
           </form>
         </div>

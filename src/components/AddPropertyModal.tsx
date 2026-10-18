@@ -10,6 +10,8 @@ mapboxgl.accessToken = MAPBOX_TOKEN;
 
 export interface PropertyFormData {
   id?: string;
+  reference_code?: string;
+  allow_co_brokering?: boolean;
   title: string;
   category: 'بيع' | 'إيجار' | '';
   property_type: string;
@@ -119,6 +121,8 @@ export const TRISTATE_FEATURES = [
 export default function AddPropertyModal({ isOpen, onClose, onSave, onSuccess, initialData, officeId }: Props) {
   const [formData, setFormData] = useState<PropertyFormData>({
     title: '',
+    reference_code: '',
+    allow_co_brokering: true,
     category: '',
     property_type: '',
     city: '',
@@ -683,8 +687,11 @@ export default function AddPropertyModal({ isOpen, onClose, onSave, onSuccess, i
         : Number(formData.price);
 
       const isLand = (formData.property_type || '').includes('أرض') || formData.property_type === 'land';
+      const generatedRef = formData.reference_code?.trim() || `MZ-${Math.floor(100 + Math.random() * 900)}`;
       const payload: PropertyFormData = {
         ...formData,
+        reference_code: generatedRef,
+        allow_co_brokering: formData.allow_co_brokering !== false,
         is_furnished: isLand ? false : (formData.is_furnished ?? false),
         price: finalPrice,
         pricing_type: formData.pricing_type || (formData.price_type === 'على السوم' ? 'bidding' : 'fixed'),
@@ -709,27 +716,27 @@ export default function AddPropertyModal({ isOpen, onClose, onSave, onSuccess, i
   const isBuildingType = ['بيت', 'بيت شعبي', 'شقة', 'فيلا', 'عمارة سكنية', 'عمارة تجارية', 'شاليه', 'مستودع', 'استراحة', 'دور', 'دبلكس', 'ملحق'].includes(formData.property_type);
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6" dir="rtl">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6" dir="rtl">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
         
         {/* Modal Header */}
-        <div className="bg-gradient-to-r from-emerald-800 via-emerald-700 to-teal-800 text-white p-5 sm:p-6 flex items-center justify-between shrink-0">
+        <div className="bg-white border-b border-slate-200 p-5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="bg-white/10 p-2.5 rounded-2xl backdrop-blur-md">
-              <Home className="w-6 h-6 text-emerald-300" />
+            <div className="w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-800">
+              <Home className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white tracking-wide">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">
                 {initialData ? 'تعديل بيانات العقار' : 'إضافة عقار جديد'}
               </h2>
-              <p className="text-xs text-emerald-200/80 mt-0.5">ربط شامل بمدن وأحياء المملكة وتراخيص فال العقارية</p>
+              <p className="text-xs text-slate-500 mt-0.5">تسجيل عقار معتمد برخصة فال والوساطة التشاركية</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 hover:bg-white/20 rounded-full transition-colors text-white font-bold flex items-center justify-center w-9 h-9 text-lg"
-            title="إغلاق النافذة (✕)"
+            className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-500 hover:text-slate-800"
+            title="إغلاق"
           >
             <X className="w-5 h-5" />
           </button>
@@ -981,6 +988,38 @@ export default function AddPropertyModal({ isOpen, onClose, onSave, onSuccess, i
                 />
               </div>
             </div>
+
+            {/* Reference Code & Co-Brokering Settings */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-lg">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  كود الإعلان المرجعي (Reference Code)
+                </label>
+                <input
+                  type="text"
+                  placeholder="مثال: MZ-105"
+                  value={formData.reference_code || ''}
+                  onChange={(e) => setFormData({ ...formData, reference_code: e.target.value.toUpperCase() })}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:ring-1 focus:ring-emerald-700 outline-none"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">يتم إنشاؤه تلقائياً إذا ترك فارغاً</span>
+              </div>
+
+              <div className="flex flex-col justify-center">
+                <label className="flex items-center gap-2 cursor-pointer mt-2 sm:mt-4">
+                  <input
+                    type="checkbox"
+                    checked={formData.allow_co_brokering !== false}
+                    onChange={(e) => setFormData({ ...formData, allow_co_brokering: e.target.checked })}
+                    className="w-4 h-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-700"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-slate-900 block">السماح بالوساطة التشاركية (Co-Brokering)</span>
+                    <span className="text-[10px] text-slate-500 block">إتاحة هذا العرض للمكاتب الشريكة لطلب تسويقه لعملائهم</span>
+                  </div>
+                </label>
+              </div>
+            </div>
           </div>
 
           {/* Section 2: Dimensions & Area */}
@@ -1207,7 +1246,7 @@ export default function AddPropertyModal({ isOpen, onClose, onSave, onSuccess, i
             <button
               type="button"
               onClick={() => setShowExtraDetails(!showExtraDetails)}
-              className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 via-emerald-50/30 to-teal-50/20 hover:bg-slate-100/80 transition-colors text-right"
+              className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors text-right"
             >
               <div className="flex items-center gap-2.5 text-emerald-800 font-bold text-sm">
                 <Sparkles className="w-5 h-5 text-emerald-600" />
@@ -1761,7 +1800,7 @@ export default function AddPropertyModal({ isOpen, onClose, onSave, onSuccess, i
                 
                 {/* Overlay status badge */}
                 {geoSnappingStatus && (
-                  <div className="absolute bottom-3 right-3 left-3 bg-white/95 backdrop-blur-md px-3 py-2 rounded-xl border border-emerald-200 shadow-md text-xs font-bold text-emerald-800 flex items-center justify-between z-10">
+                  <div className="absolute bottom-3 right-3 left-3 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-sm text-xs font-bold text-slate-800 flex items-center justify-between z-10">
                     <span>{geoSnappingStatus}</span>
                     <span className="text-[10px] text-slate-500 font-mono">
                       {formData.latitude && formData.longitude ? `${Number(formData.latitude).toFixed(4)}, ${Number(formData.longitude).toFixed(4)}` : ''}
@@ -1845,23 +1884,23 @@ export default function AddPropertyModal({ isOpen, onClose, onSave, onSuccess, i
           </div>
 
           {/* Modal Footer Actions */}
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3 shrink-0">
+          <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+              className="px-4 py-2 rounded-lg border border-slate-200 text-xs sm:text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={saving || compressing}
-              className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-sm font-bold rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-2 disabled:opacity-50"
+              className="px-6 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs sm:text-sm font-bold rounded-lg transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
             >
               {saving ? (
-                <span>جاري الحفظ وإتاحة العقار...</span>
+                <span>جاري الحفظ والاعتماد...</span>
               ) : (
-                <span>حفظ العقار وإتاحته للعملاء فوراً 🚀</span>
+                <span>حفظ ونشر العقار</span>
               )}
             </button>
           </div>

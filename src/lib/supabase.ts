@@ -1,2 +1,2 @@
-// Re-export singleton Supabase client
-export { supabase, default } from './supabaseClient';
+// Re-export singleton Supabase client and auth helpers
+export { supabase, getAuthToken, default } from './supabaseClient';
