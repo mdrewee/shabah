@@ -144,7 +144,22 @@ export type RoomEventType =
   | 'ADMIN_REQUEST_SUBMITTED'
   | 'ADMIN_REQUEST_RESOLVED'
   | 'ADMIN_ADVANCE_NEXT_ROUND'
-  | 'SCATTERGORIES_ADMIN_VETO';
+  | 'SCATTERGORIES_ADMIN_VETO'
+  | 'GAME_STARTED'
+  | 'ROOM_CLOSED'
+  | 'ROOM_TERMINATED'
+  | 'COACH_STATE_SYNC'
+  | 'BROKER_STATE_SYNC'
+  | 'BROKER_BID_SUBMITTED'
+  | 'COACH_PICK_SUBMITTED'
+  | 'COACH_MODE_SELECTED'
+  | 'PLAYER_CLAIMED'
+  | 'BINGO_CELL_MARKED'
+  | 'BINGO_CLAIMED'
+  | 'presence_sync'
+  | 'presence_join'
+  | 'presence_leave'
+  | (string & {});
 
 // Typed Payload interface
 export interface RoomEventPayload<T = any> {
@@ -618,6 +633,86 @@ class RoomBus {
     }
   }
 
+  public initRoom(roomCode: string, player: { id: string; name: string; isHost?: boolean; isReady?: boolean }): any {
+    const cleanCode = cleanRoomCode(roomCode);
+    if (!cleanCode) return null;
+
+    const ch = this.ensureSupabaseChannel(cleanCode, player);
+    if (ch && this.supabaseChannelStates.get(cleanCode) === 'SUBSCRIBED') {
+      this.trackPlayer(cleanCode, player);
+    }
+    return ch;
+  }
+
+  public async trackPlayer(roomCode: string, player: { id: string; name: string; isHost?: boolean; isReady?: boolean; [key: string]: any }): Promise<void> {
+    const clean = cleanRoomCode(roomCode);
+    const ch = this.supabaseChannels.get(clean) || this.ensureSupabaseChannel(clean);
+    if (!ch) return;
+
+    try {
+      await ch.track({
+        id: player.id,
+        name: player.name,
+        isHost: Boolean(player.isHost),
+        isReady: Boolean(player.isReady),
+        updatedAt: Date.now(),
+      });
+    } catch (err) {
+      console.warn('[roomBus] trackPlayer error:', err);
+    }
+  }
+
+  public getFormattedPlayers(roomCode: string): Array<{ id: string; name: string; isHost: boolean; isReady: boolean }> {
+    const clean = cleanRoomCode(roomCode);
+    const ch = this.supabaseChannels.get(clean);
+    if (ch) {
+      try {
+        const state = ch.presenceState();
+        const all = Object.values(state).flat() as any[];
+        const map = new Map<string, { id: string; name: string; isHost: boolean; isReady: boolean }>();
+        all.forEach((p) => {
+          if (p && p.id && p.id !== 'host_tv') {
+            map.set(p.id, {
+              id: p.id,
+              name: p.name || 'متسابق',
+              isHost: Boolean(p.isHost),
+              isReady: Boolean(p.isReady),
+            });
+          }
+        });
+        if (map.size > 0) {
+          return Array.from(map.values());
+        }
+      } catch {}
+    }
+
+    const r = this.getRoom(clean);
+    if (r && r.players.length > 0) {
+      return r.players
+        .filter((p) => p.id !== 'host_tv')
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          isHost: false,
+          isReady: Boolean(p.isReady),
+        }));
+    }
+    return [];
+  }
+
+  public leaveRoom(roomCode: string): void {
+    const clean = cleanRoomCode(roomCode);
+    const ch = this.supabaseChannels.get(clean);
+    if (ch) {
+      try {
+        ch.untrack();
+      } catch {}
+      supabase.removeChannel(ch);
+      this.supabaseChannels.delete(clean);
+      this.supabaseChannelStates.delete(clean);
+    }
+  }
+
   public registerChannel(roomCode: string, channel: any) {
     const clean = cleanRoomCode(roomCode);
     this.supabaseChannels.set(clean, channel);
@@ -629,13 +724,17 @@ class RoomBus {
     return this.supabaseChannels.get(clean) || null;
   }
 
-  public ensureSupabaseChannel(roomCode: string) {
+  public ensureSupabaseChannel(roomCode: string, player?: { id: string; name: string; isHost?: boolean; isReady?: boolean }) {
     if (typeof window === 'undefined' || !roomCode) return null;
     const cleanCode = roomCode.toUpperCase().replace(/^ROOM_/, '');
 
     // 1. Check local instance map
     if (this.supabaseChannels.has(cleanCode)) {
-      return this.supabaseChannels.get(cleanCode);
+      const ch = this.supabaseChannels.get(cleanCode);
+      if (player && this.supabaseChannelStates.get(cleanCode) === 'SUBSCRIBED') {
+        this.trackPlayer(cleanCode, player);
+      }
+      return ch;
     }
 
     // 2. Prevent duplicate channel instances across the Supabase client
@@ -648,6 +747,9 @@ class RoomBus {
       if (existing.state === 'joined') {
         this.supabaseChannelStates.set(cleanCode, 'SUBSCRIBED');
         this.flushPendingQueue(cleanCode);
+        if (player) {
+          this.trackPlayer(cleanCode, player);
+        }
       }
       return existing;
     }
@@ -658,11 +760,11 @@ class RoomBus {
     }
 
     try {
-      const presenceKey = this.isHosting(cleanCode)
+      const presenceKey = player?.id || (this.isHosting(cleanCode)
         ? 'host_tv'
         : (typeof window !== 'undefined'
           ? (localStorage.getItem('taghesi_playerId') || sessionStorage.getItem('taghesi_playerId') || 'guest_' + Math.random().toString(36).substring(2, 7))
-          : 'guest');
+          : 'guest'));
 
       const ch = supabase.channel(topic, {
         config: {
@@ -686,17 +788,29 @@ class RoomBus {
           const uniquePlayerList = Array.from(playersMap.values());
           console.log('[TV SYNC] Current connected players count:', uniquePlayerList.length, uniquePlayerList);
           this.syncPresencePlayers(cleanCode, uniquePlayerList);
+          this.emit('presence_sync', cleanCode, this.getFormattedPlayers(cleanCode));
         } catch (err) {
           console.warn('[roomBus] Presence sync error:', err);
         }
       });
 
-      ch.on('presence', { event: 'join' }, ({ newPresences }: any) => {
+      ch.on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
         try {
           const list = (newPresences || []).filter((p: any) => p && p.id && p.id !== 'host_tv');
           this.syncPresencePlayers(cleanCode, list);
+          this.emit('presence_join', cleanCode, { key, newPresences });
+          this.emit('presence_sync', cleanCode, this.getFormattedPlayers(cleanCode));
         } catch (err) {
           console.warn('[roomBus] Presence join error:', err);
+        }
+      });
+
+      ch.on('presence', { event: 'leave' }, ({ key, leftPresences }: any) => {
+        try {
+          this.emit('presence_leave', cleanCode, { key, leftPresences });
+          this.emit('presence_sync', cleanCode, this.getFormattedPlayers(cleanCode));
+        } catch (err) {
+          console.warn('[roomBus] Presence leave error:', err);
         }
       });
 
@@ -817,6 +931,14 @@ class RoomBus {
         this.emit('COACH_PICK_SUBMITTED', cleanCode, payload);
       });
 
+      ch.on('broadcast', { event: 'ROOM_CLOSED' }, ({ payload }) => {
+        this.emit('ROOM_CLOSED', cleanCode, payload || {});
+      });
+
+      ch.on('broadcast', { event: 'ROOM_TERMINATED' }, ({ payload }) => {
+        this.emit('ROOM_TERMINATED', cleanCode, payload || {});
+      });
+
       ch.on('broadcast', { event: 'room_event' }, ({ payload }) => {
         if (payload && payload.roomCode) {
           const cleanIncoming = cleanRoomCode(payload.roomCode);
@@ -834,24 +956,28 @@ class RoomBus {
         }
       });
 
-      ch.subscribe((status: string) => {
+      ch.subscribe(async (status: string) => {
         if (status === 'SUBSCRIBED') {
           this.supabaseChannelStates.set(cleanCode, 'SUBSCRIBED');
           this.flushPendingQueue(cleanCode);
 
-          const pending = this.pendingPresence.get(cleanCode);
-          if (pending) {
-            this.trackPlayerPresence(cleanCode, pending);
-          } else if (typeof window !== 'undefined') {
-            try {
-              const saved = sessionStorage.getItem(`taghesi_player_${cleanCode}`) || localStorage.getItem(`taghesi_player_${cleanCode}`);
-              if (saved) {
-                const parsed = JSON.parse(saved);
-                if (parsed?.id && parsed?.name) {
-                  this.trackPlayerPresence(cleanCode, parsed);
+          if (player) {
+            await this.trackPlayer(cleanCode, player);
+          } else {
+            const pending = this.pendingPresence.get(cleanCode);
+            if (pending) {
+              await this.trackPlayerPresence(cleanCode, pending);
+            } else if (typeof window !== 'undefined') {
+              try {
+                const saved = sessionStorage.getItem(`taghesi_player_${cleanCode}`) || localStorage.getItem(`taghesi_player_${cleanCode}`);
+                if (saved) {
+                  const parsed = JSON.parse(saved);
+                  if (parsed?.id && parsed?.name) {
+                    await this.trackPlayerPresence(cleanCode, parsed);
+                  }
                 }
-              }
-            } catch {}
+              } catch {}
+            }
           }
           // (Re)connected: hosts push their state, clients ask for the latest one
           if (this.isHosting(cleanCode)) {
@@ -1101,8 +1227,31 @@ class RoomBus {
     };
   }
 
-  public broadcast(msg: BusMessage): void {
-    this.emit(msg.type, msg.roomId, (msg as any).state || (msg as any).player || (msg as any).event || (msg as any).request || msg);
+  public async broadcast(roomCodeOrMsg: string | BusMessage, eventOrPayload?: any, payload?: any): Promise<void> {
+    if (typeof roomCodeOrMsg === 'object') {
+      const msg = roomCodeOrMsg as BusMessage;
+      this.emit(msg.type, msg.roomId, (msg as any).state || (msg as any).player || (msg as any).event || (msg as any).request || msg);
+      return;
+    }
+
+    const clean = cleanRoomCode(roomCodeOrMsg);
+    const eventName = String(eventOrPayload);
+    const data = payload !== undefined ? payload : (eventOrPayload && typeof eventOrPayload === 'object' ? eventOrPayload : {});
+
+    this.emit(eventName as any, clean, data);
+
+    const ch = this.ensureSupabaseChannel(clean);
+    if (ch) {
+      try {
+        await ch.send({
+          type: 'broadcast',
+          event: eventName,
+          payload: data,
+        });
+      } catch (err) {
+        console.warn(`[roomBus] broadcast error for ${eventName}:`, err);
+      }
+    }
   }
 
   // --- Storage & Room State Operations ---
