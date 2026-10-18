@@ -121,10 +121,11 @@ export const NameEntryView: React.FC = () => {
 
       // Case 2: Joining an existing Room by Code ([دخول] or QR Scan)
       const targetRoomCode = queryRoom || generateRoomCode();
+      let roomCheckResult: { exists: boolean; gameId?: string; error?: string } | null = null;
       if (queryRoom) {
-        const check = await checkRoomExists(targetRoomCode);
-        if (!check.exists) {
-          setErrorMsg(check.error || 'كود الغرفة غير صحيح أو تم إغلاقها من قِبل المضيف');
+        roomCheckResult = await checkRoomExists(targetRoomCode);
+        if (!roomCheckResult.exists) {
+          setErrorMsg(roomCheckResult.error || 'كود الغرفة غير صحيح أو تم إغلاقها من قِبل المضيف');
           setMood('angry');
           sound.playTick();
           return;
@@ -135,8 +136,8 @@ export const NameEntryView: React.FC = () => {
 
       const existing = roomBus.getRoom(targetRoomCode);
       const room = existing || roomBus.createRoom(targetRoomCode);
-      if (check && (check as any).gameId) {
-        room.selectedGameId = normalizeGameId((check as any).gameId);
+      if (roomCheckResult && (roomCheckResult as any).gameId) {
+        room.selectedGameId = normalizeGameId((roomCheckResult as any).gameId);
         roomBus.writeLocal(room);
       }
 

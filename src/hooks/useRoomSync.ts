@@ -10,6 +10,14 @@ export interface UseRoomSyncOptions {
   isReady?: boolean;
 }
 
+export interface RoomPlayer {
+  id: string;
+  name: string;
+  isHost: boolean;
+  isReady: boolean;
+  joinedAt: number;
+}
+
 export function useRoomSync(
   optionsOrRoomCode: UseRoomSyncOptions | string,
   argPlayerId?: string,
@@ -64,39 +72,52 @@ export function useRoomSync(
     });
 
     const unsubPresence = roomBus.on('presence_sync', (evt: any) => {
-      const players: any[] = Array.isArray(evt?.data) ? evt.data : (Array.isArray(evt) ? evt : []);
-      const contestants: ShabahLobbyPlayer[] = players
-        .filter((p: any) => p && p.id && p.id !== 'host_tv' && !p.isHost)
-        .map((p: any) => ({
-          id: p.id,
-          name: p.name || 'متسابق',
-          isReady: Boolean(p.isReady),
-        }));
+      try {
+        const rawPlayers = evt?.data ?? evt;
+        const players: any[] = Array.isArray(rawPlayers) ? rawPlayers : [];
+        const contestants: ShabahLobbyPlayer[] = players
+          .filter((p: any) => p && typeof p === 'object' && p.id && p.id !== 'host_tv' && !p.isHost)
+          .map((p: any) => ({
+            id: String(p.id),
+            name: String(p.name || 'متسابق'),
+            isReady: Boolean(p.isReady),
+          }));
 
-      setConnectedPlayers((prev) => {
-        // TV sync stability: do not clear player list on temporary transient empty arrays
-        if (isHostRef.current && contestants.length === 0 && prev.length > 0) {
-          return prev;
-        }
-        return contestants;
-      });
+        setConnectedPlayers((prev) => {
+          // Sync stability: do not clear player list on temporary transient empty arrays
+          if (contestants.length === 0 && prev.length > 0) {
+            return prev;
+          }
+          return contestants;
+        });
+      } catch (err) {
+        console.error('[useRoomSync] presence_sync error shielded:', err);
+      }
     });
 
     const unsubReady = roomBus.on('PLAYER_READY_UPDATE', (evt: any) => {
-      const payload = evt?.data || evt;
-      const pId = payload?.playerId;
-      const ready = payload?.isReady;
-      if (pId) {
-        setConnectedPlayers((prev) =>
-          prev.map((p) => (p.id === pId ? { ...p, isReady: Boolean(ready) } : p))
-        );
+      try {
+        const payload = evt?.data || evt;
+        const pId = payload?.playerId;
+        const ready = payload?.isReady;
+        if (pId) {
+          setConnectedPlayers((prev) =>
+            prev.map((p) => (p.id === pId ? { ...p, isReady: Boolean(ready) } : p))
+          );
+        }
+      } catch (err) {
+        console.error('[useRoomSync] PLAYER_READY_UPDATE error shielded:', err);
       }
     });
 
     // Seed initial players if already present
-    const initial = roomBus.getFormattedPlayers(cleanCode).filter((p) => !p.isHost && p.id !== 'host_tv');
-    if (initial.length > 0) {
-      setConnectedPlayers(initial);
+    try {
+      const initial = roomBus.getFormattedPlayers(cleanCode).filter((p) => !p.isHost && p.id !== 'host_tv');
+      if (initial.length > 0) {
+        setConnectedPlayers(initial);
+      }
+    } catch (err) {
+      console.error('[useRoomSync] initial players error shielded:', err);
     }
 
     return () => {
@@ -106,22 +127,34 @@ export function useRoomSync(
   }, [cleanCode, isHost, playerId, playerName]);
 
   const updateReadyState = async (newReady: boolean) => {
-    const curPlayerId = playerIdRef.current;
-    if (curPlayerId) {
-      roomBus.setPlayerReady(cleanCode, curPlayerId, newReady);
-      roomBus.trackPlayer(cleanCode, {
-        id: curPlayerId,
-        name: playerNameRef.current || 'متسابق',
-        isReady: newReady,
-        isHost: false,
-      });
+    try {
+      const curPlayerId = playerIdRef.current;
+      if (curPlayerId) {
+        roomBus.setPlayerReady(cleanCode, curPlayerId, newReady);
+        await roomBus.trackPlayer(cleanCode, {
+          id: curPlayerId,
+          name: playerNameRef.current || 'متسابق',
+          isReady: newReady,
+          isHost: false,
+        });
+      }
+    } catch (err) {
+      console.error('[useRoomSync] updateReadyState error shielded:', err);
     }
   };
 
   return {
     connectedPlayers,
+    allPlayers: connectedPlayers,
     channel: roomBus.getSupabaseChannel(cleanCode),
     updateReadyState,
-    broadcast: (event: string, payload: any = {}) => roomBus.broadcast(cleanCode, event, payload),
+    setPlayerReady: updateReadyState,
+    broadcast: async (event: string, payload: any = {}) => {
+      try {
+        await roomBus.broadcast(cleanCode, event, payload);
+      } catch (err) {
+        console.error('[useRoomSync] broadcast error shielded:', err);
+      }
+    },
   };
 }

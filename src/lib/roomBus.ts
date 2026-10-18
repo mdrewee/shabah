@@ -161,6 +161,14 @@ export type RoomEventType =
   | 'presence_leave'
   | (string & {});
 
+export interface RoomPlayer {
+  id: string;
+  name: string;
+  isHost: boolean;
+  isReady: boolean;
+  joinedAt: number;
+}
+
 // Typed Payload interface
 export interface RoomEventPayload<T = any> {
   roomCode: string;
@@ -375,10 +383,19 @@ class RoomBus {
   private seenIntentSet: Set<string> = new Set();
   private hostTicker: { stop: () => void } | null = null;
 
-  // --- Client side reliable intents ---
-  private intentRetries: Map<string, number> = new Map();
+  private currentRoomCode: string | null = null;
+  private syncDebounceTimer: any = null;
+  private pendingBroadcasts: Map<string, Array<{ event: string; payload: any }>> = new Map();
 
   constructor() {
+    // Prevent duplicate instances during Vite HMR
+    if (typeof window !== 'undefined' && (window as any).__SHABAH_BUS__) {
+      return (window as any).__SHABAH_BUS__;
+    }
+    if (typeof window !== 'undefined') {
+      (window as any).__SHABAH_BUS__ = this;
+    }
+
     this.initChannel();
     this.initStorageFallback();
     this.initRequestListener();
@@ -472,170 +489,207 @@ class RoomBus {
   }
 
   public syncPresencePlayers(roomCode: string, list: any[]) {
-    const clean = cleanRoomCode(roomCode);
-    let room = this.getRoom(clean);
-    if (!room) return;
+    try {
+      const clean = cleanRoomCode(roomCode);
+      if (!clean) return;
+      let room = this.getRoom(clean);
+      if (!room) {
+        room = this.createRoom(clean);
+      }
 
-    // Deduplicate incoming list strictly by player ID
-    const uniqueMap = new Map<string, any>();
-    list.forEach((p) => {
-      if (p && p.id && p.id !== 'host_tv') {
-        if (uniqueMap.has(p.id)) {
-          const prev = uniqueMap.get(p.id);
-          uniqueMap.set(p.id, {
-            ...prev,
-            ...p,
-            isReady: Boolean(prev.isReady || p.isReady),
-          });
+      // Deduplicate incoming list strictly by player ID
+      const uniqueMap = new Map<string, any>();
+      list.forEach((p) => {
+        if (p && p.id && p.id !== 'host_tv') {
+          if (uniqueMap.has(p.id)) {
+            const prev = uniqueMap.get(p.id);
+            uniqueMap.set(p.id, {
+              ...prev,
+              ...p,
+              isReady: Boolean(prev.isReady || p.isReady),
+            });
+          } else {
+            uniqueMap.set(p.id, p);
+          }
+        }
+      });
+      const cleanList = Array.from(uniqueMap.values());
+
+      // Deduplicate existing room.players strictly by player ID
+      const roomPlayersMap = new Map<string, Player>();
+      room.players.forEach((p) => {
+        if (p && p.id && p.id !== 'host_tv') {
+          if (roomPlayersMap.has(p.id)) {
+            const prev = roomPlayersMap.get(p.id)!;
+            roomPlayersMap.set(p.id, {
+              ...prev,
+              ...p,
+              isReady: Boolean(prev.isReady || p.isReady),
+            });
+          } else {
+            roomPlayersMap.set(p.id, p);
+          }
+        }
+      });
+      room.players = Array.from(roomPlayersMap.values());
+
+      let hasChanges = false;
+      cleanList.forEach((p) => {
+        if (!p || !p.id) return;
+        let curr = this.getRoom(clean);
+        if (!curr) return;
+
+        let existing = curr.players.find((pl) => pl.id === p.id);
+        
+        if (!existing) {
+          this.joinPlayer(clean, p.name || 'متسابق', p.avatar || 'avatar_1', p.team || 'team_a', p.id, true);
+          const refreshed = this.getRoom(clean);
+          if (refreshed) curr = refreshed;
+          existing = curr.players.find((pl) => pl.id === p.id);
+          hasChanges = true;
         } else {
-          uniqueMap.set(p.id, p);
+          if (!existing.isOnline) {
+            existing.isOnline = true;
+            hasChanges = true;
+          }
+          if (p.isReady !== undefined && existing.isReady !== p.isReady) {
+            existing.isReady = Boolean(p.isReady);
+            hasChanges = true;
+          }
+          if (p.name && existing.name !== p.name) {
+            existing.name = p.name;
+            hasChanges = true;
+          }
         }
+
+        const activeId = existing ? existing.id : p.id;
+        const targetRoom = curr;
+        room = targetRoom;
+
+        if (targetRoom.flagState) {
+          if (!targetRoom.flagState.players[activeId]) {
+            targetRoom.flagState.players[activeId] = {
+              id: activeId,
+              name: p.name || 'متسابق',
+              score: 0,
+              isReady: Boolean(p.isReady),
+              currentGuessHex: null,
+              currentAccuracy: null,
+            };
+            hasChanges = true;
+          } else if (p.isReady !== undefined && targetRoom.flagState.players[activeId].isReady !== Boolean(p.isReady)) {
+            targetRoom.flagState.players[activeId].isReady = Boolean(p.isReady);
+            hasChanges = true;
+          }
+        }
+
+        if (targetRoom.landmarkState) {
+          if (!targetRoom.landmarkState.players[activeId]) {
+            targetRoom.landmarkState.players[activeId] = {
+              id: activeId,
+              name: p.name || 'متسابق',
+              score: 0,
+              isReady: Boolean(p.isReady),
+              currentLat: null,
+              currentLng: null,
+              currentDistanceKm: null,
+              currentPointsAwarded: 0,
+              hasSubmitted: false,
+            };
+            hasChanges = true;
+          } else if (p.isReady !== undefined && targetRoom.landmarkState.players[activeId].isReady !== Boolean(p.isReady)) {
+            targetRoom.landmarkState.players[activeId].isReady = Boolean(p.isReady);
+            hasChanges = true;
+          }
+        }
+
+        if (targetRoom.trajectoryState) {
+          if (!targetRoom.trajectoryState.players[activeId]) {
+            targetRoom.trajectoryState.players[activeId] = {
+              id: activeId,
+              name: p.name || 'متسابق',
+              score: 0,
+              isReady: Boolean(p.isReady),
+              hasSubmitted: false,
+              guessedCountryAr: null,
+              guessedCountryEn: null,
+              guessedIso3: null,
+              isValidIntersect: false,
+              entryDistanceKm: null,
+              rank: null,
+              currentPointsAwarded: 0,
+            };
+            hasChanges = true;
+          } else if (p.isReady !== undefined && targetRoom.trajectoryState.players[activeId].isReady !== Boolean(p.isReady)) {
+            targetRoom.trajectoryState.players[activeId].isReady = Boolean(p.isReady);
+            hasChanges = true;
+          }
+        }
+
+        if (targetRoom.tourismState) {
+          if (!targetRoom.tourismState.players[activeId]) {
+            targetRoom.tourismState.players[activeId] = {
+              id: activeId,
+              name: p.name || 'متسابق',
+              score: 0,
+              isReady: Boolean(p.isReady),
+              hasLockedIn: false,
+              lockedInStage: null,
+              lockedInAnswer: null,
+              isCorrect: false,
+              pointsAwarded: 0,
+            };
+            hasChanges = true;
+          } else if (p.isReady !== undefined && targetRoom.tourismState.players[activeId].isReady !== Boolean(p.isReady)) {
+            targetRoom.tourismState.players[activeId].isReady = Boolean(p.isReady);
+            hasChanges = true;
+          }
+        }
+      });
+
+      if (hasChanges && room) {
+        room.lastActivity = Date.now();
+        this.saveRoom(room);
+        this.emit('STATE_UPDATED', clean, room);
       }
-    });
-    const cleanList = Array.from(uniqueMap.values());
-
-    // Deduplicate existing room.players strictly by player ID
-    const roomPlayersMap = new Map<string, Player>();
-    room.players.forEach((p) => {
-      if (p && p.id && p.id !== 'host_tv') {
-        if (roomPlayersMap.has(p.id)) {
-          const prev = roomPlayersMap.get(p.id)!;
-          roomPlayersMap.set(p.id, {
-            ...prev,
-            ...p,
-            isReady: Boolean(prev.isReady || p.isReady),
-          });
-        } else {
-          roomPlayersMap.set(p.id, p);
-        }
-      }
-    });
-    room.players = Array.from(roomPlayersMap.values());
-
-    let hasChanges = false;
-    cleanList.forEach((p) => {
-      if (!p || !p.id) return;
-      let curr = this.getRoom(clean);
-      if (!curr) return;
-
-      let existing = curr.players.find((pl) => pl.id === p.id);
-      
-      if (!existing) {
-        this.joinPlayer(clean, p.name || 'متسابق', p.avatar || 'avatar_1', p.team || 'team_a', p.id, true);
-        const refreshed = this.getRoom(clean);
-        if (refreshed) curr = refreshed;
-        existing = curr.players.find((pl) => pl.id === p.id);
-        hasChanges = true;
-      } else {
-        if (!existing.isOnline) {
-          existing.isOnline = true;
-          hasChanges = true;
-        }
-        if (p.isReady !== undefined && existing.isReady !== p.isReady) {
-          existing.isReady = Boolean(p.isReady);
-          hasChanges = true;
-        }
-        if (p.name && existing.name !== p.name) {
-          existing.name = p.name;
-          hasChanges = true;
-        }
-      }
-
-      const activeId = existing ? existing.id : p.id;
-      const targetRoom = curr;
-      room = targetRoom;
-
-      if (targetRoom.flagState) {
-        if (!targetRoom.flagState.players[activeId]) {
-          targetRoom.flagState.players[activeId] = {
-            id: activeId,
-            name: p.name || 'متسابق',
-            score: 0,
-            isReady: Boolean(p.isReady),
-            currentGuessHex: null,
-            currentAccuracy: null,
-          };
-          hasChanges = true;
-        } else if (p.isReady !== undefined && targetRoom.flagState.players[activeId].isReady !== Boolean(p.isReady)) {
-          targetRoom.flagState.players[activeId].isReady = Boolean(p.isReady);
-          hasChanges = true;
-        }
-      }
-
-      if (targetRoom.landmarkState) {
-        if (!targetRoom.landmarkState.players[activeId]) {
-          targetRoom.landmarkState.players[activeId] = {
-            id: activeId,
-            name: p.name || 'متسابق',
-            score: 0,
-            isReady: Boolean(p.isReady),
-            currentLat: null,
-            currentLng: null,
-            currentDistanceKm: null,
-            currentPointsAwarded: 0,
-            hasSubmitted: false,
-          };
-          hasChanges = true;
-        } else if (p.isReady !== undefined && targetRoom.landmarkState.players[activeId].isReady !== Boolean(p.isReady)) {
-          targetRoom.landmarkState.players[activeId].isReady = Boolean(p.isReady);
-          hasChanges = true;
-        }
-      }
-
-      if (targetRoom.trajectoryState) {
-        if (!targetRoom.trajectoryState.players[activeId]) {
-          targetRoom.trajectoryState.players[activeId] = {
-            id: activeId,
-            name: p.name || 'متسابق',
-            score: 0,
-            isReady: Boolean(p.isReady),
-            hasSubmitted: false,
-            guessedCountryAr: null,
-            guessedCountryEn: null,
-            guessedIso3: null,
-            isValidIntersect: false,
-            entryDistanceKm: null,
-            rank: null,
-            currentPointsAwarded: 0,
-          };
-          hasChanges = true;
-        } else if (p.isReady !== undefined && targetRoom.trajectoryState.players[activeId].isReady !== Boolean(p.isReady)) {
-          targetRoom.trajectoryState.players[activeId].isReady = Boolean(p.isReady);
-          hasChanges = true;
-        }
-      }
-
-      if (targetRoom.tourismState) {
-        if (!targetRoom.tourismState.players[activeId]) {
-          targetRoom.tourismState.players[activeId] = {
-            id: activeId,
-            name: p.name || 'متسابق',
-            score: 0,
-            isReady: Boolean(p.isReady),
-            hasLockedIn: false,
-            lockedInStage: null,
-            lockedInAnswer: null,
-            isCorrect: false,
-            pointsAwarded: 0,
-          };
-          hasChanges = true;
-        } else if (p.isReady !== undefined && targetRoom.tourismState.players[activeId].isReady !== Boolean(p.isReady)) {
-          targetRoom.tourismState.players[activeId].isReady = Boolean(p.isReady);
-          hasChanges = true;
-        }
-      }
-    });
-
-    if (hasChanges && room) {
-      room.lastActivity = Date.now();
-      this.saveRoom(room);
-      this.emit('STATE_UPDATED', clean, room);
+    } catch (err) {
+      console.error('[roomBus] syncPresencePlayers error shielded:', err);
     }
   }
 
   public initRoom(roomCode: string, player: { id: string; name: string; isHost?: boolean; isReady?: boolean }): any {
     const cleanCode = cleanRoomCode(roomCode);
     if (!cleanCode) return null;
+
+    // If already connected to the exact same room with an active channel, just update presence
+    const currentCh = this.supabaseChannels.get(cleanCode);
+    const isSubscribed = this.supabaseChannelStates.get(cleanCode) === 'SUBSCRIBED' && currentCh?.state === 'joined';
+    if (this.currentRoomCode === cleanCode && currentCh && isSubscribed) {
+      this.trackPlayer(cleanCode, player);
+      return currentCh;
+    }
+
+    // Teardown any previous connection to a different room
+    if (this.currentRoomCode && this.currentRoomCode !== cleanCode) {
+      this.leaveRoom(this.currentRoomCode);
+    }
+    this.currentRoomCode = cleanCode;
+
+    // Clean up any lingering channels registered inside supabase client
+    if (typeof supabase?.getChannels === 'function') {
+      const existingChannels = supabase.getChannels();
+      existingChannels.forEach((ch: any) => {
+        const topic = ch?.topic || '';
+        if (topic.startsWith('room_') || topic.startsWith('realtime:room_')) {
+          if (topic !== `room_${cleanCode}` && topic !== `realtime:room_${cleanCode}`) {
+            try {
+              ch.untrack();
+            } catch {}
+            supabase.removeChannel(ch);
+          }
+        }
+      });
+    }
 
     const ch = this.ensureSupabaseChannel(cleanCode, player);
     if (ch && this.supabaseChannelStates.get(cleanCode) === 'SUBSCRIBED') {
@@ -683,7 +737,9 @@ class RoomBus {
         if (map.size > 0) {
           return Array.from(map.values());
         }
-      } catch {}
+      } catch (err) {
+        console.error('[roomBus] getFormattedPlayers presenceState error shielded:', err);
+      }
     }
 
     const r = this.getRoom(clean);
@@ -697,20 +753,59 @@ class RoomBus {
           isReady: Boolean(p.isReady),
         }));
     }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = sessionStorage.getItem(`taghesi_player_${clean}`) || localStorage.getItem(`taghesi_player_${clean}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed?.id && parsed?.name) {
+            return [{
+              id: parsed.id,
+              name: parsed.name,
+              isHost: false,
+              isReady: false,
+            }];
+          }
+        }
+      } catch {}
+    }
+
     return [];
   }
 
-  public leaveRoom(roomCode: string): void {
-    const clean = cleanRoomCode(roomCode);
+  public getPlayers(roomCode?: string): RoomPlayer[] {
+    const code = roomCode || this.currentRoomCode || '';
+    if (!code) return [];
+    return this.getFormattedPlayers(code).map((p) => ({
+      id: p.id,
+      name: p.name,
+      isHost: Boolean(p.isHost),
+      isReady: Boolean(p.isReady),
+      joinedAt: Date.now(),
+    }));
+  }
+
+  public leaveRoom(roomCode?: string): void {
+    clearTimeout(this.syncDebounceTimer);
+    const code = roomCode || this.currentRoomCode;
+    if (!code) return;
+    const clean = cleanRoomCode(code);
     const ch = this.supabaseChannels.get(clean);
     if (ch) {
       try {
         ch.untrack();
       } catch {}
-      supabase.removeChannel(ch);
+      try {
+        supabase.removeChannel(ch);
+      } catch {}
       this.supabaseChannels.delete(clean);
       this.supabaseChannelStates.delete(clean);
     }
+    if (this.currentRoomCode === clean) {
+      this.currentRoomCode = null;
+    }
+    this.pendingBroadcasts.delete(clean);
   }
 
   public registerChannel(roomCode: string, channel: any) {
@@ -774,189 +869,247 @@ class RoomBus {
       });
 
       ch.on('presence', { event: 'sync' }, () => {
-        try {
-          const state = ch.presenceState();
-          const allPresences = Object.values(state).flat() as any[];
-          const playersMap = new Map<string, any>();
+        clearTimeout(this.syncDebounceTimer);
+        this.syncDebounceTimer = setTimeout(() => {
+          try {
+            const state = ch.presenceState();
+            const allPresences = Object.values(state).flat() as any[];
+            const playersMap = new Map<string, any>();
 
-          allPresences.forEach((entry) => {
-            if (entry.id && entry.id !== 'host_tv') {
-              playersMap.set(entry.id, entry);
-            }
-          });
+            allPresences.forEach((entry) => {
+              if (entry && entry.id && entry.id !== 'host_tv') {
+                playersMap.set(entry.id, entry);
+              }
+            });
 
-          const uniquePlayerList = Array.from(playersMap.values());
-          console.log('[TV SYNC] Current connected players count:', uniquePlayerList.length, uniquePlayerList);
-          this.syncPresencePlayers(cleanCode, uniquePlayerList);
-          this.emit('presence_sync', cleanCode, this.getFormattedPlayers(cleanCode));
-        } catch (err) {
-          console.warn('[roomBus] Presence sync error:', err);
-        }
+            const uniquePlayerList = Array.from(playersMap.values());
+            console.log(`[ROOM_BUS] Authoritative Players Count: ${uniquePlayerList.length}`, uniquePlayerList);
+            this.syncPresencePlayers(cleanCode, uniquePlayerList);
+            this.emit('presence_sync', cleanCode, this.getFormattedPlayers(cleanCode));
+          } catch (err) {
+            console.warn('[roomBus] Presence sync error:', err);
+          }
+        }, 150);
       });
 
       ch.on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
-        try {
-          const list = (newPresences || []).filter((p: any) => p && p.id && p.id !== 'host_tv');
-          this.syncPresencePlayers(cleanCode, list);
-          this.emit('presence_join', cleanCode, { key, newPresences });
-          this.emit('presence_sync', cleanCode, this.getFormattedPlayers(cleanCode));
-        } catch (err) {
-          console.warn('[roomBus] Presence join error:', err);
-        }
+        clearTimeout(this.syncDebounceTimer);
+        this.syncDebounceTimer = setTimeout(() => {
+          try {
+            const list = (newPresences || []).filter((p: any) => p && p.id && p.id !== 'host_tv');
+            this.syncPresencePlayers(cleanCode, list);
+            this.emit('presence_join', cleanCode, { key, newPresences });
+            this.emit('presence_sync', cleanCode, this.getFormattedPlayers(cleanCode));
+          } catch (err) {
+            console.warn('[roomBus] Presence join error:', err);
+          }
+        }, 150);
       });
 
       ch.on('presence', { event: 'leave' }, ({ key, leftPresences }: any) => {
-        try {
-          this.emit('presence_leave', cleanCode, { key, leftPresences });
-          this.emit('presence_sync', cleanCode, this.getFormattedPlayers(cleanCode));
-        } catch (err) {
-          console.warn('[roomBus] Presence leave error:', err);
-        }
+        clearTimeout(this.syncDebounceTimer);
+        this.syncDebounceTimer = setTimeout(() => {
+          try {
+            this.emit('presence_leave', cleanCode, { key, leftPresences });
+            this.emit('presence_sync', cleanCode, this.getFormattedPlayers(cleanCode));
+          } catch (err) {
+            console.warn('[roomBus] Presence leave error:', err);
+          }
+        }, 150);
       });
 
       ch.on('broadcast', { event: 'PLAYER_READY_UPDATE' }, ({ payload }) => {
-        if (!payload || !payload.playerId) return;
-        this.emit('PLAYER_READY_UPDATE', cleanCode, payload);
-        const room = this.getRoom(cleanCode);
-        if (room) {
-          const p = room.players.find(
-            (pl) => pl.id === payload.playerId || (payload.name && pl.name?.trim().toLowerCase() === payload.name?.trim().toLowerCase())
-          );
-          if (p) {
-            p.isReady = Boolean(payload.isReady);
-            if (room.flagState?.players[p.id]) room.flagState.players[p.id].isReady = p.isReady;
-            if (room.landmarkState?.players[p.id]) room.landmarkState.players[p.id].isReady = p.isReady;
-            if (room.trajectoryState?.players[p.id]) room.trajectoryState.players[p.id].isReady = p.isReady;
-            if (room.tourismState?.players[p.id]) room.tourismState.players[p.id].isReady = p.isReady;
-            if (this.isHosting(cleanCode)) {
-              this.saveRoom(room);
-              this.broadcastState(room);
-            } else {
-              this.writeLocal(room);
+        try {
+          if (!payload || !payload.playerId) return;
+          this.emit('PLAYER_READY_UPDATE', cleanCode, payload);
+          const room = this.getRoom(cleanCode);
+          if (room) {
+            const p = room.players.find(
+              (pl) => pl.id === payload.playerId || (payload.name && pl.name?.trim().toLowerCase() === payload.name?.trim().toLowerCase())
+            );
+            if (p) {
+              p.isReady = Boolean(payload.isReady);
+              if (room.flagState?.players[p.id]) room.flagState.players[p.id].isReady = p.isReady;
+              if (room.landmarkState?.players[p.id]) room.landmarkState.players[p.id].isReady = p.isReady;
+              if (room.trajectoryState?.players[p.id]) room.trajectoryState.players[p.id].isReady = p.isReady;
+              if (room.tourismState?.players[p.id]) room.tourismState.players[p.id].isReady = p.isReady;
+              if (this.isHosting(cleanCode)) {
+                this.saveRoom(room);
+                this.broadcastState(room);
+              } else {
+                this.writeLocal(room);
+              }
             }
           }
+        } catch (err) {
+          console.error('[roomBus] PLAYER_READY_UPDATE error shielded:', err);
         }
       });
 
       ch.on('broadcast', { event: 'PLAYER_SUBMISSION' }, ({ payload }) => {
-        if (!payload || !payload.playerId) return;
-        this.emit('PLAYER_SUBMISSION', cleanCode, payload);
-        if (this.isHosting(cleanCode)) {
-          const room = this.getRoom(cleanCode);
-          if (!room) return;
+        try {
+          if (!payload || !payload.playerId) return;
+          this.emit('PLAYER_SUBMISSION', cleanCode, payload);
+          if (this.isHosting(cleanCode)) {
+            const room = this.getRoom(cleanCode);
+            if (!room) return;
 
-          // 1. Landmark submission handling
-          if (room.landmarkState) {
-            if (payload.round !== undefined && Number(payload.round) !== Number(room.landmarkState.currentRound)) {
-              console.warn('[TV IGNORE] Stale round submission received:', payload);
-              return;
+            // 1. Landmark submission handling
+            if (room.landmarkState) {
+              if (payload.round !== undefined && Number(payload.round) !== Number(room.landmarkState.currentRound)) {
+                console.warn('[TV IGNORE] Stale round submission received:', payload);
+                return;
+              }
+              const coords = payload.coordinates || payload.answer?.coordinates || (payload.answer?.lat !== undefined ? payload.answer : undefined);
+              if (coords && coords.lat !== undefined && coords.lng !== undefined) {
+                console.log('[Landmark Guess Received]:', payload);
+                this.submitLandmarkGuess(cleanCode, payload.playerId, coords.lat, coords.lng);
+              }
             }
-            const coords = payload.coordinates || payload.answer?.coordinates || (payload.answer?.lat !== undefined ? payload.answer : undefined);
-            if (coords && coords.lat !== undefined && coords.lng !== undefined) {
-              console.log('[Landmark Guess Received]:', payload);
-              this.submitLandmarkGuess(cleanCode, payload.playerId, coords.lat, coords.lng);
+
+            // 2. Flag submission handling
+            if (room.flagState) {
+              if (payload.round !== undefined && Number(payload.round) !== Number(room.flagState.currentRound)) {
+                console.warn('[TV IGNORE] Stale round submission received:', payload);
+                return;
+              }
+              const hex = typeof payload.answer === 'string' ? payload.answer : (payload.answer?.hex || payload.hex || payload.answer?.currentHex);
+              if (hex) {
+                const currentFlagId = room.flagState.currentFlagId;
+                const flagData = worldFlagsCatalog.find((f) => f.id === currentFlagId);
+                const targetHex = flagData?.targetHex || '#000000';
+                const score = payload.answer?.score ?? payload.score ?? calculateColorCloseness(hex, targetHex);
+                this.submitFlagGuess(cleanCode, payload.playerId, hex, score);
+              }
+            }
+
+            // 3. Trajectory submission handling
+            if (room.trajectoryState) {
+              if (payload.round !== undefined && Number(payload.round) !== Number(room.trajectoryState.currentRound)) {
+                console.warn('[TV IGNORE] Stale round submission received:', payload);
+                return;
+              }
+              const answer = payload.answer;
+              const countryAr = typeof answer === 'string' ? answer : (answer?.nameAr || answer?.countryAr || '');
+              const countryEn = typeof answer === 'object' ? (answer?.nameEn || answer?.countryEn) : undefined;
+              const iso3 = typeof answer === 'object' ? answer?.iso3 : undefined;
+              if (countryAr) {
+                this.submitTrajectoryGuess(cleanCode, payload.playerId, countryAr, countryEn, iso3);
+              }
+            }
+
+            // 4. Tourism submission handling
+            if (room.tourismState) {
+              if (payload.round !== undefined && Number(payload.round) !== Number(room.tourismState.currentRound)) {
+                console.warn('[TV IGNORE] Stale round submission received:', payload);
+                return;
+              }
+              const ansStr = typeof payload.answer === 'string' ? payload.answer : (payload.answer?.nameAr || payload.answer?.answer || '');
+              if (ansStr) {
+                this.lockInTourismAnswer(cleanCode, payload.playerId, ansStr);
+              }
             }
           }
-
-          // 2. Flag submission handling
-          if (room.flagState) {
-            if (payload.round !== undefined && Number(payload.round) !== Number(room.flagState.currentRound)) {
-              console.warn('[TV IGNORE] Stale round submission received:', payload);
-              return;
-            }
-            const hex = typeof payload.answer === 'string' ? payload.answer : (payload.answer?.hex || payload.hex || payload.answer?.currentHex);
-            if (hex) {
-              const currentFlagId = room.flagState.currentFlagId;
-              const flagData = worldFlagsCatalog.find((f) => f.id === currentFlagId);
-              const targetHex = flagData?.targetHex || '#000000';
-              const score = payload.answer?.score ?? payload.score ?? calculateColorCloseness(hex, targetHex);
-              this.submitFlagGuess(cleanCode, payload.playerId, hex, score);
-            }
-          }
-
-          // 3. Trajectory submission handling
-          if (room.trajectoryState) {
-            if (payload.round !== undefined && Number(payload.round) !== Number(room.trajectoryState.currentRound)) {
-              console.warn('[TV IGNORE] Stale round submission received:', payload);
-              return;
-            }
-            const answer = payload.answer;
-            const countryAr = typeof answer === 'string' ? answer : (answer?.nameAr || answer?.countryAr || '');
-            const countryEn = typeof answer === 'object' ? (answer?.nameEn || answer?.countryEn) : undefined;
-            const iso3 = typeof answer === 'object' ? answer?.iso3 : undefined;
-            if (countryAr) {
-              this.submitTrajectoryGuess(cleanCode, payload.playerId, countryAr, countryEn, iso3);
-            }
-          }
-
-          // 4. Tourism submission handling
-          if (room.tourismState) {
-            if (payload.round !== undefined && Number(payload.round) !== Number(room.tourismState.currentRound)) {
-              console.warn('[TV IGNORE] Stale round submission received:', payload);
-              return;
-            }
-            const ansStr = typeof payload.answer === 'string' ? payload.answer : (payload.answer?.nameAr || payload.answer?.answer || '');
-            if (ansStr) {
-              this.lockInTourismAnswer(cleanCode, payload.playerId, ansStr);
-            }
-          }
+        } catch (err) {
+          console.error('[roomBus] PLAYER_SUBMISSION error shielded:', err);
         }
       });
 
       ch.on('broadcast', { event: 'ROUND_STARTED' }, ({ payload }) => {
-        this.emit('ROUND_STARTED', cleanCode, payload);
+        try {
+          this.emit('ROUND_STARTED', cleanCode, payload);
+        } catch (err) {
+          console.error('[roomBus] ROUND_STARTED broadcast error shielded:', err);
+        }
       });
 
       ch.on('broadcast', { event: 'GAME_STARTED' }, ({ payload }) => {
-        this.emit('GAME_STARTED', cleanCode, payload);
+        try {
+          this.emit('GAME_STARTED', cleanCode, payload);
+        } catch (err) {
+          console.error('[roomBus] GAME_STARTED broadcast error shielded:', err);
+        }
       });
 
       ch.on('broadcast', { event: 'RETURN_TO_LOBBY' }, () => {
-        this.emit('RETURN_TO_LOBBY', cleanCode, {});
+        try {
+          this.emit('RETURN_TO_LOBBY', cleanCode, {});
+        } catch (err) {
+          console.error('[roomBus] RETURN_TO_LOBBY broadcast error shielded:', err);
+        }
       });
 
       ch.on('broadcast', { event: 'COACH_STATE_SYNC' }, ({ payload }) => {
-        this.emit('COACH_STATE_SYNC', cleanCode, payload);
+        try {
+          this.emit('COACH_STATE_SYNC', cleanCode, payload);
+        } catch (err) {
+          console.error('[roomBus] COACH_STATE_SYNC broadcast error shielded:', err);
+        }
       });
 
       ch.on('broadcast', { event: 'BROKER_STATE_SYNC' }, ({ payload }) => {
-        this.emit('BROKER_STATE_SYNC', cleanCode, payload);
+        try {
+          this.emit('BROKER_STATE_SYNC', cleanCode, payload);
+        } catch (err) {
+          console.error('[roomBus] BROKER_STATE_SYNC broadcast error shielded:', err);
+        }
       });
 
       ch.on('broadcast', { event: 'BROKER_BID_SUBMITTED' }, ({ payload }) => {
-        this.emit('BROKER_BID_SUBMITTED', cleanCode, payload);
+        try {
+          this.emit('BROKER_BID_SUBMITTED', cleanCode, payload);
+        } catch (err) {
+          console.error('[roomBus] BROKER_BID_SUBMITTED broadcast error shielded:', err);
+        }
       });
 
       ch.on('broadcast', { event: 'COACH_PICK_SUBMITTED' }, ({ payload }) => {
-        this.emit('COACH_PICK_SUBMITTED', cleanCode, payload);
+        try {
+          this.emit('COACH_PICK_SUBMITTED', cleanCode, payload);
+        } catch (err) {
+          console.error('[roomBus] COACH_PICK_SUBMITTED broadcast error shielded:', err);
+        }
       });
 
       ch.on('broadcast', { event: 'ROOM_CLOSED' }, ({ payload }) => {
-        this.emit('ROOM_CLOSED', cleanCode, payload || {});
+        try {
+          this.emit('ROOM_CLOSED', cleanCode, payload || {});
+        } catch (err) {
+          console.error('[roomBus] ROOM_CLOSED broadcast error shielded:', err);
+        }
       });
 
       ch.on('broadcast', { event: 'ROOM_TERMINATED' }, ({ payload }) => {
-        this.emit('ROOM_TERMINATED', cleanCode, payload || {});
+        try {
+          this.emit('ROOM_TERMINATED', cleanCode, payload || {});
+        } catch (err) {
+          console.error('[roomBus] ROOM_TERMINATED broadcast error shielded:', err);
+        }
       });
 
       ch.on('broadcast', { event: 'room_event' }, ({ payload }) => {
-        if (payload && payload.roomCode) {
-          const cleanIncoming = cleanRoomCode(payload.roomCode);
-          if (cleanIncoming === cleanCode) {
-            if (payload.type === 'STATE_UPDATED' && payload.data) {
-              const state = payload.data as RoomState;
-              // Version gate: never let an older/stale copy overwrite a newer local state
-              if (!isNewerState(state, this.getRoom(cleanCode))) {
-                return;
+        try {
+          if (payload && payload.roomCode) {
+            const cleanIncoming = cleanRoomCode(payload.roomCode);
+            if (cleanIncoming === cleanCode) {
+              if (payload.type === 'STATE_UPDATED' && payload.data) {
+                const state = payload.data as RoomState;
+                // Version gate: never let an older/stale copy overwrite a newer local state
+                if (!isNewerState(state, this.getRoom(cleanCode))) {
+                  return;
+                }
+                this.writeLocal(state);
               }
-              this.writeLocal(state);
+              this.dispatchLocal(payload);
             }
-            this.dispatchLocal(payload);
           }
+        } catch (err) {
+          console.error('[roomBus] room_event broadcast error shielded:', err);
         }
       });
 
       ch.subscribe(async (status: string) => {
+        console.log(`[ROOM_BUS] Channel Status: ${status}`);
         if (status === 'SUBSCRIBED') {
           this.supabaseChannelStates.set(cleanCode, 'SUBSCRIBED');
           this.flushPendingQueue(cleanCode);
@@ -979,6 +1132,18 @@ class RoomBus {
               } catch {}
             }
           }
+
+          // Flush any queued broadcasts that were attempted before subscription
+          const queue = this.pendingBroadcasts.get(cleanCode);
+          if (queue && queue.length > 0) {
+            while (queue.length > 0) {
+              const item = queue.shift();
+              if (item) {
+                this.broadcast(cleanCode, item.event, item.payload);
+              }
+            }
+          }
+
           // (Re)connected: hosts push their state, clients ask for the latest one
           if (this.isHosting(cleanCode)) {
             const local = this.getRoom(cleanCode);
@@ -1241,7 +1406,9 @@ class RoomBus {
     this.emit(eventName as any, clean, data);
 
     const ch = this.ensureSupabaseChannel(clean);
-    if (ch) {
+    const isSubscribed = this.supabaseChannelStates.get(clean) === 'SUBSCRIBED' && ch?.state === 'joined';
+
+    if (ch && isSubscribed) {
       try {
         await ch.send({
           type: 'broadcast',
@@ -1251,6 +1418,12 @@ class RoomBus {
       } catch (err) {
         console.warn(`[roomBus] broadcast error for ${eventName}:`, err);
       }
+    } else {
+      // Channel not yet strictly SUBSCRIBED: queue safely to prevent deprecated REST fallback warning
+      if (!this.pendingBroadcasts.has(clean)) {
+        this.pendingBroadcasts.set(clean, []);
+      }
+      this.pendingBroadcasts.get(clean)!.push({ event: eventName, payload: data });
     }
   }
 
@@ -2596,9 +2769,22 @@ class RoomBus {
   // --- Flag Game Specific Methods ---
 
   
-  public setPlayerReady(roomId: string, playerId: string, isReady: boolean): boolean {
-    const clean = cleanRoomCode(roomId);
-    const room = this.getRoom(clean);
+  public setPlayerReady(roomIdOrPlayerId: string, playerIdOrReady: string | boolean, isReadyParam?: boolean): boolean {
+    let clean = '';
+    let playerId = '';
+    let isReady = false;
+
+    if (typeof playerIdOrReady === 'boolean') {
+      clean = this.currentRoomCode || '';
+      playerId = roomIdOrPlayerId;
+      isReady = playerIdOrReady;
+    } else {
+      clean = cleanRoomCode(roomIdOrPlayerId);
+      playerId = String(playerIdOrReady);
+      isReady = Boolean(isReadyParam);
+    }
+
+    const room = clean ? this.getRoom(clean) : null;
     if (room) {
       const p = room.players.find((pl) => pl.id === playerId);
       if (p) {
@@ -2623,7 +2809,9 @@ class RoomBus {
         return isReady;
       }
     }
-    this.broadcastPlayerReadyUpdate(clean, playerId, isReady);
+    if (clean) {
+      this.broadcastPlayerReadyUpdate(clean, playerId, isReady);
+    }
     return isReady;
   }
 
@@ -4387,7 +4575,8 @@ class RoomBus {
   }
 }
 
-export const roomBus = new RoomBus();
+export const roomBus: RoomBus =
+  (typeof window !== 'undefined' && (window as any).__SHABAH_BUS__) || new RoomBus();
 
 export function useRoom(roomId: string | undefined) {
   const [room, setRoom] = useState<RoomState | null>(() => (roomId ? roomBus.getRoom(roomId) : null));
