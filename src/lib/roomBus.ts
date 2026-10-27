@@ -316,9 +316,17 @@ class RoomBus {
     ]);
 
     if (!ch || !isSubscribed) {
-      if (!AUTO_SYNC_EVENTS.has(event)) {
-        console.warn(`[roomBus] Channel not subscribed for ${event} in room ${cleanCode}. Dropping broadcast.`);
+      if (AUTO_SYNC_EVENTS.has(event)) {
+        // Auto-sync states are continuously refreshed, safe to drop when disconnected
+        return;
       }
+
+      console.warn(`[ROOM_BUS] Channel not yet subscribed. Queuing broadcast for "${event}" in room ${cleanCode}...`);
+      const existingQueue = this.pendingBroadcasts.get(cleanCode) || [];
+      // Deduplicate: keep only the latest payload for the same event to avoid stale spam
+      const filteredQueue = existingQueue.filter((item) => item.event !== event);
+      filteredQueue.push({ event, payload });
+      this.pendingBroadcasts.set(cleanCode, filteredQueue);
       return;
     }
 
@@ -1532,10 +1540,14 @@ class RoomBus {
           // Flush any queued broadcasts that were attempted before subscription
           const queue = this.pendingBroadcasts.get(cleanCode);
           if (queue && queue.length > 0) {
-            while (queue.length > 0) {
-              const item = queue.shift();
+            console.log(`[ROOM_BUS] Flushing ${queue.length} queued broadcasts for room ${cleanCode}...`);
+            const pendingItems = [...queue];
+            this.pendingBroadcasts.set(cleanCode, []);
+
+            for (const item of pendingItems) {
               if (item) {
-                this.broadcast(cleanCode, item.event, item.payload);
+                console.log(`[ROOM_BUS] Flushing queued broadcast "${item.event}"...`);
+                this.safeBroadcast(cleanCode, item.event, item.payload);
               }
             }
           }
