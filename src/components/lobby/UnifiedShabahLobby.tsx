@@ -206,7 +206,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
       ? propIsReady
       : Boolean(localPlayers.find((p) => p.id === currentPlayerId)?.isReady);
 
-  const { connectedPlayers: realtimePlayers, updateReadyState } = useRoomSync({
+  const { connectedPlayers: realtimePlayers, updateReadyState, isSocketReady } = useRoomSync({
     roomCode: cleanCode,
     role,
     playerId: currentPlayerId,
@@ -214,36 +214,22 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
     isReady: currentContestantReady,
   });
 
-  // Reset local and broadcasted readiness on lobby mount / return
+  // Reset local state on lobby mount / return without emitting premature network broadcasts
   useEffect(() => {
     setLocalPlayers((prev) => prev.map((p) => ({ ...p, isReady: false })));
-    if (role === 'contestant' && currentPlayerId) {
-      updateReadyState(false);
-      roomBus.broadcast(cleanCode, 'PLAYER_READY_UPDATE', {
-        playerId: currentPlayerId,
-        isReady: false,
-      });
-    }
   }, []);
 
   // Handle return to lobby event across devices
   useEffect(() => {
-    const unsubReturn = roomBus.on('RETURN_TO_LOBBY', async () => {
+    const unsubReturn = roomBus.on('RETURN_TO_LOBBY', () => {
       setAutoStartCountdown(null);
       setGameStartedNotification(false);
       setLocalPlayers((prev) => prev.map((p) => ({ ...p, isReady: false })));
-      if (role === 'contestant' && currentPlayerId) {
-        await updateReadyState(false);
-        roomBus.broadcast(cleanCode, 'PLAYER_READY_UPDATE', {
-          playerId: currentPlayerId,
-          isReady: false,
-        });
-      }
     });
     return () => {
       unsubReturn();
     };
-  }, [cleanCode, role, currentPlayerId, updateReadyState]);
+  }, []);
 
   const sourcePlayers =
     realtimePlayers.length > 0
@@ -641,14 +627,17 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                 <div className="flex flex-col gap-2.5 w-full">
                   <button
                     type="button"
+                    disabled={!isSocketReady}
                     onClick={handleContestantToggleReady}
-                    className={`w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] cursor-pointer ${
-                      currentContestantReady
-                        ? 'bg-white text-[#0A0A0A] border-[3px] border-[#0A0A0A] hover:bg-neutral-100'
-                        : 'shabah-btn-black'
+                    className={`w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] ${
+                      !isSocketReady
+                        ? 'bg-neutral-200 text-neutral-500 cursor-not-allowed border-2 border-neutral-300 opacity-60'
+                        : currentContestantReady
+                        ? 'bg-white text-[#0A0A0A] border-[3px] border-[#0A0A0A] hover:bg-neutral-100 cursor-pointer'
+                        : 'shabah-btn-black cursor-pointer'
                     }`}
                   >
-                    {currentContestantReady ? 'إلغاء الجاهزية' : 'أنا جاهز'}
+                    {!isSocketReady ? 'جاري الاتصال بالسيرفر...' : currentContestantReady ? 'إلغاء الجاهزية' : 'أنا جاهز'}
                   </button>
 
                   {isHostRole && (

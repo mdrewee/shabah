@@ -206,6 +206,7 @@ export function useRoomSync(
     connectedPlayers,
     allPlayers: connectedPlayers,
     channel: roomBus.getSupabaseChannel(cleanCode),
+    isSocketReady: roomBus.isChannelSubscribed(cleanCode),
     updateReadyState,
     setPlayerReady: updateReadyState,
     broadcast: async (event: string, payload: any = {}) => {

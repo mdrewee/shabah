@@ -321,7 +321,7 @@ class RoomBus {
         return;
       }
 
-      console.warn(`[ROOM_BUS] Channel not yet subscribed. Queuing broadcast for "${event}" in room ${cleanCode}...`);
+      console.log(`[ROOM_BUS] Buffering "${event}" until SUBSCRIBED for room ${cleanCode}...`);
       const existingQueue = this.pendingBroadcasts.get(cleanCode) || [];
       // Deduplicate: keep only the latest payload for the same event to avoid stale spam
       const filteredQueue = existingQueue.filter((item) => item.event !== event);
@@ -994,6 +994,13 @@ class RoomBus {
   public getSupabaseChannel(roomCode: string): any {
     const clean = cleanRoomCode(roomCode);
     return this.supabaseChannels.get(clean) || null;
+  }
+
+  public isChannelSubscribed(roomCode?: string): boolean {
+    const clean = cleanRoomCode(roomCode || this.currentRoomCode || '');
+    if (!clean) return false;
+    const ch = this.supabaseChannels.get(clean);
+    return this.supabaseChannelStates.get(clean) === 'SUBSCRIBED' && ch?.state === 'joined';
   }
 
   public ensureSupabaseChannel(roomCode: string, player?: { id: string; name: string; isHost?: boolean; isReady?: boolean }) {
