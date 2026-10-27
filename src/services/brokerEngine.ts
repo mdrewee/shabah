@@ -1,5 +1,6 @@
 import { generateWithGemini } from '../config/gemini';
-import { BrokerItem } from '../pages/games/broker/types';
+import { BrokerItem } from '../data/brokerItems';
+import { toArabicDigits } from '../pages/games/broker/brokerUtils';
 
 export interface BrokerEvaluationResult {
   persuasionScore: number; // 1 to 10
@@ -11,7 +12,7 @@ export interface BrokerEvaluationResult {
 }
 
 // -------------------------------------------------------------
-// 1. Local Zero-Token Guardrails
+// 1. Local Zero-Token Guardrails (STRICT ZERO EMOJI)
 // -------------------------------------------------------------
 
 const RELIGIOUS_REGEX = /(دين|شريعة|صدقة|لوجه الله|ثواب|بالله|حلف|أقسم|يتيم|مسجد|حرام عليك|تصدق)/i;
@@ -40,7 +41,7 @@ const CRAZY_PRICE_QUIPS = [
   'نهاية اسمي بن طلال عشان أرمي الملايين في خردة؟',
   'ما تبي أصرف على أهلك بعد؟',
   'شوقر دادي قدامك تحسبني؟',
-  'والله حلوة النكتة 😂 بس ارجع للأرض يا بعدي!',
+  'والله حلوة النكتة بس ارجع للأرض يا بعدي!',
   'تبي أنقص سومتي على ذا السعر الفضائي؟',
   'شين وقوي عين.. اصحى يا نايم!',
 ];
@@ -48,10 +49,10 @@ const CRAZY_PRICE_QUIPS = [
 const TRIVIAL_PRICE_REGEX = /(ريال|ريالين|نص ريال|هللة|هللات|قروش|كم فلس)/i;
 const TRIVIAL_PRICE_QUIPS = [
   'صدقة يعني ولا وشو؟ خردتي أغلى من كذا!',
-  'حتى الفقير ما يقبلها! هات سومة تسوى!',
-  'يلا بزيدك لوجه الله بس لا تعيد هالسومات المقروطة!',
+  'حتى المسكين ما يقبلها! هات سومة تسوى!',
+  'يلا بزيدك بس لا تعيد هالسومات المقروطة!',
   'الله يعطينا ويعطيك.. وفرها بجيبك واشتر لك عصير ربيع!',
-  'بوس يدي 🫳🏻 وأعطيك إياها!',
+  'بوس يدي وأعطيك إياها!',
   'لا ما راح تفوز بهالريال، كبّر راسك وسوم زي الناس!',
 ];
 
@@ -82,63 +83,111 @@ function checkLocalGuardrails(pitch: string): { matches: boolean; quip: string }
 }
 
 // -------------------------------------------------------------
-// 2. Deterministic Server-Side Bid Increment Calculation
+// 2. Increments calculation based on item tiers
 // -------------------------------------------------------------
 
-function calculateIncrement(score: number, isFirstBid: boolean): number {
+function calculateTierIncrement(
+  score: number,
+  tiers: BrokerItem['incrementTiers']
+): number {
   if (score < 4) {
-    return 0;
+    return tiers.weak; // 0
   }
-
   if (score >= 4 && score <= 6) {
-    // Moderate increment: +150 to +350
-    const steps = [150, 200, 250, 300, 350];
-    const base = steps[Math.floor(Math.random() * steps.length)];
-    return isFirstBid ? base + 100 : base;
+    return tiers.medium;
   }
+  if (score >= 7 && score <= 8) {
+    return tiers.strong;
+  }
+  return tiers.legendary; // 9-10
+}
 
-  // Massive jump: +500 to +1,200
-  const jumps = [500, 600, 750, 850, 1000, 1200];
-  const jump = jumps[Math.floor(Math.random() * jumps.length)];
-  return isFirstBid ? Math.max(jump, 600) : jump;
+function stripEmojis(text: string): string {
+  return (text || '').replace(
+    /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1FA00}-\u{1FAFF}]/gu,
+    ''
+  ).trim();
+}
+
+function extractBidAmountFromPitch(pitch: string, baseline: number): number {
+  if (!pitch) return baseline;
+  const western = pitch.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+  const matches = western.match(/\b\d{2,7}\b/g);
+  if (matches && matches.length > 0) {
+    const lastNum = parseInt(matches[matches.length - 1], 10);
+    if (!isNaN(lastNum) && lastNum > 0) return lastNum;
+  }
+  return baseline;
+}
+
+function cleanAndParseJSON(rawText: string): any {
+  if (!rawText) return null;
+  let cleaned = rawText.trim();
+  if (cleaned.includes('```')) {
+    cleaned = cleaned.replace(/```(?:json)?([\s\S]*?)```/gi, '$1').trim();
+  }
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  }
+  return JSON.parse(cleaned);
 }
 
 // -------------------------------------------------------------
-// 3. Fallback Engine (when offline or network blip occurs)
+// 3. Fallback Heuristic Engine (Offline / Network blip)
 // -------------------------------------------------------------
 
 function generateOfflineBrokerResponse(
   item: BrokerItem,
   pitch: string,
   currentBid: number,
-  isFirstBid: boolean
+  playerName: string,
+  isOpening = false
 ): BrokerEvaluationResult {
   const len = pitch.trim().length;
 
+  if (isOpening) {
+    const isClever = len >= 20;
+    const openingPrice = isClever
+      ? item.openingBaseline + item.incrementTiers.medium
+      : Math.max(10, Math.floor(item.openingBaseline * 0.7));
+
+    return {
+      persuasionScore: isClever ? 8 : 4,
+      reply: isClever
+        ? `أرحبو يا ${playerName}! فتحة باب طيبة وجازت لي بـ ${toArabicDigits(openingPrice)} ريال!`
+        : `سومة لك عليها يا ${playerName} بس مشيناها فتحة باب بـ ${toArabicDigits(openingPrice)} ريال!`,
+      bidIncrease: openingPrice,
+      newBid: openingPrice,
+      soundFx: 'cash',
+      publicAnnouncement: `افتتح ${playerName} السوم بـ ${toArabicDigits(openingPrice)} ريال!`,
+    };
+  }
+
   let score = 5;
-  if (len < 6) score = 2;
+  if (len < 8) score = 2;
   else if (len > 35) score = 8;
   else score = Math.floor(Math.random() * 4) + 4; // 4 to 7
 
-  if (isFirstBid) {
-    score = Math.max(score, 6);
-  }
-
-  const inc = calculateIncrement(score, isFirstBid);
+  const inc = calculateTierIncrement(score, item.incrementTiers);
   const soundFx: 'cash' | 'buzz' = inc > 0 ? 'cash' : 'buzz';
 
   let reply = '';
   let announcement = '';
 
   if (inc === 0) {
-    reply = `سمعت كلامك وما جاز لي أبداً.. السلعة فيها ${item.fatalFlaw} وما أقنعتني أفك جيبي!`;
-    announcement = 'الشريطي يرفض سومة أحدهم بقوة!';
-  } else if (inc < 500) {
-    reply = `أعجبني كلامك شوي.. عشان كذا بزودك سومة خفيفة قدرها ${inc} ريال!`;
-    announcement = 'سومة طيبة دخلت الحراج!';
+    reply = `سمعت كلامك وما جاز لي أبداً.. السلعة فيها "${item.flaw}" وما أقنعتني أفك جيبي!`;
+    announcement = `الشريطي صدم ${playerName} ورفض الزيادة!`;
+  } else if (inc === item.incrementTiers.medium) {
+    reply = `كلام منطقي.. مشّيتها لك ورفعت السوم +${toArabicDigits(inc)} ريال!`;
+    announcement = `سومة جديدة من ${playerName} بـ +${toArabicDigits(inc)} ريال!`;
+  } else if (inc === item.incrementTiers.strong) {
+    reply = `حجة قوية وذكية منك! تستاهل رفع السوم +${toArabicDigits(inc)} ريال!`;
+    announcement = `قفزة قوية في السوم من ${playerName} (+${toArabicDigits(inc)} ريال)!`;
   } else {
-    reply = `يا ساتر عليك يا الذيب! عذرك أسطوري وأقنعتني.. خذ لك زيادة دسمة ${inc} ريال!`;
-    announcement = 'سومة دسمة جديدة زلزلت الحراج!';
+    reply = `يا ساتر عليك يا الشريطي المحنّك! عذرك أسطوري وضحكتني.. خذ لك +${toArabicDigits(inc)} ريال!`;
+    announcement = `زلزال في الحراج! سومة أسطورية من ${playerName} (+${toArabicDigits(inc)} ريال)!`;
   }
 
   return {
@@ -152,7 +201,7 @@ function generateOfflineBrokerResponse(
 }
 
 // -------------------------------------------------------------
-// 4. Main Broker Engine (Guardrails + Gemini Flash + Sync)
+// 4. Main Broker Engine (Guardrails + Opening baseline + Gemini Flash)
 // -------------------------------------------------------------
 
 export async function evaluateBrokerPitch(params: {
@@ -162,7 +211,7 @@ export async function evaluateBrokerPitch(params: {
   isFirstBid: boolean;
   playerName: string;
 }): Promise<BrokerEvaluationResult> {
-  const { item, pitch, currentBid, isFirstBid } = params;
+  const { item, pitch, currentBid, isFirstBid, playerName } = params;
 
   // Step 1: Check Local Zero-Token Guardrails
   const guardrailMatch = checkLocalGuardrails(pitch);
@@ -173,83 +222,137 @@ export async function evaluateBrokerPitch(params: {
       bidIncrease: 0,
       newBid: currentBid,
       soundFx: 'buzz',
-      publicAnnouncement: 'الشريطي قصف جبهة أحدهم بسبب سومة مخالفة!',
+      publicAnnouncement: `الشريطي قصف جبهة ${playerName} بسبب مخالفة أصول الحراج!`,
     };
   }
 
-  // Step 2: System Prompt for Gemini Flash
-  const systemPrompt = `
-أنت "الشبح الشريطي" (The Shabah Broker) في لعبة حراج جماعية سعودية شهيرة وساخرة.
-أنت شريطي محنّك، ذكي، ساخر، بخيل بطبعه، لكنك تقدّر الذكاء والفكاهة وسرعة البديهة.
-السلعة المعروضة للبيع حالياً:
-- اسم السلعة: "${item.name}"
-- العيب القاتل في السلعة: "${item.fatalFlaw}"
-- فتحة السوم الأصلية: ${item.openingBid} ريال.
+  const isOpening = isFirstBid || currentBid === 0;
+  const estimatedValue = item.estimatedValue || item.openingBaseline * 4;
+  const bidAmount = extractBidAmountFromPitch(pitch, item.openingBaseline);
 
-قواعد التحكيم الصارمة:
-1. "فتحة السوم": إذا كانت هذه السومة الأولى للمتسابق (${isFirstBid ? 'نعم أول سومة' : 'لا ليست الأولى'})، كن سهلاً ومتحمساً وأعطه تقييماً مشجعاً لبدء المزاد (persuasion_score بين 6 و 9).
-2. "الفكاهة والإقناع": إذا كان كلام المتسابق مضحكاً جداً، ذكياً، أو لف على العيب القاتل بحيلة طريفة، كافئه بتقييم عالي جداً (8 إلى 10).
-3. "البرود والتفاهة": إذا كتب كلاماً عادياً أو طلب الزيادة بدون أي سبب، ارفض أو أعطه تقييماً ضعيفاً (1 إلى 3).
-4. الرد (reply): يجب أن يكون بالعامية السعودية الحجازية أو النجدية الساخرة الودودة، بجملة إلى جملتين كحد أقصى (لا تتفلسف).
+  let systemPrompt = '';
+  let userPrompt = '';
 
-يجب أن يكون الناتج حصراً بصيغة JSON التالية:
+  if (isOpening) {
+    systemPrompt = `أنت "الشريطي" في حراج سيارات وسلع مستعملة سعودي. خبير، ذيبان، وتفهم الحجج.
+السلعة المعروضة: ${item.name}
+القيمة التقديرية الحقيقية بالسوق: ${estimatedValue} ريال.
+
+المتسابق: ${playerName}
+فتحة الباب المقترحة منه: ${bidAmount} ريال.
+كلامه وحجته لفتحة الباب: "${pitch}"
+
+القواعد الشريطية لفتحة الباب:
+1. ممنوع إعطاء نفس السعر لجميع المتسابقين؛ السعر يعتمد على كلام المتسابق وأسلوبه.
+2. التساهل المقبول: إذا كتب المتسابق كلاماً فيه أسلوب شريطي، أو مدح السلعة بذكاء، أو بين عيباً خفيفاً حقيقياً بشكل فكاهي -> تساهل معه واقبل فتحة بابه أو عدلها تعديلاً طفيفاً مشجعاً.
+3. الرفض الصارم والكسر: إذا كان كلامه تسليكياً أو حجته ضعيفة جداً ("كذا بس"، "فلوسي كذا"، "مو مشكلتي") أو بخس السلعة بخساً شنيعاً بريال أو ريالين -> ارفض فتحة بابه برّد ساخر وقاسٍ أو اكسر سومته برقم متدنٍ واطلب منه يعقل سومته!
+4. الرد: سطر واحد مقتضب وساخر بالعامية الحراجية السعودية وبدون أي إيموجي نهائياً.
+
+المطلوب إرجاع JSON:
 {
-  "persuasion_score": number, // من 1 إلى 10
-  "reply": string, // رد الشريطي الساخر بالعامية
-  "sound_fx": "cash" | "buzz" // "cash" إذا كان التقييم >= 4، "buzz" إذا كان مرفوض
-}
-`.trim();
+  "accepted": true أو false,
+  "finalOpeningPrice": السعر المعتمد لفتحة بابه برقم واقعي,
+  "brokerReply": "رد الشريطي المقتضب والساخر بلهجة حراج سعودية صريحة (سطر واحد وبدون إيموجي)"
+}`;
 
-  const userPrompt = `
-كلام المتسابق المساوم للشريطي:
-"${pitch}"
-السومة الحالية الواصل إليها: ${currentBid} ريال.
-احكم عليه فوراً بصيغة JSON.
-`.trim();
+    userPrompt = `حلل فتحة باب المتسابق (${playerName}) على سلعة "${item.name}":
+فتحة بابه: ${bidAmount} ريال.
+كلامه: "${pitch}".
+أرجع JSON فوراً.`;
+  } else {
+    systemPrompt = `أنت "الشريطي" في حراج سعودي. خبير، ذيبان، وتفهم الحجج وأصول البيع.
+السلعة المعروضة: ${item.name}
+العيب القاتل: ${item.flaw}
+السومة الحالية: ${currentBid} ريال.
+
+المتسابق: ${playerName}
+كلامه وحجته لرفع السوم: "${pitch}"
+
+قواعد تقييم السومة:
+1. إذا تعامل مع العيب (${item.flaw}) بذكاء أو فكاهة أو قلب العيب لميزة -> كافئه بزيادة قوية (${item.incrementTiers.strong} إلى ${item.incrementTiers.legendary} ريال).
+2. إذا كان كلامه منطقياً ومقبولاً -> زده زيادة عادية (${item.incrementTiers.medium} ريال).
+3. إذا كان كلامه تسليكياً ("ارفع"، "تكفى"، "زدني") أو كلاماً مكرراً -> لا تزد له شيئاً (زيادة: 0 ريال) مع رد ساخر.
+4. الرد: سطر واحد مقتضب بالعامية الحراجية السعودية وبدون أي إيموجي نهائياً.
+
+المطلوب إرجاع JSON:
+{
+  "persuasionScore": number (من 1 إلى 10),
+  "bidIncrease": number (من فئات الزيادة المحددة),
+  "brokerReply": "رد الشريطي بلهجة سعودية حراجية صريحة وسطر واحد وبدون إيموجي"
+}`;
+
+    userPrompt = `المتسابق (${playerName}) يفاوض لرفع السوم على "${item.name}" (السومة الحالية: ${currentBid} ريال):
+كلامه: "${pitch}".
+أرجع JSON فوراً.`;
+  }
 
   try {
     const rawResponse = await generateWithGemini(userPrompt, {
       systemPrompt,
-      temperature: 0.85,
+      temperature: 0.8,
       maxOutputTokens: 350,
       jsonMode: true,
     });
 
     if (rawResponse) {
-      let parsed: any = null;
-      try {
-        parsed = JSON.parse(rawResponse);
-      } catch {
-        const cleaned = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
-        parsed = JSON.parse(cleaned);
-      }
+      const parsed = cleanAndParseJSON(rawResponse);
 
-      if (parsed && typeof parsed.persuasion_score === 'number') {
-        const score = Math.max(1, Math.min(10, parsed.persuasion_score));
-        const inc = calculateIncrement(score, isFirstBid);
-        const soundFx: 'cash' | 'buzz' = inc > 0 ? 'cash' : 'buzz';
+      if (parsed) {
+        const cleanReply = stripEmojis(parsed.brokerReply || parsed.reply || '');
 
-        let announcement = 'الشريطي يرفض سومة أحدهم بقوة!';
-        if (inc >= 500) {
-          announcement = 'سومة دسمة جديدة زلزلت الحراج!';
-        } else if (inc > 0) {
-          announcement = 'سومة طيبة دخلت في الحراج!';
+        if (isOpening) {
+          const accepted = Boolean(parsed.accepted);
+          const finalPrice = Math.max(
+            0,
+            Number(parsed.finalOpeningPrice ?? (accepted ? item.openingBaseline : 0))
+          );
+
+          if (accepted && finalPrice > 0) {
+            return {
+              persuasionScore: 8,
+              reply: cleanReply || `فتحة باب مقبولة يا ${playerName} بـ ${toArabicDigits(finalPrice)} ريال!`,
+              bidIncrease: finalPrice,
+              newBid: finalPrice,
+              soundFx: 'cash',
+              publicAnnouncement: `افتتح ${playerName} السوم بـ ${toArabicDigits(finalPrice)} ريال!`,
+            };
+          } else {
+            return {
+              persuasionScore: 2,
+              reply: cleanReply || 'هذا بخس مو فتحة باب! اعقل سومتك وتعال كلمني!',
+              bidIncrease: finalPrice,
+              newBid: finalPrice,
+              soundFx: 'buzz',
+              publicAnnouncement: `الشريطي كسر فتحة باب ${playerName} ورفض البخس!`,
+            };
+          }
+        } else {
+          const inc = Math.max(0, Number(parsed.bidIncrease ?? 0));
+          const newBid = currentBid + inc;
+          const soundFx: 'cash' | 'buzz' = inc > 0 ? 'cash' : 'buzz';
+
+          let announcement = `الشريطي صدم ${playerName} ورفض الزيادة!`;
+          if (inc >= item.incrementTiers.strong) {
+            announcement = `قفزة قوية في السوم من ${playerName} (+${toArabicDigits(inc)} ريال)!`;
+          } else if (inc > 0) {
+            announcement = `سومة جديدة من ${playerName} (+${toArabicDigits(inc)} ريال)!`;
+          }
+
+          return {
+            persuasionScore: Number(parsed.persuasionScore) || (inc > 0 ? 6 : 2),
+            reply: cleanReply || (inc > 0 ? `مشيتها لك وزدتك +${toArabicDigits(inc)} ريال!` : 'حجة ضعيفة وما تخارجني!'),
+            bidIncrease: inc,
+            newBid,
+            soundFx,
+            publicAnnouncement: announcement,
+          };
         }
-
-        return {
-          persuasionScore: score,
-          reply: parsed.reply || (inc > 0 ? `تم، رفعت لك السوم +${inc} ريال!` : 'ما أقنعتني، السومة مرفوضة!'),
-          bidIncrease: inc,
-          newBid: currentBid + inc,
-          soundFx,
-          publicAnnouncement: announcement,
-        };
       }
     }
   } catch (err) {
     console.warn('[BrokerEngine] Gemini call failed, using heuristic engine:', err);
   }
 
-  // Step 3: Reliable heuristic fallback
-  return generateOfflineBrokerResponse(item, pitch, currentBid, isFirstBid);
+  // Step 4: Reliable heuristic fallback
+  return generateOfflineBrokerResponse(item, pitch, currentBid, playerName, isOpening);
 }

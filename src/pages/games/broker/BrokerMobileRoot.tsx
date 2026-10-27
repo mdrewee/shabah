@@ -13,22 +13,24 @@ import {
 import {
   BrokerRoomState,
   BrokerChatMessage,
-  BrokerItem,
 } from './types';
 import {
   createInitialBrokerState,
-  getPersistedBrokerState,
 } from './brokerSync';
-import { getRandomBrokerItem } from './brokerItemsBank';
+import { getBrokerItemByIndex } from '../../../data/brokerItems';
 import { formatPriceArabic, toArabicDigits } from './brokerUtils';
 import { evaluateBrokerPitch } from '../../../services/brokerEngine';
+import { BrokerShowcaseStage } from './components/BrokerShowcaseStage';
+import { BrokerRoundWinner } from './components/BrokerRoundWinner';
+import { BrokerFinalPodium } from './components/BrokerFinalPodium';
 import {
   Send,
-  Sparkles,
   AlertTriangle,
   Coins,
   Crosshair,
   TrendingUp,
+  XCircle,
+  Sparkles,
 } from 'lucide-react';
 
 export const BrokerMobileRoot: React.FC = () => {
@@ -57,9 +59,10 @@ export const BrokerMobileRoot: React.FC = () => {
   const [messages, setMessages] = useState<BrokerChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentBid, setCurrentBid] = useState(() => brokerState.currentItem.openingBid);
+  const [currentBid, setCurrentBid] = useState(0); // Starts strictly at 0 SAR
   const [bulletsRemaining, setBulletsRemaining] = useState(7);
   const [isBidFlashing, setIsBidFlashing] = useState(false);
+  const [isReadyForNext, setIsReadyForNext] = useState(false);
 
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -72,61 +75,96 @@ export const BrokerMobileRoot: React.FC = () => {
     scrollToBottom();
   }, [messages, isSubmitting]);
 
+  const currentAuctionItem = brokerState.currentItem;
+  const currentRoundNumber = brokerState.roundNumber;
+  const lastActiveItemKeyRef = useRef<string>('');
+
+  // 1. Dynamic item & round transition refresh
+  useEffect(() => {
+    if (!currentAuctionItem?.id) return;
+    const itemKey = `${currentAuctionItem.id}-${currentRoundNumber}`;
+    if (lastActiveItemKeyRef.current === itemKey) return;
+    lastActiveItemKeyRef.current = itemKey;
+
+    // Reset conversation completely and set the new item's greeting
+    const initialGreeting =
+      (currentAuctionItem as any).openingGreeting ||
+      `أرحبو يا الربع! اليوم جايب لكم ${currentAuctionItem.name}.. قطبة ونظيفة، عطونا فتحة باب تسوى ولا تبخسون السلعة!`;
+
+    setMessages([
+      {
+        id: `msg_initial_${itemKey}_${Date.now()}`,
+        sender: 'broker',
+        text: initialGreeting,
+        timestamp: Date.now(),
+      },
+    ]);
+    setCurrentBid(0);
+    setBulletsRemaining(7);
+    setIsReadyForNext(false);
+  }, [currentAuctionItem?.id, currentAuctionItem?.name, currentAuctionItem?.flaw, currentRoundNumber]);
+
   // Synchronize with host broadcasts
   useEffect(() => {
     const unsubSync = roomBus.on('BROKER_STATE_SYNC', (evt: any) => {
       const payload = evt?.data || evt;
       if (!payload) return;
-
       setBrokerState(payload);
+    });
 
-      // If item changed (new round), reset local chat and bullets
-      if (payload.currentItem && payload.currentItem.id !== brokerState.currentItem.id) {
-        setMessages([
-          {
-            id: `welcome_${Date.now()}`,
-            sender: 'broker',
-            text: `حيّاك الله يا ${playerName}! معروض قدامك "${payload.currentItem.name}". فتحت السوم بـ ${payload.currentItem.openingBid} ريال.. ورني وش بتسوي!`,
-            timestamp: Date.now(),
-          },
-        ]);
-        setCurrentBid(payload.currentItem.openingBid);
-        setBulletsRemaining(7);
+    const unsubNewRound = roomBus.on('BROKER_NEW_ROUND', (evt: any) => {
+      const payload = evt?.data || evt;
+      if (payload?.state) {
+        setBrokerState(payload.state);
+      }
+    });
+
+    const unsubItemSync = roomBus.on('BROKER_ITEM_SYNC', (evt: any) => {
+      const payload = evt?.data || evt;
+      if (payload?.item) {
+        setBrokerState((prev) => ({
+          ...prev,
+          currentItem: payload.item,
+          roundNumber: payload.roundNumber || prev.roundNumber,
+        }));
+      }
+    });
+
+    const unsubGameStart = roomBus.on('GAME_STARTED', (evt: any) => {
+      sound.playSuccess();
+      setIsReadyForNext(false);
+      const payload = evt?.data || evt;
+      if (payload?.state) {
+        setBrokerState(payload.state);
+      } else {
+        setBrokerState((prev) => ({ ...prev, phase: 'SHOWCASE' }));
       }
     });
 
     const unsubLobby = roomBus.on('RETURN_TO_LOBBY', () => {
       setBrokerState((prev) => ({ ...prev, phase: 'LOBBY' }));
+      setIsReadyForNext(false);
+      setCurrentBid(0);
+      setMessages([]);
+      lastActiveItemKeyRef.current = '';
     });
 
     return () => {
       unsubSync();
+      unsubNewRound();
+      unsubItemSync();
+      unsubGameStart();
       unsubLobby();
     };
-  }, [brokerState.currentItem.id, playerName]);
-
-  // Welcome message when entering AUCTION for the first time
-  useEffect(() => {
-    if (brokerState.phase === 'AUCTION' && messages.length === 0) {
-      setMessages([
-        {
-          id: `init_msg_${Date.now()}`,
-          sender: 'broker',
-          text: `أهلاً بك يا ${playerName}! واجهتي هي "${brokerState.currentItem.name}". عيبها واضح لكن إذا عندك لسان حلو بزيدك سومة.. اسكب كلامك!`,
-          timestamp: Date.now(),
-        },
-      ]);
-      setCurrentBid(brokerState.currentItem.openingBid);
-      setBulletsRemaining(7);
-    }
-  }, [brokerState.phase, brokerState.currentItem, playerName, messages.length]);
+  }, []);
 
   // Submit contestant pitch to Shuraiti
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting || bulletsRemaining <= 0) return;
 
-    const pitch = inputText.trim();
+    // Sanitize and enforce maximum character limit (DDoS / Buffer payload protection)
+    const pitch = inputText.trim().slice(0, 200);
     if (!pitch) return;
 
     sound.playClick();
@@ -143,12 +181,12 @@ export const BrokerMobileRoot: React.FC = () => {
     setInputText('');
     setIsSubmitting(true);
 
-    const isFirstBid = messages.filter((m) => m.sender === 'contestant').length === 0;
+    const isFirstBid = messages.filter((m) => m.sender === 'contestant').length === 0 || currentBid === 0;
     const newBullets = Math.max(0, bulletsRemaining - 1);
     setBulletsRemaining(newBullets);
 
     try {
-      // 2. Evaluate with Broker Engine (Local Guardrails + Gemini Flash)
+      // 2. Evaluate with Broker Engine (Local Guardrails + Opening Baseline + Gemini Flash)
       const evaluation = await evaluateBrokerPitch({
         item: brokerState.currentItem,
         pitch,
@@ -159,11 +197,11 @@ export const BrokerMobileRoot: React.FC = () => {
 
       // 3. Audio & Visual Feedback
       if (evaluation.soundFx === 'cash') {
-        sound.playCash();
+        sound.playCash?.();
         setIsBidFlashing(true);
         setTimeout(() => setIsBidFlashing(false), 1200);
       } else {
-        sound.playBuzz();
+        sound.playBuzz?.();
       }
 
       const updatedBid = evaluation.newBid;
@@ -195,20 +233,29 @@ export const BrokerMobileRoot: React.FC = () => {
       });
     } catch (err) {
       console.warn('[BrokerMobile] Pitch evaluation failed:', err);
-      sound.playBuzz();
+      sound.playBuzz?.();
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Contestant marks readiness for next round
+  const handlePlayerReady = () => {
+    const nextReady = !isReadyForNext;
+    setIsReadyForNext(nextReady);
+    roomBus.broadcastPlayerReadyUpdate(roomCode, playerId, nextReady, playerName);
+  };
+
+  // Host mobile starts game
   const handleStartGame = () => {
     sound.playSuccess();
-    const nextItem = getRandomBrokerItem();
+    const firstItem = getBrokerItemByIndex(1);
     const nextState: BrokerRoomState = {
       ...brokerState,
-      phase: 'AUCTION',
+      phase: 'SHOWCASE',
       roundNumber: 1,
-      currentItem: nextItem,
+      totalRounds: 5,
+      currentItem: firstItem,
       winnerId: null,
       winnerName: null,
       winningBid: null,
@@ -237,84 +284,97 @@ export const BrokerMobileRoot: React.FC = () => {
     );
   }
 
-  // Phase 3: Round Winner View (Waiting for next round)
-  if (brokerState.phase === 'ROUND_WINNER') {
-    const isMeWinner = brokerState.winnerId === playerId;
-
+  // Phase 2: Host Pre-round Showcase View (Contestants enter chat & inspection instantly)
+  if (brokerState.phase === 'SHOWCASE' && isPlayerHost) {
     return (
-      <div
-        dir="rtl"
-        className="min-h-screen w-full bg-[#000000] text-[#FFFFFF] flex flex-col items-center justify-center p-6 select-none text-center"
-      >
-        <div className="w-28 h-28 mb-4">
-          <ShabahGhost mood={isMeWinner ? 'happy' : 'judging'} className="w-full h-full" />
-        </div>
-
-        <div className="w-full max-w-sm shabah-border-wrap mb-4">
-          <div className="shabah-border-inner">
-            <div className="shabah-surface p-6">
-              <h2 className="text-xl sm:text-2xl font-black text-[#0A0A0A] mb-2">
-                {isMeWinner ? '🎉 كفو! أنت صيدة الجولة 🎉' : 'انتهى مزاد هذه السلعة!'}
-              </h2>
-              <p className="text-sm font-bold text-neutral-600 mb-4">
-                الفائز: <span className="font-black text-[#0A0A0A]">{brokerState.winnerName}</span>
-              </p>
-              <div className="py-2.5 px-4 rounded-xl bg-emerald-600 text-white font-black text-lg">
-                أعلى سومة: {formatPriceArabic(brokerState.winningBid || 0)}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {isPlayerHost ? (
-          <div className="flex gap-2.5 mt-4 w-full max-w-sm">
-            <button
-              type="button"
-              onClick={() => {
-                sound.playClick();
-                const nextItem = getRandomBrokerItem();
-                const nextState: BrokerRoomState = {
-                  ...brokerState,
-                  phase: 'AUCTION',
-                  roundNumber: brokerState.roundNumber + 1,
-                  currentItem: nextItem,
-                  winnerId: null,
-                  winnerName: null,
-                  winningBid: null,
-                  winningQuote: null,
-                };
-                setBrokerState(nextState);
-                roomBus.broadcastBrokerSync(roomCode, nextState);
-              }}
-              className="flex-1 py-3.5 rounded-xl bg-white text-[#0A0A0A] font-black text-sm hover:bg-neutral-100 cursor-pointer border-2 border-[#0A0A0A] shadow-[2px_2px_0px_#0A0A0A] active:scale-95 transition-transform"
-            >
-              السلعة التالية
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                sound.playClick();
-                roomBus.broadcastReturnToLobby(roomCode);
-              }}
-              className="px-4 py-3.5 rounded-xl bg-neutral-900 border-2 border-white/20 text-white font-black text-sm hover:bg-neutral-800 cursor-pointer active:scale-95 transition-transform"
-            >
-              العودة للوبي
-            </button>
-          </div>
-        ) : (
-          <p className="text-xs text-neutral-400 font-bold animate-pulse mt-2">
-            في انتظار المضيف لبدء جولة وسلعة جديدة...
-          </p>
-        )}
-      </div>
+      <BrokerShowcaseStage
+        item={brokerState.currentItem}
+        roundNumber={brokerState.roundNumber}
+        totalRounds={brokerState.totalRounds}
+        durationSeconds={10}
+        isHost={isPlayerHost}
+        onComplete={() => {
+          if (isPlayerHost) {
+            const nextState: BrokerRoomState = {
+              ...brokerState,
+              phase: 'NEGOTIATION',
+            };
+            setBrokerState(nextState);
+            roomBus.broadcastBrokerSync(roomCode, nextState);
+          }
+        }}
+      />
     );
   }
 
-  // Phase 2: Live Private Auction Chat
+  // Phase 4: Round Winner View
+  if (brokerState.phase === 'ROUND_WINNER') {
+    return (
+      <BrokerRoundWinner
+        item={brokerState.currentItem}
+        roundNumber={brokerState.roundNumber}
+        totalRounds={brokerState.totalRounds}
+        winnerName={brokerState.winnerName || 'أحد المتسابقين'}
+        winningBid={brokerState.winningBid || 0}
+        winningQuote={brokerState.winningQuote || undefined}
+        contestants={Object.values(brokerState.contestantBids)}
+        currentUserId={playerId}
+        isHost={isPlayerHost}
+        onPlayerReady={handlePlayerReady}
+        onNextRound={() => {
+          if (isPlayerHost) {
+            const nextRound = brokerState.roundNumber + 1;
+            if (nextRound > brokerState.totalRounds) {
+              const nextState: BrokerRoomState = {
+                ...brokerState,
+                phase: 'FINAL_PODIUM',
+              };
+              setBrokerState(nextState);
+              roomBus.broadcastBrokerSync(roomCode, nextState);
+            } else {
+              const nextItem = getBrokerItemByIndex(nextRound);
+              const nextState: BrokerRoomState = {
+                ...brokerState,
+                phase: 'SHOWCASE',
+                roundNumber: nextRound,
+                currentItem: nextItem,
+              };
+              setBrokerState(nextState);
+              roomBus.broadcastBrokerSync(roomCode, nextState);
+            }
+          }
+        }}
+        onReturnToLobby={() => {
+          if (isPlayerHost) {
+            roomBus.broadcastReturnToLobby(roomCode);
+          }
+        }}
+      />
+    );
+  }
+
+  // Phase 5: Final 5-Round Podium View
+  if (brokerState.phase === 'FINAL_PODIUM') {
+    return (
+      <BrokerFinalPodium
+        contestants={Object.values(brokerState.contestantBids)}
+        totalRounds={brokerState.totalRounds}
+        isHost={isPlayerHost}
+        onReturnToLobby={() => {
+          if (isPlayerHost) {
+            roomBus.broadcastReturnToLobby(roomCode);
+          }
+        }}
+      />
+    );
+  }
+
+  // Phase 3: Live Private Negotiation Chat (180s)
   return (
     <div
+      key={`${roomCode}-${currentAuctionItem?.id || 'item'}-${currentRoundNumber}`}
       dir="rtl"
-      className="min-h-screen min-h-[100dvh] w-full bg-[#000000] text-[#FFFFFF] flex flex-col justify-between selection:bg-white selection:text-black overflow-hidden"
+      className="min-h-screen min-h-[100dvh] w-full bg-[#000000] text-[#FFFFFF] flex flex-col justify-between selection:bg-white selection:text-black overflow-hidden font-sans"
     >
       {/* 1. Header & Top Data Bar */}
       <header className="w-full bg-[#000000] border-b-2 border-white/10 p-3 flex flex-col gap-2 shrink-0 select-none z-20">
@@ -328,10 +388,18 @@ export const BrokerMobileRoot: React.FC = () => {
               <span className="text-xs font-black text-white block truncate">
                 {brokerState.currentItem.name}
               </span>
-              <span className="text-[10px] text-red-400 flex items-center gap-1 font-bold truncate">
-                <AlertTriangle className="w-3 h-3 shrink-0" />
-                {brokerState.currentItem.fatalFlaw}
-              </span>
+              <div className="flex items-center gap-2 text-[10px] truncate">
+                <span className="text-red-400 flex items-center gap-1 font-bold truncate">
+                  <AlertTriangle className="w-3 h-3 shrink-0" />
+                  {brokerState.currentItem.flaw}
+                </span>
+                {brokerState.currentItem.perk && (
+                  <span className="text-emerald-400 flex items-center gap-1 font-bold truncate">
+                    <Sparkles className="w-3 h-3 shrink-0" />
+                    {brokerState.currentItem.perk}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -344,7 +412,7 @@ export const BrokerMobileRoot: React.FC = () => {
             }`}
           >
             <Crosshair className="w-3.5 h-3.5" />
-            <span>متبقي: {toArabicDigits(bulletsRemaining)}</span>
+            <span>رصاصات: {toArabicDigits(bulletsRemaining)}</span>
           </div>
         </div>
 
@@ -366,15 +434,15 @@ export const BrokerMobileRoot: React.FC = () => {
         </div>
       </header>
 
-      {/* 2. Private Brutalist Chat Stream */}
-      <main className="flex-1 w-full overflow-y-auto p-4 flex flex-col gap-3.5 max-w-2xl mx-auto">
+      {/* 2. Private Brutalist Chat Stream (STRICT font-sans) */}
+      <main className="flex-1 w-full overflow-y-auto p-4 flex flex-col gap-3.5 max-w-2xl mx-auto font-sans">
         {messages.map((msg) => {
           const isContestant = msg.sender === 'contestant';
 
           if (isContestant) {
             return (
               <div key={msg.id} className="flex justify-end w-full">
-                <div className="max-w-[82%] rounded-2xl bg-[#0A0A0A] text-white border-2 border-white/30 p-3.5 shadow-md">
+                <div className="max-w-[85%] rounded-2xl bg-[#0A0A0A] text-white border-2 border-white/30 p-3.5 shadow-md">
                   <p className="text-sm font-bold leading-relaxed">{msg.text}</p>
                 </div>
               </div>
@@ -394,13 +462,15 @@ export const BrokerMobileRoot: React.FC = () => {
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-black text-neutral-500">الشريطي:</span>
                   {msg.bidIncrease !== undefined && msg.bidIncrease > 0 && (
-                    <span className="text-xs font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                      +{toArabicDigits(msg.bidIncrease)} ريال 💸
+                    <span className="text-xs font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                      <TrendingUp className="w-3 h-3 text-emerald-700" />
+                      +{toArabicDigits(msg.bidIncrease)} ريال
                     </span>
                   )}
                   {msg.bidIncrease === 0 && (
-                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-red-100 text-red-700">
-                      مرفوض ❌
+                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-red-100 text-red-700 flex items-center gap-1">
+                      <XCircle className="w-3 h-3 text-red-600" />
+                      مرفوض
                     </span>
                   )}
                 </div>
@@ -416,7 +486,7 @@ export const BrokerMobileRoot: React.FC = () => {
             <div className="w-7 h-7 shrink-0">
               <ShabahGhost mood="judging" className="w-full h-full animate-bounce" />
             </div>
-            <div className="px-4 py-2 rounded-xl bg-white/10 border border-white/20 text-xs font-bold text-neutral-300">
+            <div className="px-4 py-2 rounded-xl bg-white/10 border border-white/20 text-xs font-bold text-neutral-300 font-sans">
               الشريطي يفكر ويحسب السومة...
             </div>
           </div>
@@ -425,8 +495,8 @@ export const BrokerMobileRoot: React.FC = () => {
         <div ref={chatBottomRef} />
       </main>
 
-      {/* 3. Input & Send Box */}
-      <footer className="w-full bg-[#000000] border-t-2 border-white/10 p-3 shrink-0 max-w-2xl mx-auto">
+      {/* 3. Input & Send Box (STRICT font-sans) */}
+      <footer className="w-full bg-[#000000] border-t-2 border-white/10 p-3 shrink-0 max-w-2xl mx-auto font-sans">
         <form onSubmit={handleSendMessage} className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
             <input
@@ -438,29 +508,31 @@ export const BrokerMobileRoot: React.FC = () => {
                   ? 'نفدت رصاصاتك لهذه الجولة!'
                   : isSubmitting
                   ? 'الشريطي يرد عليك...'
+                  : currentBid === 0
+                  ? 'اكتب أول رسالة لافتتاح السوم...'
                   : 'أقنع الشريطي يرفع السومة...'
               }
               maxLength={140}
               disabled={isSubmitting || bulletsRemaining <= 0}
-              className="flex-1 h-12 px-4 rounded-xl bg-neutral-900 border-2 border-white/20 text-white placeholder-neutral-500 text-sm font-bold focus:outline-none focus:border-white transition-colors disabled:opacity-50"
+              className="flex-1 h-12 px-4 rounded-xl bg-neutral-900 border-2 border-white/20 text-white placeholder-neutral-500 text-sm font-bold focus:outline-none focus:border-white transition-colors disabled:opacity-50 font-sans"
             />
 
             <button
               type="submit"
               disabled={!inputText.trim() || isSubmitting || bulletsRemaining <= 0}
-              className="h-12 px-5 rounded-xl font-black bg-white text-[#0A0A0A] hover:bg-neutral-100 active:scale-95 border-2 border-[#0A0A0A] shadow-[2px_2px_0px_#0A0A0A] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center shrink-0"
+              className="h-12 px-5 rounded-xl font-black bg-white text-[#0A0A0A] hover:bg-neutral-100 active:scale-95 border-2 border-[#0A0A0A] shadow-[2px_2px_0px_#0A0A0A] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center shrink-0 font-sans"
             >
               <Send className="w-5 h-5 ml-1 -rotate-90" />
               <span>إرسال</span>
             </button>
           </div>
 
-          {/* Character counter & bullet warning */}
+          {/* Character counter & bullet guidance */}
           <div className="flex items-center justify-between px-1">
             <span className="text-[11px] font-bold text-neutral-500">
               {bulletsRemaining <= 0
-                ? 'انتهت محاولاتك، انتظر إعلان الفائز على الشاشة'
-                : 'أقوى كلام كوميدي أو مقنع يرفع السوم أكثر!'}
+                ? 'انتهت محاولاتك، ترقب الفائز بالجولة'
+                : 'أقوى كلام كوميدي أو ذكي يرفع السوم أكثر!'}
             </span>
 
             <span className="text-[11px] font-mono text-neutral-400">

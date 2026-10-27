@@ -713,8 +713,8 @@ export const DraftMobileView: FC = () => {
         </button>
         <DraftClubPickerModal
           isOpen={isClubModalOpen}
-          selectedClub={selectedClub}
-          onSelect={(club) => {
+          selectedClubId={selectedClub?.id}
+          onSelectClub={(club: any) => {
             setSelectedClub(club);
             sessionStorage.setItem('draft_player_club', JSON.stringify(club));
             setIsClubModalOpen(false);

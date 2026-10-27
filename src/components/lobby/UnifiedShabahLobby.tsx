@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { X, Copy, Check } from 'lucide-react';
+import { X, Copy, Check, Timer, Trophy, Crown } from 'lucide-react';
 import { ShabahGhost, ShabahMood } from '../mascot/ShabahGhost';
 import { QRCodeView } from '../common/QRCodeView';
 import { SHABAH_GAMES } from '../../data/shabahGames';
@@ -14,6 +14,7 @@ export interface ShabahLobbyPlayer {
   id: string;
   name: string;
   isReady?: boolean;
+  isHost?: boolean;
 }
 
 export interface UnifiedShabahLobbyProps {
@@ -31,6 +32,7 @@ export interface UnifiedShabahLobbyProps {
   onToggleReady?: () => void;
   onStartGame?: () => void;
   onKickPlayer?: (playerId: string) => void;
+  onGameSync?: (gameId?: string) => void;
   minPlayers?: number;
   onExit?: () => void;
   extraControls?: React.ReactNode;
@@ -51,6 +53,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
   onToggleReady,
   onStartGame,
   onKickPlayer,
+  onGameSync,
   minPlayers = 1,
   onExit,
   extraControls,
@@ -88,6 +91,13 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
 
   const [gameStartedNotification, setGameStartedNotification] = useState(false);
 
+  // Safe game sync notification
+  useEffect(() => {
+    if (onGameSync) {
+      onGameSync(gameId || matchedGame.id);
+    }
+  }, [gameId, matchedGame.id, onGameSync]);
+
   // Authoritative registration in Supabase for cross-device & mobile discovery
   useEffect(() => {
     if (role === 'host' && cleanCode) {
@@ -115,35 +125,51 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
     const unsubState = roomBus.on('STATE_UPDATED', syncFromRoom);
     const unsubJoin = roomBus.on('PLAYER_JOINED', syncFromRoom);
     const unsubReady = roomBus.on('PLAYER_READY_UPDATE', syncFromRoom);
-    const unsubKick = roomBus.on('PLAYER_KICKED', (evt) => {
-      const kickedId = evt?.data?.playerId || evt?.data;
+    
+    const handleKicked = (evt: any) => {
+      const kickedId = evt?.data?.targetPlayerId || evt?.data?.playerId || evt?.targetPlayerId || evt?.playerId || evt?.data;
       if (role === 'contestant' && kickedId === currentPlayerId) {
         sound.playTick();
+        roomBus.leaveRoom(cleanCode, currentPlayerId);
+        sessionStorage.clear();
+        alert('تم استبعادك من الغرفة بواسطة المضيف.');
         navigate('/');
-      } else {
+      } else if (kickedId) {
+        setConnectedPlayers((prev) => prev.filter((p) => p.id !== kickedId));
         syncFromRoom();
       }
-    });
+    };
 
-    const unsubTerminated = roomBus.on('ROOM_TERMINATED', () => {
+    const unsubForceKick = roomBus.on('FORCE_PLAYER_KICK', handleKicked);
+    const unsubKick = roomBus.on('PLAYER_KICKED', handleKicked);
+    const unsubKickAlt = roomBus.on('KICK_PLAYER', handleKicked);
+
+    const handleTerminated = () => {
       sound.playTick();
+      if (role === 'contestant') {
+        sessionStorage.clear();
+        alert('تم إنهاء اللعبة والعودة للرئيسية');
+      }
       navigate('/');
-    });
+    };
+
+    const unsubTerminated = roomBus.on('ROOM_TERMINATED', handleTerminated);
+    const unsubTerminate = roomBus.on('TERMINATE_ROOM', handleTerminated);
 
     const unsubGameStart = roomBus.on('GAME_STARTED', () => {
       sound.playSuccess();
       setGameStartedNotification(true);
-      if (onStartGame) {
-        onStartGame();
-      }
     });
 
     return () => {
       unsubState();
       unsubJoin();
       unsubReady();
+      unsubForceKick();
       unsubKick();
+      unsubKickAlt();
       unsubTerminated();
+      unsubTerminate();
       unsubGameStart();
     };
   }, [cleanCode, role, currentPlayerId, navigate]);
@@ -187,6 +213,37 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
     playerName: getPersistedPlayerName() || 'متسابق',
     isReady: currentContestantReady,
   });
+
+  // Reset local and broadcasted readiness on lobby mount / return
+  useEffect(() => {
+    setLocalPlayers((prev) => prev.map((p) => ({ ...p, isReady: false })));
+    if (role === 'contestant' && currentPlayerId) {
+      updateReadyState(false);
+      roomBus.broadcast(cleanCode, 'PLAYER_READY_UPDATE', {
+        playerId: currentPlayerId,
+        isReady: false,
+      });
+    }
+  }, []);
+
+  // Handle return to lobby event across devices
+  useEffect(() => {
+    const unsubReturn = roomBus.on('RETURN_TO_LOBBY', async () => {
+      setAutoStartCountdown(null);
+      setGameStartedNotification(false);
+      setLocalPlayers((prev) => prev.map((p) => ({ ...p, isReady: false })));
+      if (role === 'contestant' && currentPlayerId) {
+        await updateReadyState(false);
+        roomBus.broadcast(cleanCode, 'PLAYER_READY_UPDATE', {
+          playerId: currentPlayerId,
+          isReady: false,
+        });
+      }
+    });
+    return () => {
+      unsubReturn();
+    };
+  }, [cleanCode, role, currentPlayerId, updateReadyState]);
 
   const sourcePlayers =
     realtimePlayers.length > 0
@@ -260,6 +317,42 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
     return () => window.clearTimeout(timer);
   }, [totalCount, readyCount]);
 
+  // Requirement: 3-second auto-start when at least 2 players are ready
+  const [autoStartCountdown, setAutoStartCountdown] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (gameStartedNotification) {
+      setAutoStartCountdown(null);
+      return;
+    }
+
+    if (readyCount >= 2) {
+      if (autoStartCountdown === null) {
+        setAutoStartCountdown(3);
+        sound.playTick();
+      }
+
+      const timer = window.setInterval(() => {
+        setAutoStartCountdown((prev) => {
+          if (prev === null) return null;
+          if (prev <= 1) {
+            window.clearInterval(timer);
+            if (isHostRole) {
+              handleHostStartGame();
+            }
+            return 0;
+          }
+          sound.playTick();
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => window.clearInterval(timer);
+    } else {
+      setAutoStartCountdown(null);
+    }
+  }, [readyCount, isHostRole, gameStartedNotification]);
+
   // Requirement 6: Contextual Top Button (إنهاء الغرفة vs خروج)
   const handleTopExitClick = () => {
     sound.playClick();
@@ -284,13 +377,14 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
   };
 
   // Kick Player handler
-  const handleKick = (playerId: string) => {
+  const handleKickPlayer = (playerId: string) => {
     sound.playClick();
     if (onKickPlayer) {
       onKickPlayer(playerId);
-    } else {
-      roomBus.kickPlayer(cleanCode, playerId);
     }
+    // Instant cache pruning from local host state
+    setConnectedPlayers((prev) => prev.filter((p) => p.id !== playerId));
+    roomBus.kickPlayer(cleanCode, playerId);
   };
 
   // Contestant Ready toggle
@@ -322,8 +416,8 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
 
   const joinUrl =
     typeof window !== 'undefined'
-      ? `${window.location.origin}/enter-name?room=${encodeURIComponent(cleanCode)}`
-      : `/enter-name?room=${encodeURIComponent(cleanCode)}`;
+      ? `${window.location.origin}/enter-name?room=${encodeURIComponent(cleanCode)}&game=${encodeURIComponent(matchedGame.id)}`
+      : `/enter-name?room=${encodeURIComponent(cleanCode)}&game=${encodeURIComponent(matchedGame.id)}`;
 
   return (
     <div
@@ -369,9 +463,23 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
 
       {/* 2. Main Content Container */}
       <main className="w-full max-w-3xl mx-auto my-auto py-4 flex flex-col gap-4">
+        {/* 3-Second Auto-Start Countdown Banner on TV / Host */}
+        {autoStartCountdown !== null && autoStartCountdown > 0 && !gameStartedNotification && (
+          <div className="p-4 sm:p-6 rounded-2xl bg-[#0A0A0A] text-white border-2 border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.4)] flex flex-col items-center justify-center text-center gap-2 animate-pulse">
+            <div className="flex items-center gap-2 text-xs sm:text-sm font-black text-emerald-400">
+              <Timer className="w-5 h-5 animate-spin" />
+              <span>جاهزية اللاعبين مكتملة! تبدأ اللعبة تلقائياً خلال:</span>
+            </div>
+            <div className="text-4xl sm:text-6xl font-black font-mono text-emerald-400">
+              {['٠', '١', '٢', '٣', '٤', '٥'][autoStartCountdown] || autoStartCountdown}
+            </div>
+          </div>
+        )}
+
         {gameStartedNotification && (
-          <div className="p-3.5 rounded-2xl bg-emerald-500 text-white font-black text-center text-sm sm:text-base border-2 border-emerald-400">
-            🚀 تم إطلاق بدء اللعبة بنجاح! جاهزية اللوبي مكتملة.
+          <div className="p-3.5 rounded-2xl bg-emerald-500 text-white font-black text-center text-sm sm:text-base border-2 border-emerald-400 flex items-center justify-center gap-2">
+            <Check className="w-5 h-5 text-white stroke-[3] shrink-0" />
+            <span>تم إطلاق بدء اللعبة بنجاح! جاهزية اللوبي مكتملة.</span>
           </div>
         )}
 
@@ -489,10 +597,12 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                           isMe ? 'ring-2 ring-[#A855F7]' : ''
                         }`}
                       >
-                        {/* Status Dot */}
+                        {/* Status Dot: Waiting (dark zinc) vs Ready (glowing emerald) */}
                         <span
-                          className={`w-3 h-3 rounded-full shrink-0 border border-[#0A0A0A] ${
-                            playerReady ? 'bg-[#22C55E]' : 'bg-neutral-400'
+                          className={`w-3 h-3 rounded-full shrink-0 transition-all ${
+                            playerReady
+                              ? 'bg-emerald-500 shadow-[0_0_8px_#10B981]'
+                              : 'bg-zinc-600 border border-zinc-500'
                           }`}
                         />
 
@@ -501,19 +611,15 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                           {player.name}
                         </span>
 
-                        <span className="text-[11px] font-bold text-neutral-600">
-                          {playerReady ? '[جاهز]' : '[ينتظر]'}
-                        </span>
-
                         {/* Host Kick Button [×] */}
-                        {role === 'host' && (
+                        {isHostRole && !player.isHost && player.id !== currentPlayerId && (
                           <button
                             type="button"
-                            onClick={() => handleKick(player.id)}
-                            title={`طرد ${player.name}`}
-                            className="w-5 h-5 rounded-full bg-[#0A0A0A] text-[#FFFFFF] hover:bg-red-600 flex items-center justify-center text-xs font-black transition-colors cursor-pointer mr-0.5"
+                            onClick={() => handleKickPlayer(player.id)}
+                            className="p-1 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer mr-0.5"
+                            title="طرد اللاعب"
                           >
-                            <X className="w-3.5 h-3.5 stroke-[3]" />
+                            <X className="w-4 h-4" />
                           </button>
                         )}
                       </div>

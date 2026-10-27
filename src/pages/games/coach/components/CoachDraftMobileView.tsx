@@ -16,19 +16,26 @@ import {
   SILHOUETTE_SVG,
 } from '../footballDataService';
 import { formatPercent, toArabicNumber } from '../../../../utils/numberFormat';
+import { Search, CheckCircle, AlertCircle, Clock, Check, X } from 'lucide-react';
 import { sound } from '../../../../lib/audio';
-import { Search, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 
 interface CoachDraftMobileViewProps {
   contestantId: string;
   contestantName: string;
   squad: CoachSquad;
   roundNumber: number;
+  totalRounds?: number;
   conditionTitle: string;
   conditionId: string;
   claimedPlayers: Record<string, ClaimedPlayerInfo>;
+  usedPlayersAcrossMatch?: string[];
+  isReadyForNextRound?: boolean;
+  onReadyForNextRound?: () => void;
   onConfirmPick: (slotKey: CoachSlotKey, pick: CoachPlayerPick) => void;
   evaluationResult?: SquadEvaluationResult | null;
+  isMyTurn?: boolean;
+  currentTurnPlayerName?: string;
+  turnSecondsRemaining?: number;
 }
 
 export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
@@ -36,11 +43,18 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
   contestantName,
   squad,
   roundNumber,
+  totalRounds = 5,
   conditionTitle,
   conditionId,
   claimedPlayers,
+  usedPlayersAcrossMatch = [],
+  isReadyForNextRound = false,
+  onReadyForNextRound,
   onConfirmPick,
   evaluationResult,
+  isMyTurn = true,
+  currentTurnPlayerName,
+  turnSecondsRemaining,
 }) => {
   // Determine current active slot based on round number or user manual tap
   const defaultSlot = COACH_SLOTS_ORDER[(roundNumber - 1) % 5] || 'FWD';
@@ -93,7 +107,14 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
     const norm = normalizeFootballSearch(player.name);
     const claim = claimedPlayers[norm];
 
-    // Global player lock check
+    // Global match blocklist check (across all previous rounds)
+    if (usedPlayersAcrossMatch && usedPlayersAcrossMatch.includes(norm)) {
+      setErrorMessage('هذا اللاعب تم استخدامه في جولة سابقة! اختر لاعباً آخر');
+      sound.playTick();
+      return;
+    }
+
+    // Current round player lock check
     if (claim && claim.contestantId !== contestantId) {
       setErrorMessage(`سبقك عليها غيرك! اختاره: ${claim.contestantName}`);
       sound.playTick();
@@ -122,6 +143,14 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
     if (!clean) return;
 
     const norm = normalizeFootballSearch(clean);
+
+    // Global match blocklist check (across all previous rounds)
+    if (usedPlayersAcrossMatch && usedPlayersAcrossMatch.includes(norm)) {
+      setErrorMessage('هذا اللاعب تم استخدامه في جولة سابقة! اختر لاعباً آخر');
+      sound.playTick();
+      return;
+    }
+
     const claim = claimedPlayers[norm];
 
     if (claim && claim.contestantId !== contestantId) {
@@ -194,22 +223,24 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
 
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <span
-                    className={`px-2 py-0.5 rounded font-black text-[10px] ${
+                    className={`px-2 py-0.5 rounded font-black text-[10px] inline-flex items-center gap-1 ${
                       slotEval.isValidCondition
                         ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
                         : 'bg-red-950 text-red-400 border border-red-800'
                     }`}
                   >
-                    {slotEval.isValidCondition ? '✓ شرط' : '✗ شرط'}
+                    {slotEval.isValidCondition ? <Check className="w-2.5 h-2.5" /> : <X className="w-2.5 h-2.5" />}
+                    <span>شرط</span>
                   </span>
                   <span
-                    className={`px-2 py-0.5 rounded font-black text-[10px] ${
+                    className={`px-2 py-0.5 rounded font-black text-[10px] inline-flex items-center gap-1 ${
                       slotEval.isValidPosition
                         ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
                         : 'bg-amber-950 text-amber-400 border border-amber-800'
                     }`}
                   >
-                    {slotEval.isValidPosition ? '✓ مركز' : '✗ مركز'}
+                    {slotEval.isValidPosition ? <Check className="w-2.5 h-2.5" /> : <X className="w-2.5 h-2.5" />}
+                    <span>مركز</span>
                   </span>
                 </div>
               </div>
@@ -223,12 +254,59 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
           evaluationSlots={evaluationResult.slots}
           isCompact
         />
+
+        {/* Next Round Readiness Button (Mobile) */}
+        {onReadyForNextRound && roundNumber < totalRounds && (
+          <button
+            type="button"
+            onClick={() => {
+              sound.playClick();
+              onReadyForNextRound();
+            }}
+            className={`w-full py-4 rounded-2xl font-black text-sm border-2 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 shadow-[2px_2px_0px_#0A0A0A] ${
+              isReadyForNextRound
+                ? 'bg-emerald-600 text-white border-emerald-700 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
+                : 'bg-white text-[#0A0A0A] border-[#0A0A0A] hover:bg-neutral-100'
+            }`}
+          >
+            <CheckCircle className="w-5 h-5" />
+            <span>{isReadyForNextRound ? 'أنت جاهز للجولة التالية!' : 'أنا جاهز للجولة التالية'}</span>
+          </button>
+        )}
       </div>
     );
   }
 
   return (
     <div className="w-full max-w-md mx-auto flex flex-col gap-4 py-2 px-3 select-none">
+      {/* 0. Snake Draft Turn Status Banner */}
+      {!isMyTurn ? (
+        <div className="w-full p-3.5 rounded-2xl bg-zinc-950 border-2 border-zinc-800 text-center flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-2">
+            <Clock className="w-5 h-5 text-amber-400 animate-spin" />
+            <span className="font-sans font-bold text-sm text-zinc-300">
+              دور المتسابق <strong className="text-white underline">{currentTurnPlayerName || 'المنافس'}</strong> يختار...
+            </span>
+          </div>
+          {turnSecondsRemaining !== undefined && (
+            <span className="font-mono text-xs font-black px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-amber-400">
+              {toArabicNumber(turnSecondsRemaining)} ث
+            </span>
+          )}
+        </div>
+      ) : (
+        <div className="w-full p-3.5 rounded-2xl bg-emerald-950/60 border-2 border-emerald-500 text-center flex items-center justify-between shadow-[0_0_20px_rgba(16,185,129,0.2)]">
+          <span className="font-sans font-black text-sm text-emerald-300">
+            دورك الآن! اختر لاعباً يحقق الشرط التكتيكي
+          </span>
+          {turnSecondsRemaining !== undefined && (
+            <span className="font-mono text-xs font-black px-2.5 py-1 rounded-lg bg-black text-emerald-400 border border-emerald-600">
+              {toArabicNumber(turnSecondsRemaining)} ث
+            </span>
+          )}
+        </div>
+      )}
+
       {/* 1. Tactical Slot Selector Pills */}
       <div className="flex items-center justify-between gap-1 p-1.5 bg-neutral-900 border border-neutral-800 rounded-2xl">
         {COACH_SLOTS_ORDER.map((slotKey) => {
@@ -239,6 +317,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
             <button
               key={slotKey}
               type="button"
+              disabled={!isMyTurn}
               onClick={() => {
                 sound.playClick();
                 setSelectedSlot(slotKey);
@@ -250,7 +329,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                   : isFilled
                   ? 'bg-neutral-800 text-neutral-300'
                   : 'text-neutral-500 hover:text-neutral-300'
-              }`}
+              } ${!isMyTurn ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
               {COACH_SLOT_CONFIG[slotKey].label}
               {isFilled && <span className="mr-0.5 text-emerald-400">●</span>}
@@ -278,10 +357,13 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
             <div className="relative w-full">
               <input
                 type="text"
+                disabled={!isMyTurn}
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="ابحث عن لاعب أو اكتب اسمه..."
-                className="w-full h-12 pr-10 pl-4 rounded-xl border-2 border-[#0A0A0A] text-[#0A0A0A] font-black placeholder-neutral-400 focus:outline-none bg-white text-sm"
+                placeholder={isMyTurn ? 'ابحث عن لاعب أو اكتب اسمه...' : 'انتظر دورك للبحث والاختيار...'}
+                className={`w-full h-12 pr-10 pl-4 rounded-xl border-2 border-[#0A0A0A] text-[#0A0A0A] font-black placeholder-neutral-400 focus:outline-none bg-white text-sm ${
+                  !isMyTurn ? 'bg-neutral-100 opacity-60 cursor-not-allowed' : ''
+                }`}
               />
               <Search className="w-5 h-5 text-neutral-400 absolute right-3 top-3.5 pointer-events-none" />
             </div>
@@ -294,8 +376,8 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
               </div>
             )}
 
-            {/* Autocomplete suggestions list */}
-            {suggestions.length > 0 && (
+            {/* Autocomplete suggestions list - Brutalist cards without cutouts img */}
+            {suggestions.length > 0 && isMyTurn && (
               <div className="max-h-48 overflow-y-auto flex flex-col gap-1.5 border-t border-neutral-200 pt-2">
                 {suggestions.map((p) => {
                   const norm = normalizeFootballSearch(p.name);
@@ -306,7 +388,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                     <button
                       key={p.id}
                       type="button"
-                      disabled={isClaimedByOther}
+                      disabled={isClaimedByOther || !isMyTurn}
                       onClick={() => handleSelectSuggestedPlayer(p)}
                       className={`w-full p-2 rounded-xl text-right flex items-center justify-between border transition-all ${
                         isClaimedByOther
@@ -315,16 +397,16 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                       }`}
                     >
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-neutral-100 border border-neutral-300 flex items-center justify-center overflow-hidden shrink-0">
-                          <img
-                            src={p.photoUrl || SILHOUETTE_SVG}
-                            alt={p.name}
-                            onError={(e) => {
-                              (e.currentTarget as HTMLImageElement).src = SILHOUETTE_SVG;
-                            }}
-                            className="w-full h-full object-cover"
-                          />
+                        {/* Brutalist Position & Rating Badge (Zero Cutout img) */}
+                        <div className="w-9 h-9 rounded-xl bg-black border border-zinc-700 flex flex-col items-center justify-center text-white shrink-0">
+                          <span className="font-mono text-[9px] font-bold text-zinc-400 leading-none">
+                            {p.position || 'DEF'}
+                          </span>
+                          <span className="font-mono text-xs font-black text-emerald-400 leading-none mt-0.5">
+                            {p.rating || 85}
+                          </span>
                         </div>
+
                         <div className="flex flex-col">
                           <span className="font-black text-xs sm:text-sm">{p.name}</span>
                           <span className="text-[10px] text-neutral-500">
@@ -338,7 +420,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                           اختاره: {claimedPlayers[norm].contestantName}
                         </span>
                       ) : (
-                        <span className="px-2 py-1 rounded-lg bg-[#0A0A0A] text-white text-[11px] font-black">
+                        <span className="px-2.5 py-1 rounded-lg bg-[#0A0A0A] text-white text-xs font-black">
                           اختيار
                         </span>
                       )}
@@ -348,8 +430,8 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
               </div>
             )}
 
-            {/* CRITICAL RULE: Custom Name Entry Button */}
-            {searchInput.trim().length >= 2 && (
+            {/* Custom Name Entry Button */}
+            {searchInput.trim().length >= 2 && isMyTurn && (
               <button
                 type="button"
                 onClick={handleConfirmCustomName}

@@ -38,7 +38,7 @@ function generateRoomCode(): string {
 export const HomeView: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const gamesSectionRef = useRef<HTMLElement | null>(null);
+  const gamesSectionRef = useRef<HTMLDivElement | null>(null);
 
   // Auto-redirect if URL contains room query (e.g. from QR code scan)
   useEffect(() => {
@@ -228,7 +228,7 @@ export const HomeView: React.FC = () => {
   return (
     <div
       dir="rtl"
-      className="min-h-screen w-full bg-[#000000] text-[#FFFFFF] flex flex-col items-center pb-24 selection:bg-white selection:text-black overflow-x-hidden relative"
+      className="min-h-screen w-full bg-[#000000] text-[#FFFFFF] flex flex-col items-center pb-24 selection:bg-white selection:text-black overflow-x-hidden relative font-home-panorama"
     >
       {/* Matrix Code Wall Spotlight Canvas */}
       <MatrixSpotlightCanvas />

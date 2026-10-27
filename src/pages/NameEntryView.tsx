@@ -130,14 +130,20 @@ export const NameEntryView: React.FC = () => {
           sound.playTick();
           return;
         }
-      } else {
-        await createRoom(targetRoomCode, 'ai-coach', pid);
+      }
+
+      const detectedGame = queryGame
+        ? normalizeGameId(queryGame)
+        : (roomCheckResult?.gameId ? normalizeGameId(roomCheckResult.gameId) : null);
+
+      if (!queryRoom) {
+        await createRoom(targetRoomCode, detectedGame || 'ai-judge', pid);
       }
 
       const existing = roomBus.getRoom(targetRoomCode);
       const room = existing || roomBus.createRoom(targetRoomCode);
-      if (roomCheckResult && (roomCheckResult as any).gameId) {
-        room.selectedGameId = normalizeGameId((roomCheckResult as any).gameId);
+      if (detectedGame) {
+        room.selectedGameId = detectedGame;
         roomBus.writeLocal(room);
       }
 

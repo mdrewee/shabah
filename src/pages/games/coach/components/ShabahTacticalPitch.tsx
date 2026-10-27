@@ -1,4 +1,5 @@
 import React from 'react';
+import { Check, X } from 'lucide-react';
 import { CoachSlotKey, CoachSquad, COACH_SLOT_CONFIG, SlotVerification } from '../types';
 
 interface ShabahTacticalPitchProps {
@@ -53,9 +54,9 @@ export const ShabahTacticalPitch: React.FC<ShabahTacticalPitchProps> = ({
               {slotLabel}
             </span>
 
-            {/* FULL NAME VISIBILITY RULE: NO truncate or ellipsis */}
+            {/* FULL NAME VISIBILITY RULE: Clean font-sans font-bold without clipping */}
             <span
-              className={`font-black text-[#0A0A0A] whitespace-normal break-words text-center leading-tight ${
+              className={`font-sans font-bold text-[#0A0A0A] whitespace-normal break-words text-center leading-tight ${
                 isCompact ? 'text-[11px]' : 'text-xs sm:text-sm'
               }`}
             >
@@ -66,24 +67,26 @@ export const ShabahTacticalPitch: React.FC<ShabahTacticalPitchProps> = ({
             {evalData && (
               <div className="mt-1 flex items-center gap-1">
                 <span
-                  className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-black inline-flex items-center gap-1 ${
                     evalData.isValidCondition
                       ? 'bg-emerald-100 text-emerald-800 border border-emerald-400'
                       : 'bg-red-100 text-red-800 border border-red-400'
                   }`}
                   title={evalData.conditionReason}
                 >
-                  {evalData.isValidCondition ? '✓ شرط' : '✗ شرط'}
+                  {evalData.isValidCondition ? <Check className="w-2.5 h-2.5" /> : <X className="w-2.5 h-2.5" />}
+                  <span>شرط</span>
                 </span>
                 <span
-                  className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-black inline-flex items-center gap-1 ${
                     evalData.isValidPosition
                       ? 'bg-emerald-100 text-emerald-800 border border-emerald-400'
                       : 'bg-amber-100 text-amber-800 border border-amber-400'
                   }`}
                   title={evalData.positionReason}
                 >
-                  {evalData.isValidPosition ? '✓ مركز' : '✗ مركز'}
+                  {evalData.isValidPosition ? <Check className="w-2.5 h-2.5" /> : <X className="w-2.5 h-2.5" />}
+                  <span>مركز</span>
                 </span>
               </div>
             )}

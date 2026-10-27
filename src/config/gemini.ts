@@ -3,10 +3,23 @@ import { supabase } from '../lib/supabaseClient';
 export const GEMINI_API_KEY =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) || '';
 
+export function getGeminiApiKey(): string {
+  return (
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
+    GEMINI_API_KEY ||
+    ''
+  );
+}
+
+export const GEMINI_MODEL = 'gemini-flash-lite-latest';
 const CANDIDATE_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
+  'gemini-flash-lite-latest',
+  'gemini-3.5-flash-lite',
+  'gemini-3.5-flash',
+  'gemini-3.6-flash',
   'gemini-flash-latest',
+  'gemini-3.8-flash',
+  'gemini-2.0-flash',
   'gemini-1.5-flash',
 ];
 
@@ -31,8 +44,10 @@ export async function generateWithGemini(
     jsonMode = false,
   } = options;
 
+  const apiKey = getGeminiApiKey();
+
   // 1. Try Direct Google Generative Language API
-  if (GEMINI_API_KEY) {
+  if (apiKey) {
     for (const model of CANDIDATE_MODELS) {
       try {
         const body: any = {
@@ -53,7 +68,7 @@ export async function generateWithGemini(
           body.generationConfig.responseMimeType = 'application/json';
         }
 
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

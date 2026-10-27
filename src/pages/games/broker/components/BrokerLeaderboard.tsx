@@ -1,7 +1,7 @@
 import React from 'react';
 import { ContestantBidState } from '../types';
 import { formatPriceArabic, getRankOrdinalArabic, toArabicDigits } from '../brokerUtils';
-import { Trophy, Flame, User } from 'lucide-react';
+import { Trophy, Flame, User, Coins } from 'lucide-react';
 
 interface BrokerLeaderboardProps {
   contestants: ContestantBidState[];
@@ -33,7 +33,7 @@ export const BrokerLeaderboard: React.FC<BrokerLeaderboardProps> = ({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {contestants.map((c) => {
-            const isFirst = c.rank === 1;
+            const isFirst = c.rank === 1 && c.currentBid > 0;
             const isHighlighted = highlightedPlayerId === c.playerId;
 
             return (
@@ -92,11 +92,13 @@ export const BrokerLeaderboard: React.FC<BrokerLeaderboardProps> = ({
                   </div>
                 </div>
 
-                {/* Score badge if has points */}
-                {c.totalScore > 0 && (
-                  <div className="mt-2 text-left">
-                    <span className="text-[11px] font-black text-purple-700 bg-purple-100 px-2 py-0.5 rounded-md">
-                      نقاط الفوز: +{toArabicDigits(c.totalScore)}
+                {/* Cumulative Bankroll badge if any */}
+                {c.totalBankroll > 0 && (
+                  <div className="mt-2 flex items-center justify-between text-xs">
+                    <span className="text-neutral-500 font-bold">الرصيد التراكمي:</span>
+                    <span className="font-black text-emerald-700 flex items-center gap-1">
+                      <Coins className="w-3.5 h-3.5" />
+                      {formatPriceArabic(c.totalBankroll)}
                     </span>
                   </div>
                 )}

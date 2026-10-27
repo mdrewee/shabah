@@ -181,12 +181,57 @@ function checkPositionFit(
 }
 
 /**
- * 3. Evaluate a single squad deterministically
+ * Calculate player prestige / power rating (1 to 100)
+ */
+export function getPlayerPrestige(
+  player: FootballPlayer | null,
+  playerName: string
+): number {
+  if (!playerName || playerName.includes('خانة فارغة')) return 0;
+
+  const norm = normalizeFootballSearch(playerName);
+
+  // Elite Tier 1: All-time legends & global superstars (95-100)
+  const TIER_1_SUPERSTARS = [
+    'ميسي', 'كريستيانو رونالدو', 'رونالدو', 'زيدان', 'بنزيما', 'مارادونا', 'بيليه',
+    'رونالدينيو', 'هنري', 'بوفون', 'نوير', 'كاسياس', 'راموس', 'مالديني', 'مودريتش',
+    'كروس', 'دي بروين', 'مبابي', 'هالاند', 'نيمار', 'ليفاندوفسكي', 'سواريز', 'محمد صلاح',
+    'انييستا', 'تشافي', 'كانافارو', 'بويول', 'روبيرتو كارلوس', 'دروغبا', 'ابراهيموفيتش'
+  ];
+  if (TIER_1_SUPERSTARS.some((star) => norm.includes(normalizeFootballSearch(star)))) {
+    return 98;
+  }
+
+  // Elite Tier 2: World Cup / UCL champions & international stars (85-94)
+  const TIER_2_STARS = [
+    'كانتي', 'محرز', 'ماني', 'بونو', 'سالم الدوسري', 'فينيسيوس', 'رودريغو', 'بيلينغهام',
+    'رودري', 'فالفيردي', 'سون', 'هاري كين', 'فان دايك', 'كورتوا', 'اليسون', 'تير شتيغن',
+    'سافيتش', 'نيفيز', 'ميتروفيتش', 'بيرلو', 'كاسيميرو', 'بوسكيتس', 'روديغر', 'حكيمي',
+    'غريزمان', 'اغويرو', 'ديبالا', 'روبن', 'ريبيري', 'فودين', 'ساكا', 'بيركامب', 'شنايدر'
+  ];
+  if (TIER_2_STARS.some((star) => norm.includes(normalizeFootballSearch(star)))) {
+    return 88;
+  }
+
+  // Tier 3: Recognized professional in master DB
+  if (player) {
+    if (player.trophies && player.trophies.length > 0) return 82;
+    if (player.clubs && player.clubs.length > 2) return 76;
+    return 72;
+  }
+
+  // Tier 4: Unknown / custom entry obscure player
+  return 45;
+}
+
+/**
+ * 3. Evaluate a single squad deterministically (40% Condition + 25% Position + 35% Prestige)
  */
 export function evaluateSquad(squad: CoachSquad): SquadEvaluationResult {
   const slots: Record<CoachSlotKey, SlotVerification> = {} as any;
   let validConditionsCount = 0;
   let validPositionsCount = 0;
+  let totalPowerSum = 0;
 
   for (const slotKey of COACH_SLOTS_ORDER) {
     const pick = squad.slots[slotKey];
@@ -200,19 +245,24 @@ export function evaluateSquad(squad: CoachSquad): SquadEvaluationResult {
         isValidPosition: false,
         positionReason: 'خانة فارغة',
         naturalPosition: 'غير محدد',
+        playerPower: 0,
       };
       continue;
     }
 
     const matchedPlayer = resolveFootballerByName(pick.playerName);
 
-    // Pillar 1: Condition
+    // Pillar 1: Condition Fit (Weight: 40% -> +8% each)
     const condResult = checkPlayerCondition(pick.playerName, pick.conditionId, matchedPlayer);
     if (condResult.isValid) validConditionsCount += 1;
 
-    // Pillar 2: Position
+    // Pillar 2: Position Fit (Weight: 25% -> +5% each)
     const posResult = checkPositionFit(slotKey, pick.playerName, matchedPlayer);
     if (posResult.isValid) validPositionsCount += 1;
+
+    // Pillar 3: Player Prestige / Power Tier (Weight: 35%)
+    const power = getPlayerPrestige(matchedPlayer, pick.playerName);
+    totalPowerSum += power;
 
     slots[slotKey] = {
       slotKey,
@@ -222,24 +272,29 @@ export function evaluateSquad(squad: CoachSquad): SquadEvaluationResult {
       isValidPosition: posResult.isValid,
       positionReason: posResult.reason,
       naturalPosition: posResult.naturalPos,
+      playerPower: power,
     };
   }
 
-  // Scoring: Each valid condition = +15% (up to 75%), each valid position = +5% (up to 25%)
-  const conditionPoints = validConditionsCount * 15;
+  // Balanced Formula:
+  // - Condition: 5 slots * 8% = 40%
+  // - Position: 5 slots * 5% = 25%
+  // - Prestige / Power: (avgPower / 100) * 35% = 35%
+  const conditionPoints = validConditionsCount * 8;
   const positionPoints = validPositionsCount * 5;
-  const totalPercentage = Math.min(100, Math.max(0, conditionPoints + positionPoints));
+  const powerPoints = Math.round((totalPowerSum / 5) * 0.35);
+  const totalPercentage = Math.min(100, Math.max(0, conditionPoints + positionPoints + powerPoints));
 
   // Sarcastic Coach Roast generator
   let critique = '';
   if (totalPercentage >= 90) {
-    critique = 'تشكيلة خارقة تكتيكياً وموزونة بالمليمتر! الشبح يرفع لك القبعة.';
+    critique = 'تشكيلة أسطورية تجمع بين تحقيق الشروط وهيبة النجوم والمراكز الموزونة! الشبح يرفع لك القبعة.';
   } else if (totalPercentage >= 70) {
-    critique = 'تشكيلة محترمة لكن فيها هفوة أو رقعة بسيطة ما مشت على الشبح!';
+    critique = 'تشكيلة قوية ومحترمة لكن فيها هفوة نجومية أو رقعة بسيطة ما مشت على الشبح!';
   } else if (totalPercentage >= 40) {
-    critique = 'فريقك فيه عك كروي واضح ومراكز ملخبطة.. محتاج دورة تدريبية عاجلة!';
+    critique = 'فريقك فيه عك كروي واضح، لاعبين مغمورين ومراكز ملخبطة.. محتاج دورة تدريبية عاجلة!';
   } else {
-    critique = 'وش هالعك التكتيكي؟! جايب لي مهاجم حارس ومدافع بالهجوم؟ مردودة بوجهك!';
+    critique = 'وش هالعك التكتيكي؟! خانات فارغة ولاعبين في غير مراكزهم.. الشبح مصدوم من هذا المستوى!';
   }
 
   return {
@@ -248,6 +303,7 @@ export function evaluateSquad(squad: CoachSquad): SquadEvaluationResult {
     totalPercentage,
     conditionPoints,
     positionPoints,
+    powerPoints,
     slots,
     critique,
   };
@@ -290,7 +346,7 @@ export function evaluateAllSquads(squads: Record<string, CoachSquad>): CoachVerd
   const runnerUp = evaluations[1];
   const isTie = Boolean(runnerUp && runnerUp.totalPercentage === winner.totalPercentage);
 
-  const coachBanner = `🏆 بطل التشكيلات: ${winner.playerName} بنسبة قوة ${formatPercent(winner.totalPercentage)}!`;
+  const coachBanner = `بطل التشكيلات: ${winner.playerName} بنسبة قوة ${formatPercent(winner.totalPercentage)}!`;
 
   return {
     evaluations,

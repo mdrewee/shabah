@@ -34,10 +34,15 @@ export function App() {
 
         {/* 3. Official 5 Shabah Games Routes (/game/ai-judge, /game/ai-coach, /game/ai-broker, /game/ai-arabic, /game/ai-guide) */}
         <Route path="/game/:gameId" element={<TVScreenView />} />
+        <Route path="/game/:gameId/tv" element={<TVScreenView />} />
         <Route path="/game/:gameId/:code" element={<TVScreenView />} />
+        <Route path="/game/:gameId/:code/tv" element={<TVScreenView />} />
+        <Route path="/game/:gameId/play" element={<PlayerMobileView />} />
+        <Route path="/game/:gameId/:code/play" element={<PlayerMobileView />} />
 
         {/* 4. Room Host / TV Views for the 5 Games */}
         <Route path="/room/:code" element={<TVScreenView />} />
+        <Route path="/room/:code/tv" element={<TVScreenView />} />
         <Route path="/room/:code/board" element={<TVScreenView />} />
         <Route path="/room/:code/ai/ai-lawyer-tv" element={<TVScreenView />} />
         <Route path="/room/:code/football/draft-5-tv" element={<TVScreenView />} />

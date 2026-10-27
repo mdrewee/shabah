@@ -1,89 +1,10 @@
-import { BrokerItem } from './types';
+import { BROKER_ITEMS, BrokerItem, getBrokerItemByIndex } from '../../../data/brokerItems';
 
-export const BROKER_ITEMS_BANK: BrokerItem[] = [
-  {
-    id: 'camry_2002',
-    name: 'كامري ٢٠٠٢ مقلوبة ٣ مرات',
-    fatalFlaw: 'المكيف يشتغل دقيقة ويفصل، والباب اليمين مربوط بعلاقة ملابس حديد',
-    openingBid: 500,
-    category: 'سيارات خردة',
-    lore: 'البودي مرشوش مطفي عند بنشر بالصناعية، وإذا مشيت ٨٠ تهتز كأنها زلزال',
-  },
-  {
-    id: 'iphone_6_plus',
-    name: 'آيفون ٦ بلس معوّج',
-    fatalFlaw: 'الشاشة ترجف خطوط ملونة، والبطارية تنزل من ١٠٠٪ إلى ١٪ إذا فتحت الكاميرا',
-    openingBid: 50,
-    category: 'إلكترونيات سكراب',
-    lore: 'الزر الرئيسي يعلق ويفتح سيري بنص الليل لحاله',
-  },
-  {
-    id: 'dabbab_98',
-    name: 'دباب صحراوي أربع كفرات موديل ٩٨',
-    fatalFlaw: 'يدخن أبيض من الشكمان وما يلف يسار أبداً (يلف يمين بس)',
-    openingBid: 400,
-    category: 'دبابات ومغامرات',
-    lore: 'الفرامل سلك مسباح، والكرسي خشب مغطى بكيس نفايات أسود',
-  },
-  {
-    id: 'datsun_95',
-    name: 'ددسن ٩٥ غمارة بدون استمارة',
-    fatalFlaw: 'القير يعلق بالثالث وممشاه طاق المليون وشاحط بالطعوس',
-    openingBid: 800,
-    category: 'سيارات قديمة',
-    lore: 'السقف ينقط موية إذا غسلتها، وصوت الشكمان يصحّي الحارة كلها',
-  },
-  {
-    id: 'ps4_jet',
-    name: 'بلايستيشن ٤ صوت مروحة طيارة حربية',
-    fatalFlaw: 'يحتر بعد ربع ساعة ويطرد الشريط بوجهك ويطفي',
-    openingBid: 200,
-    category: 'أجهزة ألعاب',
-    lore: 'إذا شغلته تحس فيه إقلاع طائرة حربية بالصالة',
-  },
-  {
-    id: 'toshiba_fridge',
-    name: 'ثلاجة توشيبا مقاس مترين تصفر',
-    fatalFlaw: 'الفريزر يثلج كأنه القطب الشمالي والباب لازم ترقعه بكتفك عشان يقفل',
-    openingBid: 150,
-    category: 'أجهزة منزلية',
-    lore: 'الكمبروسر يرج البيت رج، وداخلها ريحة بصل من ٢٠١٤',
-  },
-  {
-    id: 'rolex_fake',
-    name: 'ساعة رولكس تقليد درجة عاشرة',
-    fatalFlaw: 'عقرب الثواني يمشي ريوس ومكتوب عليها من ورا صنع في الديرة',
-    openingBid: 30,
-    category: 'إكسسوارات كشخة',
-    lore: 'الجلد لونه يقشر على يدك ويصبغ أزرق',
-  },
-  {
-    id: 'smart_tv_55',
-    name: 'شاشة سمارت ٥٥ بوصة مضروبة',
-    fatalFlaw: 'فيها خط أخضر فسفوري بالنص والصوت كأنه إذاعة أرياف مشوشة',
-    openingBid: 100,
-    category: 'شاشات',
-    lore: 'الريموت ضايع ولازم تقلب القنوات بمفك سكروب',
-  },
-  {
-    id: 'split_ac',
-    name: 'مكيف سبليت ينقط موية حارة',
-    fatalFlaw: 'يبرد الصالة ويغرق الموكيت ويطلع صوت قطار بضائع',
-    openingBid: 120,
-    category: 'أجهزة منزلية',
-    lore: 'الفلتر مليان رمل من عاصفة ٢٠١٦ وما ينظف',
-  },
-  {
-    id: 'mazda_2006',
-    name: 'مازدا زووم ٢٠٠٦ بهتانة',
-    fatalFlaw: 'المراية اليسار ملزقة بتيب شطرطون أزرق والسيارة تطفي عند الإشارات',
-    openingBid: 600,
-    category: 'سيارات خردة',
-    lore: 'الدركسون مايل ٤٥ درجة عشان تمشي سيدة',
-  },
-];
+export const BROKER_ITEMS_BANK: BrokerItem[] = BROKER_ITEMS;
 
 export function getRandomBrokerItem(): BrokerItem {
-  const index = Math.floor(Math.random() * BROKER_ITEMS_BANK.length);
-  return BROKER_ITEMS_BANK[index];
+  const index = Math.floor(Math.random() * BROKER_ITEMS.length);
+  return BROKER_ITEMS[index];
 }
+
+export { getBrokerItemByIndex };

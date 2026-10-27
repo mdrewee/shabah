@@ -1,5 +1,6 @@
 /**
  * Utility functions for Eastern Arabic numerals and pricing in Broker game
+ * STRICT ZERO EMOJI rule enforced
  */
 
 const ARABIC_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
@@ -25,11 +26,11 @@ export function formatIncrementArabic(inc: number): string {
 export function getRankOrdinalArabic(rank: number): string {
   switch (rank) {
     case 1:
-      return 'الأول 🥇';
+      return 'الأول';
     case 2:
-      return 'الثاني 🥈';
+      return 'الثاني';
     case 3:
-      return 'الثالث 🥉';
+      return 'الثالث';
     case 4:
       return 'الرابع';
     case 5:

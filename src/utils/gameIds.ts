@@ -11,11 +11,20 @@ export type ShabahGameCanonicalId =
   | 'ai-arabic'
   | 'ai-guide';
 
-export function normalizeGameId(rawId: string | null | undefined): ShabahGameCanonicalId {
-  if (!rawId) return 'ai-coach';
+export function normalizeGameId(
+  rawId: string | null | undefined,
+  fallback: ShabahGameCanonicalId | null = null
+): ShabahGameCanonicalId | null {
+  if (!rawId) return fallback;
   const clean = rawId.trim().toLowerCase();
 
   switch (clean) {
+    case 'ai-judge':
+    case 'ai-lawyer':
+    case 'judge':
+    case 'lawyer':
+      return 'ai-judge';
+
     case 'ai-coach':
     case 'draft-5':
     case 'draft':
@@ -40,13 +49,7 @@ export function normalizeGameId(rawId: string | null | undefined): ShabahGameCan
     case 'guide':
       return 'ai-guide';
 
-    case 'ai-judge':
-    case 'ai-lawyer':
-    case 'judge':
-    case 'lawyer':
-      return 'ai-judge';
-
     default:
-      return 'ai-coach';
+      return fallback;
   }
 }

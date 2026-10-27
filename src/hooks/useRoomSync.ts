@@ -101,6 +101,7 @@ export function useRoomSync(
         const pId = payload?.playerId;
         const ready = payload?.isReady;
         if (pId) {
+          // Strictly update local React state only. Never call roomBus.setPlayerReady here to prevent infinite loop!
           setConnectedPlayers((prev) =>
             prev.map((p) => (p.id === pId ? { ...p, isReady: Boolean(ready) } : p))
           );
@@ -109,6 +110,56 @@ export function useRoomSync(
         console.error('[useRoomSync] PLAYER_READY_UPDATE error shielded:', err);
       }
     });
+
+    const resetReadiness = () => {
+      try {
+        // Reset readiness in local component state and update roomBus
+        setConnectedPlayers((prev) => prev.map((p) => ({ ...p, isReady: false })));
+        const curPlayerId = playerIdRef.current;
+        if (curPlayerId) {
+          roomBus.setPlayerReady(cleanCode, curPlayerId, false);
+        }
+      } catch (err) {
+        console.error('[useRoomSync] resetReadiness error shielded:', err);
+      }
+    };
+
+    const unsubReturnToLobby = roomBus.on('RETURN_TO_LOBBY', resetReadiness);
+    const unsubGameEnded = roomBus.on('GAME_ENDED', resetReadiness);
+    const unsubGameStarted = roomBus.on('GAME_STARTED', resetReadiness);
+
+    const handleKickReceived = (evt: any) => {
+      const kickedId = evt?.data?.targetPlayerId || evt?.data?.playerId || evt?.targetPlayerId || evt?.playerId || evt?.data;
+      const curPlayerId = playerIdRef.current;
+      if (!isHostRef.current && curPlayerId && kickedId === curPlayerId) {
+        roomBus.leaveRoom(cleanCode, curPlayerId);
+        sessionStorage.clear();
+        alert('تم استبعادك من الغرفة بواسطة المضيف.');
+        window.location.href = '/';
+      } else if (kickedId) {
+        setConnectedPlayers((prev) => prev.filter((p) => p.id !== kickedId));
+      }
+    };
+
+    const handleTerminate = (evt: any) => {
+      const payload = evt?.data ?? evt;
+      if (!isHostRef.current) {
+        const curPlayerId = playerIdRef.current;
+        if (curPlayerId) {
+          roomBus.leaveRoom(cleanCode, curPlayerId);
+        }
+        sessionStorage.clear();
+        localStorage.removeItem('current_room_code');
+        alert(payload?.reason || 'تم إنهاء اللعبة والعودة للرئيسية.');
+        window.location.href = '/';
+      }
+    };
+
+    const unsubForceKick = roomBus.on('FORCE_PLAYER_KICK', handleKickReceived);
+    const unsubKick = roomBus.on('PLAYER_KICKED', handleKickReceived);
+    const unsubKickAlt = roomBus.on('KICK_PLAYER', handleKickReceived);
+    const unsubTerminate = roomBus.on('TERMINATE_ROOM', handleTerminate);
+    const unsubRoomTerminated = roomBus.on('ROOM_TERMINATED', handleTerminate);
 
     // Seed initial players if already present
     try {
@@ -123,6 +174,14 @@ export function useRoomSync(
     return () => {
       unsubPresence();
       unsubReady();
+      unsubReturnToLobby();
+      unsubGameEnded();
+      unsubGameStarted();
+      unsubForceKick();
+      unsubKick();
+      unsubKickAlt();
+      unsubTerminate();
+      unsubRoomTerminated();
     };
   }, [cleanCode, isHost, playerId, playerName]);
 

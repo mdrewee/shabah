@@ -71,10 +71,11 @@ export default <Config>{
         },
       },
       fontFamily: {
-        sans: ['"PanoramaNaskh"', 'system-ui', '-apple-system', 'sans-serif'],
-        display: ['"PanoramaNaskh"', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['"PanoramaNaskh"', 'monospace'],
-        game: ['"PanoramaNaskh"', 'system-ui', '-apple-system', 'sans-serif'],
+        panorama: ['PanoramaNaskh', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
+        display: ['system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
+        mono: ['system-ui', '-apple-system', 'monospace'],
+        game: ['system-ui', '-apple-system', 'sans-serif'],
       },
       boxShadow: {
         'tactile-sm': '2px 2px 0px #0A0A0A',

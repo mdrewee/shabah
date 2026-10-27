@@ -36,6 +36,11 @@ export const CoachLobby: React.FC<CoachLobbyProps> = ({
 
   const handleModeChange = (mode: CoachGameMode) => {
     sound.playClick();
+    if (mode === 'bingo') {
+      import('./coachSync').then(({ generatePreloadedBingoPool }) => {
+        generatePreloadedBingoPool();
+      });
+    }
     setCurrentMode(mode);
     onSelectMode(mode);
   };

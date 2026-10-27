@@ -10,12 +10,14 @@ import {
   savePersistedBrokerState,
   sortAndRankContestants,
 } from './brokerSync';
-import { getRandomBrokerItem } from './brokerItemsBank';
+import { getNextUniqueBrokerItem, getBrokerItemByIndex } from '../../../data/brokerItems';
 import { BrokerTopBar } from './components/BrokerTopBar';
 import { BrokerHeroShowcase } from './components/BrokerHeroShowcase';
 import { BrokerLeaderboard } from './components/BrokerLeaderboard';
 import { BrokerMascotStage } from './components/BrokerMascotStage';
-import { BrokerWinnerView } from './components/BrokerWinnerView';
+import { BrokerShowcaseStage } from './components/BrokerShowcaseStage';
+import { BrokerRoundWinner } from './components/BrokerRoundWinner';
+import { BrokerFinalPodium } from './components/BrokerFinalPodium';
 import { ShabahMood } from '../../../components/mascot/ShabahGhost';
 
 export const BrokerTVRoot: React.FC = () => {
@@ -42,7 +44,7 @@ export const BrokerTVRoot: React.FC = () => {
     savePersistedBrokerState(roomCode, brokerState);
   }, [brokerState, roomCode]);
 
-  const [timerSeconds, setTimerSeconds] = useState(60);
+  const [timerSeconds, setTimerSeconds] = useState(180);
   const [highlightedPlayerId, setHighlightedPlayerId] = useState<string | null>(null);
   const [mascotMood, setMascotMood] = useState<ShabahMood>('judging');
 
@@ -66,10 +68,11 @@ export const BrokerTVRoot: React.FC = () => {
           updatedBids[p.id] = {
             playerId: p.id,
             playerName: p.name || 'متسابق',
-            currentBid: prev.currentItem.openingBid,
+            currentBid: 0,
             bulletsRemaining: 7,
             rank: Object.keys(updatedBids).length + 1,
-            totalScore: 0,
+            totalBankroll: 0,
+            isReadyForNextRound: false,
           };
         }
       });
@@ -108,10 +111,11 @@ export const BrokerTVRoot: React.FC = () => {
         const existing = prev.contestantBids[playerId] || {
           playerId,
           playerName: playerName || 'متسابق',
-          currentBid: prev.currentItem.openingBid,
+          currentBid: 0,
           bulletsRemaining: 7,
           rank: 1,
-          totalScore: 0,
+          totalBankroll: 0,
+          isReadyForNextRound: false,
         };
 
         const updated: ContestantBidState = {
@@ -135,7 +139,6 @@ export const BrokerTVRoot: React.FC = () => {
           rankedMap[c.playerId] = c;
         });
 
-        // Add announcement if available
         const updatedAnnouncements = announcement
           ? [
               ...prev.announcements,
@@ -171,16 +174,48 @@ export const BrokerTVRoot: React.FC = () => {
       }
     });
 
+    // Listen for contestant readiness updates in ROUND_WINNER phase
+    const unsubReady = roomBus.on('PLAYER_READY_UPDATE', (evt: any) => {
+      const payload = evt?.data || evt;
+      if (!payload || !payload.playerId) return;
+
+      setBrokerState((prev) => {
+        if (!prev.contestantBids[payload.playerId]) return prev;
+
+        const updatedBids = {
+          ...prev.contestantBids,
+          [payload.playerId]: {
+            ...prev.contestantBids[payload.playerId],
+            isReadyForNextRound: payload.isReady !== undefined ? payload.isReady : true,
+          },
+        };
+
+        const next = { ...prev, contestantBids: updatedBids };
+        roomBus.broadcastBrokerSync(roomCode, next);
+
+        // Check if all active contestants are ready
+        const allReady = Object.values(updatedBids).every((c: any) => c.isReadyForNextRound);
+        if (allReady && Object.keys(updatedBids).length > 0) {
+          window.setTimeout(() => {
+            handleAdvanceFromRound();
+          }, 800);
+        }
+
+        return next;
+      });
+    });
+
     return () => {
       unsubBid();
+      unsubReady();
     };
   }, [roomCode]);
 
-  // Round Timer Countdown during AUCTION phase
+  // Timer Countdown during NEGOTIATION phase (180 seconds / 3 minutes)
   useEffect(() => {
-    if (brokerState.phase !== 'AUCTION') return;
+    if (brokerState.phase !== 'NEGOTIATION') return;
 
-    setTimerSeconds(60);
+    setTimerSeconds(180);
 
     const interval = window.setInterval(() => {
       setTimerSeconds((prev) => {
@@ -190,7 +225,7 @@ export const BrokerTVRoot: React.FC = () => {
           return 0;
         }
         if (prev === 11) {
-          sound.playTimerWarning();
+          sound.playTimerWarning?.();
         }
         return prev - 1;
       });
@@ -199,19 +234,27 @@ export const BrokerTVRoot: React.FC = () => {
     return () => window.clearInterval(interval);
   }, [brokerState.phase, brokerState.roundNumber]);
 
+  // Round Negotiation Timeout -> Evaluate Winner & Advance to ROUND_WINNER
   const handleRoundTimeout = () => {
     const cur = brokerStateRef.current;
     const ranked = sortAndRankContestants(cur.contestantBids);
 
     if (ranked.length > 0) {
       const winner = ranked[0];
+      const winningAmount = winner.currentBid;
+
       const updatedBids = { ...cur.contestantBids };
       if (updatedBids[winner.playerId]) {
         updatedBids[winner.playerId] = {
           ...updatedBids[winner.playerId],
-          totalScore: (updatedBids[winner.playerId].totalScore || 0) + 5,
+          totalBankroll: (updatedBids[winner.playerId].totalBankroll || 0) + winningAmount,
         };
       }
+
+      // Reset isReadyForNextRound for all
+      Object.keys(updatedBids).forEach((pid) => {
+        updatedBids[pid].isReadyForNextRound = false;
+      });
 
       const nextState: BrokerRoomState = {
         ...cur,
@@ -219,45 +262,47 @@ export const BrokerTVRoot: React.FC = () => {
         contestantBids: updatedBids,
         winnerId: winner.playerId,
         winnerName: winner.playerName,
-        winningBid: winner.currentBid,
-        winningQuote: winner.bestQuote || 'أقنع الشريطي بأعلى سومة في الحراج!',
+        winningBid: winningAmount,
+        winningQuote: winner.bestQuote || 'أقنع الشريطي بالذكاء والسرعة وفاز بالسومة!',
       };
 
       setBrokerState(nextState);
       roomBus.broadcastBrokerSync(roomCode, nextState);
     } else {
-      // No contestants yet, stay in auction or reset
-      setTimerSeconds(60);
+      setTimerSeconds(180);
     }
   };
 
+  // Start Game from Lobby: initialize 5 rounds, item 1, go to SHOWCASE
   const handleStartGame = () => {
     sound.playSuccess();
-    const firstItem = getRandomBrokerItem();
+    const firstItem = getNextUniqueBrokerItem([]);
 
-    // Reset contestant bids for the new item
     const resetBids: Record<string, ContestantBidState> = {};
     mergedContestants.forEach((p, idx) => {
       resetBids[p.id] = {
         playerId: p.id,
         playerName: p.name || 'متسابق',
-        currentBid: firstItem.openingBid,
+        currentBid: 0,
         bulletsRemaining: 7,
         rank: idx + 1,
-        totalScore: 0,
+        totalBankroll: 0,
+        isReadyForNextRound: false,
       };
     });
 
     const nextState: BrokerRoomState = {
       ...brokerState,
-      phase: 'AUCTION',
+      phase: 'SHOWCASE',
       roundNumber: 1,
+      totalRounds: 5,
       currentItem: firstItem,
+      usedItemIds: [firstItem.id],
       contestantBids: resetBids,
       announcements: [
         {
           id: `start_${Date.now()}`,
-          text: `بدأ مزاد السلعة: ${firstItem.name}! فتحة السوم ${firstItem.openingBid} ريال.`,
+          text: `بدأت الجولة الأولى! معاينة السلعة: ${firstItem.name}`,
           timestamp: Date.now(),
         },
       ],
@@ -267,35 +312,78 @@ export const BrokerTVRoot: React.FC = () => {
       winningQuote: null,
     };
 
+    setBrokerState(nextState);
+    roomBus.broadcastGameStarted(roomCode, { gameId: 'ai-broker', state: nextState });
+    roomBus.broadcastBrokerSync(roomCode, nextState);
+  };
+
+  // Complete 10s Showcase -> Move to NEGOTIATION (180s)
+  const handleShowcaseComplete = () => {
+    sound.playClick();
+    const cur = brokerStateRef.current;
+    const nextState: BrokerRoomState = {
+      ...cur,
+      phase: 'NEGOTIATION',
+      announcements: [
+        ...cur.announcements,
+        {
+          id: `neg_${Date.now()}`,
+          text: `بدأ وقت السوم والمفاوضات! معكم ٣ دقائق لرفع السوم.`,
+          timestamp: Date.now(),
+        },
+      ],
+    };
     setBrokerState(nextState);
     roomBus.broadcastBrokerSync(roomCode, nextState);
   };
 
-  const handleNextRound = () => {
+  // Advance from ROUND_WINNER to next round SHOWCASE or FINAL_PODIUM
+  const handleAdvanceFromRound = () => {
+    const cur = brokerStateRef.current;
+
+    // Check if 5 rounds completed
+    if (cur.roundNumber >= cur.totalRounds) {
+      sound.playVictory();
+      const nextState: BrokerRoomState = {
+        ...cur,
+        phase: 'FINAL_PODIUM',
+      };
+      setBrokerState(nextState);
+      roomBus.broadcastBrokerSync(roomCode, nextState);
+      return;
+    }
+
+    // Advance to next round
     sound.playSuccess();
-    const newItem = getRandomBrokerItem();
+    const nextRound = cur.roundNumber + 1;
+    const currentUsedIds = cur.usedItemIds || (cur.currentItem ? [cur.currentItem.id] : []);
+    const nextItem = getNextUniqueBrokerItem(currentUsedIds);
+    const updatedUsedIds = [...currentUsedIds, nextItem.id];
 
     const resetBids: Record<string, ContestantBidState> = {};
-    Object.values(brokerState.contestantBids).forEach((c) => {
+    Object.values(cur.contestantBids).forEach((c) => {
       resetBids[c.playerId] = {
         ...c,
-        currentBid: newItem.openingBid,
+        currentBid: 0,
         bulletsRemaining: 7,
         bestQuote: undefined,
         lastBidIncrease: undefined,
+        isReadyForNextRound: false,
       };
     });
 
     const nextState: BrokerRoomState = {
-      ...brokerState,
-      phase: 'AUCTION',
-      roundNumber: brokerState.roundNumber + 1,
-      currentItem: newItem,
+      ...cur,
+      phase: 'SHOWCASE',
+      roundNumber: nextRound,
+      currentItem: nextItem,
+      usedItemIds: updatedUsedIds,
       contestantBids: resetBids,
       announcements: [
+        ...cur.announcements,
         {
           id: `r_${Date.now()}`,
-          text: `بدأت جولة جديدة مع سلعة جديدة: ${newItem.name}!`,
+          text: `بدأت الجولة ${nextRound}! معاينة: ${nextItem.name}`,
           timestamp: Date.now(),
         },
       ],
@@ -307,6 +395,8 @@ export const BrokerTVRoot: React.FC = () => {
 
     setBrokerState(nextState);
     roomBus.broadcastBrokerSync(roomCode, nextState);
+    roomBus.broadcast(roomCode, 'BROKER_NEW_ROUND', { state: nextState });
+    roomBus.broadcast(roomCode, 'BROKER_ITEM_SYNC', { item: nextItem, roundNumber: nextRound });
   };
 
   const handleReturnToLobby = () => {
@@ -346,23 +436,53 @@ export const BrokerTVRoot: React.FC = () => {
     );
   }
 
-  // Phase 3: Round Winner View
-  if (brokerState.phase === 'ROUND_WINNER' && brokerState.winnerName && brokerState.winningBid) {
+  // Phase 2: Pre-round Showcase View (10 seconds)
+  if (brokerState.phase === 'SHOWCASE') {
     return (
-      <BrokerWinnerView
+      <BrokerShowcaseStage
         item={brokerState.currentItem}
+        roundNumber={brokerState.roundNumber}
+        totalRounds={brokerState.totalRounds}
+        durationSeconds={10}
+        onComplete={handleShowcaseComplete}
+        isHost
+      />
+    );
+  }
+
+  // Phase 4: Round Winner View
+  if (brokerState.phase === 'ROUND_WINNER' && brokerState.winnerName && brokerState.winningBid !== null) {
+    return (
+      <BrokerRoundWinner
+        item={brokerState.currentItem}
+        roundNumber={brokerState.roundNumber}
+        totalRounds={brokerState.totalRounds}
         winnerName={brokerState.winnerName}
-        winningBid={brokerState.winningBid}
+        winningBid={brokerState.winningBid || 0}
         winningQuote={brokerState.winningQuote || undefined}
-        onNextRound={handleNextRound}
+        contestants={Object.values(brokerState.contestantBids)}
+        isHost
+        onNextRound={handleAdvanceFromRound}
         onReturnToLobby={handleReturnToLobby}
       />
     );
   }
 
-  // Phase 2: Live Auction Broadcast View
+  // Phase 5: Final 5-Round Podium View
+  if (brokerState.phase === 'FINAL_PODIUM') {
+    return (
+      <BrokerFinalPodium
+        contestants={Object.values(brokerState.contestantBids)}
+        totalRounds={brokerState.totalRounds}
+        onReturnToLobby={handleReturnToLobby}
+        isHost
+      />
+    );
+  }
+
+  // Phase 3: Live Negotiation & Auction Broadcast View (180s)
   const rankedContestants = sortAndRankContestants(brokerState.contestantBids);
-  const topBid = rankedContestants[0]?.currentBid || brokerState.currentItem.openingBid;
+  const topBid = rankedContestants[0]?.currentBid || 0;
   const topBidder = rankedContestants[0]?.playerName;
 
   return (
@@ -376,7 +496,7 @@ export const BrokerTVRoot: React.FC = () => {
         roundNumber={brokerState.roundNumber}
         timerSeconds={timerSeconds}
         mood={mascotMood}
-        remark="المزاد مباشر! اضغط على اللوبي لإنهاء الجولة في أي وقت"
+        remark="المزاد مباشر! ساوم الشريطي عبر جوالك لرفع السومة"
         isHost
         onReturnToLobby={handleReturnToLobby}
         onExit={handleExit}

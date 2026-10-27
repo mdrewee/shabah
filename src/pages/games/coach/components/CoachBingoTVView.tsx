@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BingoRoulettePlayer, BingoCard } from '../types';
 import { SILHOUETTE_SVG } from '../footballDataService';
 import { toArabicNumber } from '../../../../utils/numberFormat';
-import { Trophy, Award, Users } from 'lucide-react';
+import { Trophy, Award, Users, RotateCcw, ArrowRight } from 'lucide-react';
+import { sound } from '../../../../lib/audio';
 
 interface ContestantItem {
   id: string;
@@ -15,6 +16,8 @@ interface CoachBingoTVViewProps {
   bingoCards: Record<string, BingoCard>;
   winnerName?: string | null;
   onNextPlayer?: () => void;
+  onNextRound?: () => void;
+  onReturnToLobby?: () => void;
   secondsRemaining?: number;
 }
 
@@ -24,9 +27,15 @@ export const CoachBingoTVView: React.FC<CoachBingoTVViewProps> = ({
   bingoCards,
   winnerName,
   onNextPlayer,
+  onNextRound,
+  onReturnToLobby,
   secondsRemaining,
 }) => {
   const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [currentRoulettePlayer?.id]);
 
   // If there is a winner, celebrate with Shabah Winner card
   if (winnerName) {
@@ -35,8 +44,8 @@ export const CoachBingoTVView: React.FC<CoachBingoTVViewProps> = ({
         <div className="w-full shabah-border-wrap animate-in zoom-in-95 duration-300">
           <div className="shabah-border-inner">
             <div className="shabah-surface p-8 sm:p-12 flex flex-col items-center text-center gap-4">
-              <div className="w-20 h-20 rounded-full bg-emerald-500 text-white flex items-center justify-center text-3xl shadow-lg">
-                🏆
+              <div className="w-20 h-20 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg">
+                <Trophy className="w-10 h-10 text-white" />
               </div>
 
               <span className="px-4 py-1.5 rounded-full bg-[#0A0A0A] text-white text-xs sm:text-sm font-black">
@@ -50,6 +59,37 @@ export const CoachBingoTVView: React.FC<CoachBingoTVViewProps> = ({
               <p className="text-base sm:text-lg font-bold text-neutral-700 max-w-md">
                 أكمل ٤ خلايا صحيحة في خط فوز معتمد وحسم التحدي الكروي ببراعة!
               </p>
+
+              {/* Host Next Round / Lobby Buttons */}
+              <div className="flex flex-col sm:flex-row items-center gap-3 mt-4 w-full max-w-md">
+                {onNextRound && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sound.playClick();
+                      onNextRound();
+                    }}
+                    className="w-full sm:flex-1 py-3.5 px-6 rounded-xl font-black text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm border-2 border-emerald-700 active:scale-95 transition-transform flex items-center justify-center gap-2 cursor-pointer text-sm"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span>جولة بينقو جديدة</span>
+                  </button>
+                )}
+
+                {onReturnToLobby && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sound.playClick();
+                      onReturnToLobby();
+                    }}
+                    className="w-full sm:w-auto py-3.5 px-6 rounded-xl font-black text-[#0A0A0A] bg-white hover:bg-neutral-100 shadow-sm border-2 border-[#0A0A0A] active:scale-95 transition-transform flex items-center justify-center gap-2 cursor-pointer text-sm"
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                    <span>العودة للوبي</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

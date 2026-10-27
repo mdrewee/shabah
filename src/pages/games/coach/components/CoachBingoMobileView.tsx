@@ -3,24 +3,31 @@ import { BingoCard, BingoRoulettePlayer } from '../types';
 import { checkBingoWin, doesPlayerMatchBingoCell } from '../coachSync';
 import { SILHOUETTE_SVG } from '../footballDataService';
 import { sound } from '../../../../lib/audio';
-import { Check, Flame, AlertCircle } from 'lucide-react';
+import { Check, AlertCircle, FastForward, Trophy, CheckCircle2 } from 'lucide-react';
 
 interface CoachBingoMobileViewProps {
   card: BingoCard;
   currentRoulettePlayer: BingoRoulettePlayer | null;
-  onToggleCell: (cellIndex: number) => void;
+  onToggleCell: (cellIndex: number, playerPhoto?: string, playerName?: string) => void;
+  onSkipPlayer?: () => void;
   onClaimBingo: () => void;
   winnerName?: string | null;
+  isReadyForNextRound?: boolean;
+  onReadyForNextRound?: () => void;
 }
 
 export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
   card,
   currentRoulettePlayer,
   onToggleCell,
+  onSkipPlayer,
   onClaimBingo,
   winnerName,
+  isReadyForNextRound = false,
+  onReadyForNextRound,
 }) => {
   const [imgError, setImgError] = useState(false);
+  const [failedImages, setFailedImages] = useState<Record<number, boolean>>({});
   const [attemptedPlayerId, setAttemptedPlayerId] = useState<string | null>(null);
   const [turnFeedback, setTurnFeedback] = useState<{
     type: 'success' | 'error' | 'warn';
@@ -77,27 +84,37 @@ export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
       setWrongCellIndex(null);
       setTurnFeedback({
         type: 'success',
-        msg: `أحسنت! (${p.name}) ينطبق على [${cell.title}] ✅`,
+        msg: `أحسنت! (${p.name}) ينطبق على [${cell.title}]!`,
       });
-      onToggleCell(index);
+      onToggleCell(index, p.photoUrl || SILHOUETTE_SVG, p.name);
     } else {
       sound.playTick();
       setWrongCellIndex(index);
       setTurnFeedback({
         type: 'error',
-        msg: `إجابة خاطئة! (${p.name}) لا ينطبق على [${cell.title}] ❌ (حرقت فرصتك لهذا اللاعب)`,
+        msg: `إجابة خاطئة! (${p.name}) لا ينطبق على [${cell.title}] (حرقت فرصتك لهذا اللاعب)`,
       });
       window.setTimeout(() => setWrongCellIndex(null), 1500);
     }
   };
 
+  const handleSkip = () => {
+    if (!p || hasAlreadyPickedThisTurn) return;
+    sound.playClick();
+    setAttemptedPlayerId(p.id);
+    setTurnFeedback({ type: 'warn', msg: 'تم تخطي هذا اللاعب، بانتظار اللاعب التالي...' });
+    if (onSkipPlayer) onSkipPlayer();
+  };
+
   if (winnerName) {
     return (
-      <div className="w-full max-w-md mx-auto flex flex-col items-center justify-center py-12 px-3 text-center select-none">
-        <div className="shabah-border-wrap w-full">
+      <div className="w-full max-w-md mx-auto flex flex-col items-center justify-center py-10 px-3 text-center select-none">
+        <div className="shabah-border-wrap w-full mb-4">
           <div className="shabah-border-inner">
             <div className="shabah-surface p-8 flex flex-col items-center gap-3">
-              <span className="text-3xl">🎉</span>
+              <div className="w-16 h-16 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg">
+                <Trophy className="w-9 h-9 text-white" />
+              </div>
               <h3 className="text-2xl font-black text-[#0A0A0A]">
                 انتهى تحدي البينقو!
               </h3>
@@ -107,6 +124,24 @@ export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
             </div>
           </div>
         </div>
+
+        {onReadyForNextRound && (
+          <button
+            type="button"
+            onClick={() => {
+              sound.playClick();
+              onReadyForNextRound();
+            }}
+            className={`w-full py-4 rounded-2xl font-black text-sm border-2 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 shadow-[2px_2px_0px_#0A0A0A] ${
+              isReadyForNextRound
+                ? 'bg-emerald-600 text-white border-emerald-700 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
+                : 'bg-white text-[#0A0A0A] border-[#0A0A0A] hover:bg-neutral-100'
+            }`}
+          >
+            <CheckCircle2 className="w-5 h-5" />
+            <span>{isReadyForNextRound ? 'أنت جاهز للجولة التالية!' : 'أنا جاهز للجولة التالية'}</span>
+          </button>
+        )}
       </div>
     );
   }
@@ -146,6 +181,19 @@ export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
                 {p?.currentClub || ''} • {p?.nationality || ''}
               </span>
             </div>
+
+            {/* Skip Button */}
+            {!hasAlreadyPickedThisTurn && p && (
+              <button
+                type="button"
+                onClick={handleSkip}
+                className="px-2.5 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[11px] font-black border border-neutral-300 flex items-center gap-1 shrink-0 active:scale-95"
+                title="تخطي هذا اللاعب"
+              >
+                <FastForward className="w-3.5 h-3.5" />
+                <span>تخطي</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -166,45 +214,91 @@ export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
         </div>
       )}
 
-      {/* 2. The 4x4 Bingo Grid (16 cells) */}
+      {/* 2. The 4x4 Bingo Grid (16 cells with Mandatory Real Images & Perfect Contrast) */}
       <div className="w-full grid grid-cols-4 gap-2">
         {card.cells.map((cell, index) => {
           const isWinningCell = winCheck.matchedVector?.includes(index);
           const isWrongCell = wrongCellIndex === index;
 
+          if (cell.isMarked) {
+            // Locked / Correct Cell: Player's photo as full background with bright emerald border
+            const bgPhoto = cell.markedPlayerPhoto || p?.photoUrl || SILHOUETTE_SVG;
+
+            return (
+              <div
+                key={cell.id}
+                className={`aspect-square rounded-2xl border-2 border-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.5)] flex flex-col justify-between p-1.5 relative overflow-hidden select-none bg-neutral-900 ${
+                  isWinningCell ? 'ring-2 ring-emerald-300 animate-pulse' : ''
+                }`}
+              >
+                {/* Full player image */}
+                <img
+                  src={bgPhoto}
+                  alt={cell.title}
+                  className="absolute inset-0 w-full h-full object-cover object-top opacity-85"
+                />
+
+                {/* Slight gradient overlay for contrast */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none" />
+
+                {/* Top Corner Check SVG in Circle */}
+                <div className="relative z-10 self-start w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md">
+                  <Check className="w-3.5 h-3.5 stroke-[3] text-white" />
+                </div>
+
+                {/* Cell Title at bottom */}
+                <span className="relative z-10 text-[10px] font-black text-white text-center leading-tight truncate px-1 py-0.5 rounded bg-black/70 backdrop-blur-sm">
+                  {cell.title}
+                </span>
+              </div>
+            );
+          }
+
+          // Unmarked Cell: Real image background (90% visible), soft gradient overlay, bold white title with sharp drop shadow
           return (
             <button
               key={cell.id}
               type="button"
               onClick={() => handleCellClick(index)}
-              className={`aspect-square p-1.5 rounded-xl border-2 flex flex-col items-center justify-center text-center transition-all cursor-pointer active:scale-95 select-none relative ${
-                isWrongCell
-                  ? 'bg-red-500 text-white border-red-700 animate-shake'
-                  : cell.isMarked
-                  ? isWinningCell
-                    ? 'bg-emerald-500 text-white border-[#0A0A0A] shadow-[2px_2px_0px_#0A0A0A]'
-                    : 'bg-[#0A0A0A] text-white border-[#0A0A0A] shadow-[2px_2px_0px_#0A0A0A]'
-                  : hasAlreadyPickedThisTurn
-                  ? 'bg-neutral-100 text-neutral-400 border-neutral-200 cursor-not-allowed opacity-75'
-                  : 'bg-white text-[#0A0A0A] border-neutral-300 hover:border-[#0A0A0A]'
+              className={`aspect-square rounded-2xl border-2 border-white/90 shadow-[0_0_10px_rgba(255,255,255,0.15)] flex flex-col items-center justify-center text-center transition-all cursor-pointer active:scale-95 select-none relative overflow-hidden p-1 ${
+                isWrongCell ? 'border-red-500 ring-2 ring-red-500 animate-shake' : ''
+              } ${
+                hasAlreadyPickedThisTurn
+                  ? 'opacity-85 cursor-not-allowed'
+                  : 'hover:border-white'
               }`}
             >
-              {cell.isMarked && (
-                <div className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-emerald-400 text-[#0A0A0A] flex items-center justify-center">
-                  <Check className="w-2.5 h-2.5 stroke-[3]" />
+              {/* Left-Foot Vector SVG for "أشول" */}
+              {(cell.title.includes('أشول') || cell.targetValue === 'left_foot') ? (
+                <div className="flex flex-col items-center justify-center p-1 z-10">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-emerald-400 drop-shadow-md">
+                    <path d="M4 17l4-1 6 3 6-2v-3l-7-3-3 1-6 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <circle cx="19" cy="11" r="2.5" fill="#4ADE80" />
+                  </svg>
+                </div>
+              ) : cell.imageUrl && !failedImages[index] ? (
+                <img
+                  src={cell.imageUrl}
+                  alt={cell.title}
+                  onError={() => {
+                    setFailedImages((prev) => ({ ...prev, [index]: true }));
+                  }}
+                  className="absolute inset-0 w-full h-full object-contain p-2 opacity-90 bg-[#0A0A0A]"
+                />
+              ) : (
+                <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center p-2 text-center bg-zinc-950 border border-zinc-800">
+                  <span className="text-[11px] font-black text-white leading-tight">
+                    {cell.title}
+                  </span>
                 </div>
               )}
 
-              <span className="font-black text-[11px] sm:text-xs leading-tight line-clamp-2">
-                {cell.title}
-              </span>
+              {/* Gradient Overlay for high visibility */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
 
-              <span
-                className={`text-[8px] font-bold mt-0.5 line-clamp-1 ${
-                  cell.isMarked ? 'text-neutral-300' : 'text-neutral-500'
-                }`}
-              >
-                {cell.description}
+              {/* Centered White Bold Title with Sharp Drop Shadow */}
+              <span className="relative z-10 font-black text-[11px] sm:text-xs text-white leading-tight drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] px-1">
+                {cell.title}
               </span>
             </button>
           );
@@ -221,15 +315,14 @@ export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
           }}
           className="w-full py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-lg border-2 border-[#0A0A0A] shadow-[3px_3px_0px_#0A0A0A] transition-transform active:scale-95 cursor-pointer flex items-center justify-center gap-2 animate-bounce"
         >
-          <Flame className="w-6 h-6 fill-white" />
+          <Trophy className="w-6 h-6 fill-white text-white" />
           <span>بينقو! (اضغط لإعلان الفوز)</span>
         </button>
       ) : (
-        <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 text-center text-neutral-400 text-xs font-bold">
+        <div className="p-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-center text-neutral-400 text-xs font-bold">
           طابق ٤ خانات في صف، عمود، قطر، أو الزوايا الأربع لتفعيل زر [بينقو!]
         </div>
       )}
     </div>
   );
 };
-

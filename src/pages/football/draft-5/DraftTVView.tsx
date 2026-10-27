@@ -824,7 +824,7 @@ export const DraftTVView: FC = () => {
         {/* =======================================================
             STATE 1: LOBBY
             ======================================================= */}
-        {phase === 'LOBBY' && (
+        {(phase as any) === 'LOBBY' && (
           <div className="flex flex-col items-center justify-center w-full max-w-4xl space-y-8 animate-fade-in">
             {/* Header Title Banner */}
             <div className="text-center space-y-2">

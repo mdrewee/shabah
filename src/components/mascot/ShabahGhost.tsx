@@ -9,6 +9,8 @@ export interface ShabahGhostProps {
   lookX?: number;
   /** Optional explicit vertical gaze offset (-4 to +4) */
   lookY?: number;
+  /** Optional explicit gaze offset object */
+  gazeOffset?: { x: number; y: number } | null;
   /** Whether to track pointer/touch globally across the screen (default: true) */
   trackPointer?: boolean;
   onClick?: () => void;
@@ -22,6 +24,7 @@ export const ShabahGhost: React.FC<ShabahGhostProps> = ({
   className = 'w-44 h-44',
   lookX,
   lookY,
+  gazeOffset,
   trackPointer = true,
   onClick,
 }) => {
@@ -90,8 +93,10 @@ export const ShabahGhost: React.FC<ShabahGhostProps> = ({
     };
   }, [trackPointer]);
 
-  const finalX = Math.max(-6, Math.min(6, lookX !== undefined ? lookX : pointerOffset.x));
-  const finalY = Math.max(-4, Math.min(4, lookY !== undefined ? lookY : pointerOffset.y));
+  const explicitX = lookX !== undefined ? lookX : (gazeOffset ? gazeOffset.x : undefined);
+  const explicitY = lookY !== undefined ? lookY : (gazeOffset ? gazeOffset.y : undefined);
+  const finalX = Math.max(-6, Math.min(6, explicitX !== undefined ? explicitX : pointerOffset.x));
+  const finalY = Math.max(-4, Math.min(4, explicitY !== undefined ? explicitY : pointerOffset.y));
 
   const renderEyes = () => {
     switch (mood) {

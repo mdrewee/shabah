@@ -753,7 +753,7 @@ export const BlindTourismMobileView: React.FC<BlindTourismMobileViewProps> = ({
 
               {tourismPlayer?.isCorrect ? (
                 <div className="bg-[#8A9A5B]/15 border-3 border-[#8A9A5B] rounded-2xl p-4 my-3 shadow-[0_3px_0_#8A9A5B]">
-                  <div className="text-base font-black text-[#5E6B3A] mb-1">إجابة صحيحة في التلميح {toArabicNumber(tourismPlayer.lockedInStage)}!</div>
+                  <div className="text-base font-black text-[#5E6B3A] mb-1">إجابة صحيحة في التلميح {toArabicNumber(tourismPlayer.lockedInStage || 0)}!</div>
                   <div className="text-3xl font-black text-[#24221E] font-mono">
                     {formatPoints(tourismPlayer.pointsAwarded)}
                   </div>

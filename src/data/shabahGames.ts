@@ -47,9 +47,9 @@ export const SHABAH_GAMES: ShabahGame[] = [
   },
   {
     id: 'ai-guide',
-    title: 'الشبح المرشد السياحي',
-    badgeText: 'معالم ودول',
-    shortExplanation: 'طورين: اكتشف الدولة من 5 تلميحات ذكية، أو حدد موقع المعالم على خريطة دارك مود بالسعودية والعالم.',
+    title: 'الشبح المرشد',
+    badgeText: 'تحديد المعالم',
+    shortExplanation: 'خريطة تفاعلية و ٥ تلميحات تدريجية؛ خمّن مكان المعلم السري بالدبوس واكسب أعلى النقاط بأدق مسافة!',
     placeholderImage: '/images/games/guide-placeholder.svg',
     glowColor: 'red',
     route: '/game/ai-guide'

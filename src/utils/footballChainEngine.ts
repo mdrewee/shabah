@@ -52,11 +52,11 @@ export const getConnectingEntity = (
 
   // 2. Check shared clubs
   if (playerA.clubs && playerB.clubs && playerA.clubs.length > 0 && playerB.clubs.length > 0) {
-    const cleanClubsB = playerB.clubs.map((c) => normalizeClub(c));
-    const sharedClub = playerA.clubs.find((club) => {
+    const cleanClubsB = playerB.clubs.map((c: string) => normalizeClub(c));
+    const sharedClub = playerA.clubs.find((club: string) => {
       const cleanA = normalizeClub(club);
       return cleanClubsB.some(
-        (cleanB) => cleanA === cleanB || (cleanA.length > 3 && cleanB.length > 3 && (cleanA.includes(cleanB) || cleanB.includes(cleanA)))
+        (cleanB: string) => cleanA === cleanB || (cleanA.length > 3 && cleanB.length > 3 && (cleanA.includes(cleanB) || cleanB.includes(cleanA)))
       );
     });
 

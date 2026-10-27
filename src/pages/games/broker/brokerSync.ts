@@ -1,6 +1,5 @@
 import { BrokerRoomState, ContestantBidState, BrokerItem } from './types';
-import { getRandomBrokerItem } from './brokerItemsBank';
-import { roomBus } from '../../../lib/roomBus';
+import { getNextUniqueBrokerItem, getBrokerItemByIndex } from '../../../data/brokerItems';
 
 const STORAGE_PREFIX = 'shabah_broker_state_';
 
@@ -44,14 +43,16 @@ export function createInitialBrokerState(roomCode: string): BrokerRoomState {
     return existing;
   }
 
-  const initialItem = getRandomBrokerItem();
+  const initialItem = getNextUniqueBrokerItem([]);
 
   const initial: BrokerRoomState = {
     roomCode,
     phase: 'LOBBY',
     roundNumber: 1,
+    totalRounds: 5,
     currentItem: initialItem,
-    timerSeconds: 60,
+    usedItemIds: [initialItem.id],
+    timerSeconds: 10,
     contestantBids: {},
     announcements: [
       {
@@ -64,6 +65,7 @@ export function createInitialBrokerState(roomCode: string): BrokerRoomState {
     winnerName: null,
     winningBid: null,
     winningQuote: null,
+    roundHistory: [],
   };
 
   savePersistedBrokerState(roomCode, initial);

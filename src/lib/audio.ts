@@ -4,6 +4,8 @@
 class SoundEngine {
   private ctx: AudioContext | null = null;
   private isMuted: boolean = false;
+  private activeOscillators: Set<OscillatorNode> = new Set();
+  private activeAudios: Set<HTMLAudioElement> = new Set();
 
   private getContext(): AudioContext | null {
     if (typeof window === 'undefined') return null;
@@ -23,10 +25,48 @@ class SoundEngine {
 
   public setMuted(muted: boolean) {
     this.isMuted = muted;
+    if (muted) {
+      this.stopAllAudio();
+    }
   }
 
   public getMuted(): boolean {
     return this.isMuted;
+  }
+
+  /**
+   * Deterministic Audio Kill-Switch:
+   * Instantly stops any active oscillators and resets any looping audio elements.
+   */
+  public stopAllAudio(): void {
+    try {
+      this.activeOscillators.forEach((osc) => {
+        try {
+          osc.stop();
+          osc.disconnect();
+        } catch {}
+      });
+      this.activeOscillators.clear();
+
+      this.activeAudios.forEach((audio) => {
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.loop = false;
+        } catch {}
+      });
+      this.activeAudios.clear();
+    } catch {}
+  }
+
+  private registerOscillator(osc: OscillatorNode, stopTime: number): void {
+    this.activeOscillators.add(osc);
+    osc.onended = () => {
+      this.activeOscillators.delete(osc);
+    };
+    try {
+      osc.stop(stopTime);
+    } catch {}
   }
 
   // Tactile woodblock click (button clicks, navigation)
@@ -50,7 +90,7 @@ class SoundEngine {
       gain.connect(ctx.destination);
 
       osc.start();
-      osc.stop(ctx.currentTime + 0.04);
+      this.registerOscillator(osc, ctx.currentTime + 0.04);
     } catch {
       // Audio playback safety catch
     }
@@ -78,6 +118,59 @@ class SoundEngine {
 
       osc.start();
       osc.stop(ctx.currentTime + 0.03);
+      this.registerOscillator(osc, ctx.currentTime + 0.03);
+    } catch {
+      // ignore
+    }
+  }
+
+  // Guaranteed single-hit 0.1s beep for clue alerts or timer
+  public playBeep() {
+    if (this.isMuted) return;
+    const ctx = this.getContext();
+    if (!ctx || ctx.state !== 'running') return;
+
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.frequency.setValueAtTime(600, ctx.currentTime);
+      gain.gain.setValueAtTime(0.05, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.1);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1); // إيقاف حتمي وفوري
+      this.registerOscillator(osc, ctx.currentTime + 0.1);
+    } catch {
+      // ignore
+    }
+  }
+
+  // Roulette tick for switching players in Bingo mode
+  public playRouletteTick() {
+    if (this.isMuted) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1100, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(320, ctx.currentTime + 0.05);
+
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      this.registerOscillator(osc, ctx.currentTime + 0.05);
     } catch {
       // ignore
     }
@@ -239,7 +332,7 @@ class SoundEngine {
         gain.connect(ctx.destination);
 
         osc.start(startTime);
-        osc.stop(startTime + 0.45);
+        this.registerOscillator(osc, startTime + 0.45);
       });
     } catch {
       // ignore
@@ -425,6 +518,37 @@ class SoundEngine {
   public playNotification() {
     this.playPlayerJoin();
   }
+
+  public playGavelStrike() {
+    if (this.isMuted) return;
+    playGavelStrike();
+  }
 }
 
 export const sound = new SoundEngine();
+
+export function playGavelStrike() {
+  try {
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    // ضربة أولى حادة تتبعها ضربة ثانية سريعة وصدى خشبي
+    [0, 0.22].forEach((timeOffset) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(120, ctx.currentTime + timeOffset);
+      osc.frequency.exponentialRampToValueAtTime(30, ctx.currentTime + timeOffset + 0.15);
+      gain.gain.setValueAtTime(0.8, ctx.currentTime + timeOffset);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + timeOffset + 0.18);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + timeOffset);
+      osc.stop(ctx.currentTime + timeOffset + 0.2);
+    });
+  } catch (err) {
+    console.warn('Gavel strike audio error:', err);
+  }
+}
