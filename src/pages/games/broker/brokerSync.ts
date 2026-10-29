@@ -1,12 +1,18 @@
 import { BrokerRoomState, ContestantBidState, BrokerItem } from './types';
-import { getNextUniqueBrokerItem, getBrokerItemByIndex } from '../../../data/brokerItems';
+import { getNextUniqueBrokerItem, getBrokerItemByIndex, ensureBrokerItem } from '../../../data/brokerItems';
 
 const STORAGE_PREFIX = 'shabah_broker_state_';
 
 export function getPersistedBrokerState(roomCode: string): BrokerRoomState | null {
   try {
     const raw = sessionStorage.getItem(`${STORAGE_PREFIX}${roomCode}`);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed) {
+        parsed.currentItem = ensureBrokerItem(parsed.currentItem, parsed.roundNumber || 1);
+        return parsed;
+      }
+    }
   } catch {}
   return null;
 }
@@ -43,7 +49,7 @@ export function createInitialBrokerState(roomCode: string): BrokerRoomState {
     return existing;
   }
 
-  const initialItem = getNextUniqueBrokerItem([]);
+  const { item: initialItem, updatedUsedIds } = getNextUniqueBrokerItem([]);
 
   const initial: BrokerRoomState = {
     roomCode,
@@ -51,7 +57,7 @@ export function createInitialBrokerState(roomCode: string): BrokerRoomState {
     roundNumber: 1,
     totalRounds: 5,
     currentItem: initialItem,
-    usedItemIds: [initialItem.id],
+    usedItemIds: updatedUsedIds,
     timerSeconds: 10,
     contestantBids: {},
     announcements: [

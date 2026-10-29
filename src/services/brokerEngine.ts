@@ -1,5 +1,5 @@
 import { generateWithGemini } from '../config/gemini';
-import { BrokerItem } from '../data/brokerItems';
+import { BrokerItem, ensureBrokerItem } from '../data/brokerItems';
 import { toArabicDigits } from '../pages/games/broker/brokerUtils';
 
 export interface BrokerEvaluationResult {
@@ -139,12 +139,13 @@ function cleanAndParseJSON(rawText: string): any {
 // -------------------------------------------------------------
 
 function generateOfflineBrokerResponse(
-  item: BrokerItem,
+  rawItem: BrokerItem,
   pitch: string,
   currentBid: number,
   playerName: string,
   isOpening = false
 ): BrokerEvaluationResult {
+  const item = ensureBrokerItem(rawItem);
   const len = pitch.trim().length;
 
   if (isOpening) {
@@ -211,7 +212,8 @@ export async function evaluateBrokerPitch(params: {
   isFirstBid: boolean;
   playerName: string;
 }): Promise<BrokerEvaluationResult> {
-  const { item, pitch, currentBid, isFirstBid, playerName } = params;
+  const item = ensureBrokerItem(params.item);
+  const { pitch, currentBid, isFirstBid, playerName } = params;
 
   // Step 1: Check Local Zero-Token Guardrails
   const guardrailMatch = checkLocalGuardrails(pitch);

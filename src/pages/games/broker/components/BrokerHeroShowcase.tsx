@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrokerItem } from '../types';
+import { ensureBrokerItem } from '../../../../data/brokerItems';
 import { formatPriceArabic } from '../brokerUtils';
 import { AlertTriangle, Tag, TrendingUp, Sparkles } from 'lucide-react';
 
@@ -14,6 +15,8 @@ export const BrokerHeroShowcase: React.FC<BrokerHeroShowcaseProps> = ({
   topBid,
   topBidderName,
 }) => {
+  const safeItem = ensureBrokerItem(item);
+
   return (
     <div className="w-full max-w-4xl mx-auto shabah-border-wrap">
       <div className="shabah-border-inner">
@@ -22,7 +25,7 @@ export const BrokerHeroShowcase: React.FC<BrokerHeroShowcaseProps> = ({
           <div className="flex items-center gap-2 mb-3">
             <span className="px-3.5 py-1 rounded-full bg-neutral-100 border border-neutral-300 text-neutral-800 text-xs font-black flex items-center gap-1.5">
               <Tag className="w-3.5 h-3.5 text-neutral-600" />
-              {item.categoryLabel}
+              {safeItem.categoryLabel || safeItem.category || 'سلعة حراج'}
             </span>
             <span className="text-xs font-bold text-neutral-500 hidden sm:inline">
               حراج الشبح المباشر
@@ -31,7 +34,7 @@ export const BrokerHeroShowcase: React.FC<BrokerHeroShowcaseProps> = ({
 
           {/* Hero Item Name */}
           <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#0A0A0A] tracking-tight mb-4 leading-tight">
-            {item.name}
+            {safeItem.name}
           </h1>
 
           {/* Flaw and Perk Grid / Stack */}
@@ -44,13 +47,13 @@ export const BrokerHeroShowcase: React.FC<BrokerHeroShowcaseProps> = ({
                   العيب:
                 </span>
                 <span className="text-xs sm:text-sm font-bold text-red-700 leading-snug">
-                  {item.flaw}
+                  {safeItem.flaw}
                 </span>
               </div>
             </div>
 
             {/* Rare Perk Badge */}
-            {item.perk && (
+            {safeItem.perk && (
               <div className="flex-1 px-4 py-3 rounded-2xl bg-emerald-500/10 border-2 border-emerald-500/40 text-emerald-800 flex items-center gap-3 shadow-[0_0_15px_rgba(16,185,129,0.15)] text-right">
                 <Sparkles className="w-6 h-6 text-emerald-600 shrink-0" />
                 <div>
@@ -58,7 +61,7 @@ export const BrokerHeroShowcase: React.FC<BrokerHeroShowcaseProps> = ({
                     الميزة:
                   </span>
                   <span className="text-xs sm:text-sm font-bold text-emerald-800 leading-snug">
-                    {item.perk}
+                    {safeItem.perk}
                   </span>
                 </div>
               </div>
@@ -66,9 +69,9 @@ export const BrokerHeroShowcase: React.FC<BrokerHeroShowcaseProps> = ({
           </div>
 
           {/* Quick Specs Pill Tags */}
-          {item.specs && item.specs.length > 0 && (
+          {safeItem.specs && safeItem.specs.length > 0 && (
             <div className="flex flex-wrap items-center justify-center gap-2 mb-6 max-w-xl">
-              {item.specs.map((spec, i) => (
+              {safeItem.specs.map((spec, i) => (
                 <span
                   key={i}
                   className="px-3 py-1 rounded-lg bg-neutral-100 border border-neutral-200 text-xs font-bold text-neutral-600"

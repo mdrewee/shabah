@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { ShabahGhost } from '../../../../components/mascot/ShabahGhost';
 import { BrokerItem, ContestantBidState } from '../types';
+import { ensureBrokerItem } from '../../../../data/brokerItems';
 import { formatPriceArabic, toArabicDigits } from '../brokerUtils';
 import { sound } from '../../../../lib/audio';
 import { Crown, Sparkles, Quote, CheckCircle2, RotateCcw, ArrowRight, Trophy, Users } from 'lucide-react';
@@ -34,6 +35,8 @@ export const BrokerRoundWinner: React.FC<BrokerRoundWinnerProps> = ({
   onNextRound,
   onReturnToLobby,
 }) => {
+  const safeItem = ensureBrokerItem(item, roundNumber);
+
   useEffect(() => {
     sound.playVictory();
   }, []);
@@ -100,7 +103,7 @@ export const BrokerRoundWinner: React.FC<BrokerRoundWinnerProps> = ({
                     السلعة المباعة:
                   </span>
                   <span className="text-sm font-black text-neutral-800">
-                    {item.name}
+                    {safeItem.name}
                   </span>
                 </div>
 

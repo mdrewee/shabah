@@ -10,7 +10,7 @@ import {
   savePersistedBrokerState,
   sortAndRankContestants,
 } from './brokerSync';
-import { getNextUniqueBrokerItem, getBrokerItemByIndex } from '../../../data/brokerItems';
+import { getNextUniqueBrokerItem, getBrokerItemByIndex, ensureBrokerItem } from '../../../data/brokerItems';
 import { BrokerTopBar } from './components/BrokerTopBar';
 import { BrokerHeroShowcase } from './components/BrokerHeroShowcase';
 import { BrokerLeaderboard } from './components/BrokerLeaderboard';
@@ -276,7 +276,7 @@ export const BrokerTVRoot: React.FC = () => {
   // Start Game from Lobby: initialize 5 rounds, item 1, go to SHOWCASE
   const handleStartGame = () => {
     sound.playSuccess();
-    const firstItem = getNextUniqueBrokerItem([]);
+    const { item: firstItem, updatedUsedIds } = getNextUniqueBrokerItem([]);
 
     const resetBids: Record<string, ContestantBidState> = {};
     mergedContestants.forEach((p, idx) => {
@@ -297,7 +297,7 @@ export const BrokerTVRoot: React.FC = () => {
       roundNumber: 1,
       totalRounds: 5,
       currentItem: firstItem,
-      usedItemIds: [firstItem.id],
+      usedItemIds: updatedUsedIds,
       contestantBids: resetBids,
       announcements: [
         {
@@ -357,8 +357,7 @@ export const BrokerTVRoot: React.FC = () => {
     sound.playSuccess();
     const nextRound = cur.roundNumber + 1;
     const currentUsedIds = cur.usedItemIds || (cur.currentItem ? [cur.currentItem.id] : []);
-    const nextItem = getNextUniqueBrokerItem(currentUsedIds);
-    const updatedUsedIds = [...currentUsedIds, nextItem.id];
+    const { item: nextItem, updatedUsedIds } = getNextUniqueBrokerItem(currentUsedIds);
 
     const resetBids: Record<string, ContestantBidState> = {};
     Object.values(cur.contestantBids).forEach((c) => {
@@ -436,11 +435,13 @@ export const BrokerTVRoot: React.FC = () => {
     );
   }
 
+  const safeCurrentItem = ensureBrokerItem(brokerState.currentItem, brokerState.roundNumber);
+
   // Phase 2: Pre-round Showcase View (10 seconds)
   if (brokerState.phase === 'SHOWCASE') {
     return (
       <BrokerShowcaseStage
-        item={brokerState.currentItem}
+        item={safeCurrentItem}
         roundNumber={brokerState.roundNumber}
         totalRounds={brokerState.totalRounds}
         durationSeconds={10}
@@ -454,7 +455,7 @@ export const BrokerTVRoot: React.FC = () => {
   if (brokerState.phase === 'ROUND_WINNER' && brokerState.winnerName && brokerState.winningBid !== null) {
     return (
       <BrokerRoundWinner
-        item={brokerState.currentItem}
+        item={safeCurrentItem}
         roundNumber={brokerState.roundNumber}
         totalRounds={brokerState.totalRounds}
         winnerName={brokerState.winnerName}
@@ -506,7 +507,7 @@ export const BrokerTVRoot: React.FC = () => {
       <main className="flex-1 w-full flex flex-col items-center justify-start py-6 px-4 gap-6">
         {/* Hero Item Showcase Card */}
         <BrokerHeroShowcase
-          item={brokerState.currentItem}
+          item={safeCurrentItem}
           topBid={topBid}
           topBidderName={topBidder}
         />

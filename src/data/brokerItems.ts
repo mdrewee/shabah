@@ -403,3 +403,34 @@ export function getBrokerItemByIndex(roundNumber: number, alreadyUsedIds: string
   const index = Math.max(0, (roundNumber - 1) % BROKER_ITEMS.length);
   return BROKER_ITEMS[index];
 }
+
+/**
+ * دالة حماية وضمان صحة السلعة المعروضة (تمنع التعليق وتصحح السلع المتداخلة أو الفارغة)
+ */
+export function ensureBrokerItem(candidate: any, fallbackRound = 1): BrokerItem {
+  if (!candidate) {
+    return getBrokerItemByIndex(fallbackRound);
+  }
+  // في حال كانت السلعة مغلفة بداخل كائن { item: BrokerItem }
+  if (candidate.item && typeof candidate.item === 'object' && candidate.item.name) {
+    return ensureBrokerItem(candidate.item, fallbackRound);
+  }
+  // إذا كانت السلعة تحوي الاسم والـ id
+  if (candidate.id && candidate.name) {
+    return {
+      id: candidate.id,
+      name: candidate.name,
+      category: candidate.category || 'أغراض غريبة',
+      categoryLabel: candidate.categoryLabel || candidate.category || 'أغراض غريبة',
+      estimatedValue: candidate.estimatedValue || 1000,
+      description: candidate.description || '',
+      flaw: candidate.flaw || 'بدون عيب ظاهر',
+      perk: candidate.perk || '',
+      openingGreeting: candidate.openingGreeting || `حياكم الله في حراج الشبح! السلعة المعروضة هي ${candidate.name}، عطونا فتحة باب تسوى!`,
+      openingBaseline: candidate.openingBaseline || Math.max(10, Math.round((candidate.estimatedValue || 1000) * 0.1)),
+      specs: candidate.specs && candidate.specs.length > 0 ? candidate.specs : [candidate.perk || '', candidate.description || ''].filter(Boolean),
+      incrementTiers: candidate.incrementTiers || computeIncrementTiers(candidate.estimatedValue || 1000),
+    };
+  }
+  return getBrokerItemByIndex(fallbackRound);
+}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BrokerItem } from '../types';
+import { ensureBrokerItem } from '../../../../data/brokerItems';
 import { formatPriceArabic, toArabicDigits } from '../brokerUtils';
 import { sound } from '../../../../lib/audio';
 import { AlertTriangle, Clock, Tag, Sparkles, CheckCircle2 } from 'lucide-react';
@@ -21,11 +22,12 @@ export const BrokerShowcaseStage: React.FC<BrokerShowcaseStageProps> = ({
   onComplete,
   isHost = false,
 }) => {
+  const safeItem = ensureBrokerItem(item, roundNumber);
   const [secondsLeft, setSecondsLeft] = useState(durationSeconds);
 
   useEffect(() => {
     setSecondsLeft(durationSeconds);
-  }, [durationSeconds, item.id]);
+  }, [durationSeconds, safeItem.id]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -72,18 +74,18 @@ export const BrokerShowcaseStage: React.FC<BrokerShowcaseStageProps> = ({
               {/* Category Pill */}
               <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-neutral-100 border border-neutral-300 text-neutral-800 text-xs sm:text-sm font-black mb-3">
                 <Tag className="w-3.5 h-3.5 text-neutral-600" />
-                <span>{item.categoryLabel}</span>
+                <span>{safeItem.categoryLabel || safeItem.category || 'سلعة حراج'}</span>
               </div>
 
               {/* Item Title */}
               <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#0A0A0A] mb-3 leading-tight">
-                {item.name}
+                {safeItem.name}
               </h1>
 
               {/* Description */}
-              {item.description && (
+              {safeItem.description && (
                 <p className="text-sm sm:text-base font-bold text-neutral-600 mb-6 max-w-2xl leading-relaxed">
-                  {item.description}
+                  {safeItem.description}
                 </p>
               )}
 
@@ -97,13 +99,13 @@ export const BrokerShowcaseStage: React.FC<BrokerShowcaseStageProps> = ({
                     العيب القاتل (ركز عليه في المساومة):
                   </span>
                   <p className="text-sm sm:text-base font-bold text-red-700 leading-relaxed">
-                    {item.flaw}
+                    {safeItem.flaw}
                   </p>
                 </div>
               </div>
 
               {/* Rare Perk Card */}
-              {item.perk && (
+              {safeItem.perk && (
                 <div className="w-full max-w-2xl mb-6 p-4 sm:p-5 rounded-2xl bg-emerald-500/10 border-2 border-emerald-500 text-emerald-800 shadow-[0_0_25px_rgba(16,185,129,0.2)] flex items-center gap-3.5 text-right">
                   <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-600 shrink-0">
                     <Sparkles className="w-7 h-7 sm:w-8 sm:h-8" />
@@ -113,20 +115,20 @@ export const BrokerShowcaseStage: React.FC<BrokerShowcaseStageProps> = ({
                       الميزة النادرة (نقطة قوة):
                     </span>
                     <p className="text-sm sm:text-base font-bold text-emerald-800 leading-relaxed">
-                      {item.perk}
+                      {safeItem.perk}
                     </p>
                   </div>
                 </div>
               )}
 
               {/* Quick Specs */}
-              {item.specs && item.specs.length > 0 && (
+              {safeItem.specs && safeItem.specs.length > 0 && (
                 <div className="w-full max-w-2xl mb-6 text-right">
                   <span className="text-xs font-black text-neutral-500 block mb-2">
                     المواصفات السريعة:
                   </span>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {item.specs.map((spec, i) => (
+                    {safeItem.specs.map((spec, i) => (
                       <div
                         key={i}
                         className="p-2.5 rounded-xl bg-neutral-100 border border-neutral-200 text-xs font-bold text-neutral-700 flex items-center gap-2"

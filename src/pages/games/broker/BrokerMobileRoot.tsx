@@ -17,7 +17,7 @@ import {
 import {
   createInitialBrokerState,
 } from './brokerSync';
-import { getBrokerItemByIndex } from '../../../data/brokerItems';
+import { getBrokerItemByIndex, ensureBrokerItem } from '../../../data/brokerItems';
 import { formatPriceArabic, toArabicDigits } from './brokerUtils';
 import { evaluateBrokerPitch } from '../../../services/brokerEngine';
 import { BrokerShowcaseStage } from './components/BrokerShowcaseStage';
@@ -75,7 +75,7 @@ export const BrokerMobileRoot: React.FC = () => {
     scrollToBottom();
   }, [messages, isSubmitting]);
 
-  const currentAuctionItem = brokerState.currentItem;
+  const currentAuctionItem = ensureBrokerItem(brokerState.currentItem, brokerState.roundNumber);
   const currentRoundNumber = brokerState.roundNumber;
   const lastActiveItemKeyRef = useRef<string>('');
 
@@ -109,12 +109,18 @@ export const BrokerMobileRoot: React.FC = () => {
     const unsubSync = roomBus.on('BROKER_STATE_SYNC', (evt: any) => {
       const payload = evt?.data || evt;
       if (!payload) return;
+      if (payload.currentItem) {
+        payload.currentItem = ensureBrokerItem(payload.currentItem, payload.roundNumber);
+      }
       setBrokerState(payload);
     });
 
     const unsubNewRound = roomBus.on('BROKER_NEW_ROUND', (evt: any) => {
       const payload = evt?.data || evt;
       if (payload?.state) {
+        if (payload.state.currentItem) {
+          payload.state.currentItem = ensureBrokerItem(payload.state.currentItem, payload.state.roundNumber);
+        }
         setBrokerState(payload.state);
       }
     });
@@ -122,9 +128,10 @@ export const BrokerMobileRoot: React.FC = () => {
     const unsubItemSync = roomBus.on('BROKER_ITEM_SYNC', (evt: any) => {
       const payload = evt?.data || evt;
       if (payload?.item) {
+        const safe = ensureBrokerItem(payload.item, payload.roundNumber);
         setBrokerState((prev) => ({
           ...prev,
-          currentItem: payload.item,
+          currentItem: safe,
           roundNumber: payload.roundNumber || prev.roundNumber,
         }));
       }
@@ -135,6 +142,9 @@ export const BrokerMobileRoot: React.FC = () => {
       setIsReadyForNext(false);
       const payload = evt?.data || evt;
       if (payload?.state) {
+        if (payload.state.currentItem) {
+          payload.state.currentItem = ensureBrokerItem(payload.state.currentItem, payload.state.roundNumber);
+        }
         setBrokerState(payload.state);
       } else {
         setBrokerState((prev) => ({ ...prev, phase: 'SHOWCASE' }));
@@ -288,7 +298,7 @@ export const BrokerMobileRoot: React.FC = () => {
   if (brokerState.phase === 'SHOWCASE' && isPlayerHost) {
     return (
       <BrokerShowcaseStage
-        item={brokerState.currentItem}
+        item={currentAuctionItem}
         roundNumber={brokerState.roundNumber}
         totalRounds={brokerState.totalRounds}
         durationSeconds={10}
@@ -311,7 +321,7 @@ export const BrokerMobileRoot: React.FC = () => {
   if (brokerState.phase === 'ROUND_WINNER') {
     return (
       <BrokerRoundWinner
-        item={brokerState.currentItem}
+        item={currentAuctionItem}
         roundNumber={brokerState.roundNumber}
         totalRounds={brokerState.totalRounds}
         winnerName={brokerState.winnerName || 'أحد المتسابقين'}
@@ -332,12 +342,13 @@ export const BrokerMobileRoot: React.FC = () => {
               setBrokerState(nextState);
               roomBus.broadcastBrokerSync(roomCode, nextState);
             } else {
-              const nextItem = getBrokerItemByIndex(nextRound);
+              const nextItem = ensureBrokerItem(getBrokerItemByIndex(nextRound, brokerState.usedItemIds), nextRound);
               const nextState: BrokerRoomState = {
                 ...brokerState,
                 phase: 'SHOWCASE',
                 roundNumber: nextRound,
                 currentItem: nextItem,
+                usedItemIds: [...(brokerState.usedItemIds || []), nextItem.id],
               };
               setBrokerState(nextState);
               roomBus.broadcastBrokerSync(roomCode, nextState);
@@ -386,17 +397,17 @@ export const BrokerMobileRoot: React.FC = () => {
             </div>
             <div className="truncate">
               <span className="text-xs font-black text-white block truncate">
-                {brokerState.currentItem.name}
+                {currentAuctionItem.name}
               </span>
               <div className="flex items-center gap-2 text-[10px] truncate">
                 <span className="text-red-400 flex items-center gap-1 font-bold truncate">
                   <AlertTriangle className="w-3 h-3 shrink-0" />
-                  {brokerState.currentItem.flaw}
+                  {currentAuctionItem.flaw}
                 </span>
-                {brokerState.currentItem.perk && (
+                {currentAuctionItem.perk && (
                   <span className="text-emerald-400 flex items-center gap-1 font-bold truncate">
                     <Sparkles className="w-3 h-3 shrink-0" />
-                    {brokerState.currentItem.perk}
+                    {currentAuctionItem.perk}
                   </span>
                 )}
               </div>
