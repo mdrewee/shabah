@@ -31,13 +31,12 @@ import { CoachBingoTVView } from './components/CoachBingoTVView';
 import { sound } from '../../../lib/audio';
 import { useRoomSync } from '../../../hooks/useRoomSync';
 import {
-  DRAFT_SLOT_TIME,
   DRAFT_ROUND_TIME,
   TOTAL_COACH_ROUNDS,
   BINGO_ROULETTE_TIME,
 } from './coachConfig';
 
-const roundTimeLimit = typeof DRAFT_SLOT_TIME !== 'undefined' ? DRAFT_SLOT_TIME : 30;
+const roundTimeLimit = 30; // 30 ثانية لكل جولة مباشرة
 
 export const CoachTVRoot: React.FC = () => {
   const { code: rawCode } = useParams<{ code?: string }>();

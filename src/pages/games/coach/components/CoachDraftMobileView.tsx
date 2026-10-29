@@ -18,9 +18,9 @@ import { formatPercent, toArabicNumber } from '../../../../utils/numberFormat';
 import { Search, CheckCircle, AlertCircle, Clock, Check, X, Lock, ShieldCheck } from 'lucide-react';
 import { sound } from '../../../../lib/audio';
 import { roomBus } from '../../../../lib/roomBus';
-import { DRAFT_SLOT_TIME, TOTAL_COACH_ROUNDS } from '../coachConfig';
+import { TOTAL_COACH_ROUNDS } from '../coachConfig';
 
-const defaultRoundTime = typeof DRAFT_SLOT_TIME !== 'undefined' ? DRAFT_SLOT_TIME : 30;
+const defaultRoundTime = 30; // 30 ثانية لكل جولة مباشرة
 
 interface CoachDraftMobileViewProps {
   roomCode?: string;
