@@ -23,7 +23,7 @@ import {
 } from './coachSync';
 import { evaluateAllSquads, evaluateAllSquadsWithAI } from './coachEvaluationEngine';
 import { normalizeFootballSearch } from './footballDataService';
-import { generateMatchConditions } from '../../../data/draftConditions';
+import { getRandomMatchCriteria } from '../../../data/coachCriteria';
 import { CoachLobby } from './CoachLobby';
 import { CoachTopBar } from './components/CoachTopBar';
 import { CoachDraftTVView } from './components/CoachDraftTVView';
@@ -31,7 +31,7 @@ import { CoachBingoTVView } from './components/CoachBingoTVView';
 import { sound } from '../../../lib/audio';
 import { useRoomSync } from '../../../hooks/useRoomSync';
 
-const DRAFT_SLOT_TIME = 45; // 45 seconds per condition
+const DRAFT_ROUND_TIME = 30; // 30 seconds per simultaneous round
 const BINGO_ROULETTE_TIME = 8; // 8 seconds per roulette player
 
 export const CoachTVRoot: React.FC = () => {
@@ -76,72 +76,159 @@ export const CoachTVRoot: React.FC = () => {
 
   // Helper to get active condition for current round and slot index
   const getActiveCondition = (state: CoachRoomState) => {
+    if (state.matchCriteria && state.matchCriteria.length > 0) {
+      const idx = Math.min((state.roundNumber || 1) - 1, state.matchCriteria.length - 1);
+      const crit = state.matchCriteria[idx];
+      if (crit) {
+        return {
+          id: crit.id,
+          title: crit.title,
+          description: crit.description,
+          rulePrompt: crit.rulePrompt,
+        };
+      }
+    }
     const conditions = state.matchConditions || [];
-    const index = (state.roundNumber - 1) * 5 + (state.slotIndex || 0);
-    return conditions[index] || conditions[0] || { id: 'c_default', title: 'شرط تكتيكي', rulePrompt: '' };
+    const index = Math.min((state.roundNumber || 1) - 1, conditions.length - 1);
+    return conditions[index] || conditions[0] || { id: 'c_default', title: 'شرط تكتيكي', description: '', rulePrompt: '' };
   };
 
   // Listen to remote room events
   useEffect(() => {
+    // 1. Claim Player Request (First-Come, First-Served Exclusivity Engine)
+    const unsubClaimRequest = roomBus.on('CLAIM_PLAYER_REQUEST', (evt: any) => {
+      const payload = evt?.data || evt;
+      if (!payload || !payload.player) return;
+
+      const contestantId = payload.contestantId || payload.playerId;
+      if (!contestantId) return;
+
+      const contestantName = payload.contestantName || payload.playerName || 'متسابق';
+      const { player, roundIndex, slotKey } = payload;
+      const curState = coachStateRef.current;
+      if (curState.phase !== 'DRAFTING') return;
+
+      const normName = normalizeFootballSearch(player.name || player.playerName);
+      const existingClaim = curState.claimedPlayers[normName];
+
+      // Exclusivity Check: If already claimed by another contestant, reject immediately
+      if (existingClaim && existingClaim.contestantId !== contestantId) {
+        sound.playBuzz?.();
+        roomBus.broadcastClaimPlayerRejected(roomCode, {
+          contestantId,
+          playerName: player.name || player.playerName,
+          reason: `اللاعب حجزه ${existingClaim.contestantName} قبلك! اختر لاعباً آخر بسرعة!`,
+        });
+        return;
+      }
+
+      // Check if player used in previous rounds across match
+      if (curState.usedPlayersAcrossMatch && curState.usedPlayersAcrossMatch.includes(normName)) {
+        sound.playBuzz?.();
+        roomBus.broadcastClaimPlayerRejected(roomCode, {
+          contestantId,
+          playerName: player.name || player.playerName,
+          reason: `اللاعب تم استخدامه في جولة سابقة! اختر لاعباً آخر`,
+        });
+        return;
+      }
+
+      // Claim Granted! Update TV Authoritative Source of Truth
+      sound.playSuccess?.();
+      const updatedClaims: Record<string, ClaimedPlayerInfo> = {
+        ...curState.claimedPlayers,
+        [normName]: {
+          normalizedName: normName,
+          originalName: player.name || player.playerName,
+          contestantId,
+          contestantName,
+          timestamp: Date.now(),
+        },
+      };
+
+      const curRound = curState.roundNumber || 1;
+      const targetSlot = (slotKey as CoachSlotKey) || COACH_SLOTS_ORDER[curRound - 1] || 'FWD';
+      const cond = getActiveCondition(curState);
+
+      const pickData: CoachPlayerPick = {
+        playerName: player.name || player.playerName,
+        isCustom: !player.isLocalDb,
+        playerPhoto: player.photoUrl || player.photo,
+        matchedDbId: player.id,
+        conditionId: cond.id,
+        conditionTitle: cond.title,
+        confirmedAt: Date.now(),
+      };
+
+      const existingSquad = curState.squads[contestantId] || {
+        playerId: contestantId,
+        playerName: contestantName,
+        slots: {},
+      };
+
+      const updatedSquads = {
+        ...curState.squads,
+        [contestantId]: {
+          ...existingSquad,
+          slots: {
+            ...existingSquad.slots,
+            [targetSlot]: pickData,
+          },
+        },
+      };
+
+      const updatedSelections = {
+        ...(curState.currentRoundSelections || {}),
+        [contestantId]: pickData,
+      };
+
+      const nextState: CoachRoomState = {
+        ...curState,
+        claimedPlayers: updatedClaims,
+        currentRoundSelections: updatedSelections,
+        squads: updatedSquads,
+      };
+
+      setCoachState(nextState);
+      savePersistedCoachState(roomCode, nextState);
+
+      // Broadcast success & locked IDs to all contestants
+      roomBus.broadcastPlayerClaimSuccess(roomCode, {
+        contestantId,
+        contestantName,
+        player,
+        pick: pickData,
+        slotKey: targetSlot,
+        allClaimedIds: Object.keys(updatedClaims),
+      });
+      roomBus.broadcastCoachSync(roomCode, nextState);
+
+      setStatusBanner(`خطف ${contestantName} النجم ${player.name || player.playerName} رسمياً!`);
+      window.setTimeout(() => setStatusBanner(null), 3000);
+
+      // Check if ALL contestants have made their pick for this round
+      const allSelected =
+        contestants.length > 0 &&
+        contestants.every((c) => Boolean(updatedSelections[c.id]));
+
+      if (allSelected) {
+        window.setTimeout(() => {
+          advanceSimultaneousRound();
+        }, 1200);
+      }
+    });
+
     const unsubPick = roomBus.on('COACH_PICK_SUBMITTED', (evt: any) => {
+      // Forward compatibility with legacy events
       const payload = evt?.data || evt;
       if (!payload || !payload.playerId) return;
-
-      const { playerId, playerName, slotKey, pick } = payload;
-
-      setCoachState((prev) => {
-        const norm = normalizeFootballSearch(pick.playerName);
-        const updatedClaims = {
-          ...prev.claimedPlayers,
-          [norm]: {
-            normalizedName: norm,
-            originalName: pick.playerName,
-            contestantId: playerId,
-            contestantName: playerName,
-            timestamp: Date.now(),
-          },
-        };
-
-        const existingSquad = prev.squads[playerId] || {
-          playerId,
-          playerName,
-          slots: {},
-        };
-
-        const updatedSquads = {
-          ...prev.squads,
-          [playerId]: {
-            ...existingSquad,
-            slots: {
-              ...existingSquad.slots,
-              [slotKey]: pick,
-            },
-          },
-        };
-
-        const nextState: CoachRoomState = {
-          ...prev,
-          claimedPlayers: updatedClaims,
-          squads: updatedSquads,
-        };
-
-        // Broadcast to all devices
-        roomBus.emit('PLAYER_CLAIMED', roomCode, updatedClaims[norm]);
-        roomBus.broadcastCoachSync(roomCode, nextState);
-
-        // Turn-based Draft: Advance turn immediately after contestant confirms pick
-        if (nextState.phase === 'DRAFTING') {
-          window.setTimeout(() => {
-            advanceDraftTurn();
-          }, 400);
-        }
-
-        return nextState;
+      const p = { name: payload.pick?.playerName, id: payload.pick?.matchedDbId };
+      roomBus.emit('CLAIM_PLAYER_REQUEST', roomCode, {
+        contestantId: payload.playerId,
+        contestantName: payload.playerName,
+        player: p,
+        slotKey: payload.slotKey,
       });
-
-      sound.playSuccess();
-      setStatusBanner(`${playerName} خطف ${pick.playerName} في ${slotKey === 'FWD' ? 'الهجوم' : slotKey === 'GK' ? 'الحراسة' : slotKey === 'MID' ? 'الوسط' : 'الدفاع'}!`);
-      window.setTimeout(() => setStatusBanner(null), 3500);
     });
 
     // Contestant readiness for next round
@@ -271,6 +358,7 @@ export const CoachTVRoot: React.FC = () => {
     });
 
     return () => {
+      unsubClaimRequest();
       unsubPick();
       unsubReady();
       unsubBingoMark();
@@ -280,27 +368,126 @@ export const CoachTVRoot: React.FC = () => {
     };
   }, [roomCode, contestants.length]);
 
-  // Snake Draft 30s Turn Countdown Timer with Auto-Forfeit
+  // Simultaneous Real-Time 30s Countdown Timer per round
   useEffect(() => {
     if (coachState.phase !== 'DRAFTING') return;
 
+    setTimerSeconds(DRAFT_ROUND_TIME);
+
     const interval = window.setInterval(() => {
-      setCoachState((prev) => {
-        if (prev.phase !== 'DRAFTING') return prev;
-        const currentSec = prev.turnSecondsRemaining !== undefined ? prev.turnSecondsRemaining : 30;
-        if (currentSec <= 1) {
-          // Auto forfeit turn: advance to next contestant
-          sound.playTick();
-          const next = advanceDraftTurnInternal(prev);
-          roomBus.broadcastCoachSync(roomCode, next);
-          return next;
+      setTimerSeconds((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(interval);
+          advanceSimultaneousRound();
+          return 0;
         }
-        return { ...prev, turnSecondsRemaining: currentSec - 1 };
+        if (prev <= 6) {
+          sound.playTick?.();
+        }
+        return prev - 1;
       });
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [coachState.phase, coachState.roundNumber, coachState.turnIndex]);
+  }, [coachState.phase, coachState.roundNumber]);
+
+  // Advance to Next Round (Simultaneous Real-Time Race)
+  const advanceSimultaneousRound = () => {
+    const cur = coachStateRef.current;
+    if (cur.phase !== 'DRAFTING') return;
+
+    sound.playSuccess?.();
+    const curRound = cur.roundNumber || 1;
+    const currentSlotKey = COACH_SLOTS_ORDER[curRound - 1] || 'FWD';
+    const cond = getActiveCondition(cur);
+
+    // Record empty slot for any contestant who didn't select before timer
+    const updatedSquads = { ...cur.squads };
+    contestants.forEach((c) => {
+      const s = updatedSquads[c.id] || { playerId: c.id, playerName: c.name, slots: {} };
+      if (!s.slots[currentSlotKey] || !s.slots[currentSlotKey]?.playerName) {
+        s.slots[currentSlotKey] = {
+          playerName: 'خانة فارغة (فاتك الوقت)',
+          isCustom: true,
+          conditionId: cond.id,
+          conditionTitle: cond.title,
+        };
+      }
+      updatedSquads[c.id] = s;
+    });
+
+    // If 5 rounds completed, trigger final evaluation!
+    if (curRound >= 5) {
+      sound.playVictory?.();
+      const verdict = evaluateAllSquads(updatedSquads);
+
+      const nextCumulative = { ...cur.cumulativeScores };
+      verdict.evaluations.forEach((e) => {
+        nextCumulative[e.playerId] = (nextCumulative[e.playerId] || 0) + e.totalPercentage;
+      });
+
+      const nextState: CoachRoomState = {
+        ...cur,
+        phase: 'VERDICT',
+        squads: updatedSquads,
+        verdict,
+        cumulativeScores: nextCumulative,
+        readyPlayersNextRound: [],
+      };
+
+      setCoachState(nextState);
+      savePersistedCoachState(roomCode, nextState);
+      roomBus.broadcastCoachSync(roomCode, nextState);
+
+      // Async AI Roast & Verification with Gemini
+      evaluateAllSquadsWithAI(updatedSquads)
+        .then((aiVerdict) => {
+          if (aiVerdict && aiVerdict.evaluations.length > 0) {
+            setCoachState((prev) => {
+              const withAi = { ...prev, verdict: aiVerdict };
+              savePersistedCoachState(roomCode, withAi);
+              roomBus.broadcastCoachSync(roomCode, withAi);
+              return withAi;
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn('[Coach AI Evaluation] keeping deterministic score:', err);
+        });
+
+      return;
+    }
+
+    // Advance to next round criteria
+    const nextRound = curRound + 1;
+    const nextSlotIdx = nextRound - 1;
+    const nextCriteriaList = cur.matchCriteria || [];
+    const nextCrit = nextCriteriaList[nextRound - 1] || {
+      id: `crit_${nextRound}`,
+      title: `الشرط التكتيكي ${nextRound}`,
+      description: '',
+      rulePrompt: '',
+    };
+
+    const nextState: CoachRoomState = {
+      ...cur,
+      phase: 'DRAFTING',
+      roundNumber: nextRound,
+      slotIndex: nextSlotIdx,
+      activeConditionId: nextCrit.id,
+      activeConditionTitle: nextCrit.title,
+      activeConditionDescription: nextCrit.description,
+      currentRoundSelections: {},
+      squads: updatedSquads,
+      readyPlayersNextRound: [],
+      turnSecondsRemaining: DRAFT_ROUND_TIME,
+    };
+
+    setTimerSeconds(DRAFT_ROUND_TIME);
+    setCoachState(nextState);
+    savePersistedCoachState(roomCode, nextState);
+    roomBus.broadcastCoachSync(roomCode, nextState);
+  };
 
   // Bingo 8s Photo Roulette Advance with countdown
   useEffect(() => {
@@ -508,17 +695,15 @@ export const CoachTVRoot: React.FC = () => {
     sound.playSuccess();
 
     if (coachState.mode === 'draft') {
-      const matchConditions = generateMatchConditions(5);
-      const firstCondition = matchConditions[0];
-
-      const initialTurnOrder = contestants.map((c) => c.id);
-      const firstId = initialTurnOrder[0] || '';
-      const firstName = contestants.find((c) => c.id === firstId)?.name || firstId;
+      const matchCriteria = getRandomMatchCriteria(5);
+      const firstCrit = matchCriteria[0];
 
       const cleanSquads: Record<string, CoachSquad> = {};
       contestants.forEach((c) => {
         cleanSquads[c.id] = { playerId: c.id, playerName: c.name, slots: {} };
       });
+
+      setTimerSeconds(DRAFT_ROUND_TIME);
 
       const nextState: CoachRoomState = {
         ...coachState,
@@ -526,19 +711,16 @@ export const CoachTVRoot: React.FC = () => {
         roundNumber: 1,
         totalRounds: 5,
         slotIndex: 0,
-        matchConditions,
-        activeConditionId: firstCondition.id,
-        activeConditionTitle: firstCondition.title,
+        matchCriteria,
+        activeConditionId: firstCrit.id,
+        activeConditionTitle: firstCrit.title,
+        activeConditionDescription: firstCrit.description,
         claimedPlayers: {},
+        currentRoundSelections: {},
         usedPlayersAcrossMatch: [],
         readyPlayersNextRound: [],
         cumulativeScores: {},
         squads: cleanSquads,
-        turnOrder: initialTurnOrder,
-        turnIndex: 0,
-        currentTurnPlayerId: firstId,
-        currentTurnPlayerName: firstName,
-        turnSecondsRemaining: 30,
         verdict: null,
       };
 
@@ -681,7 +863,7 @@ export const CoachTVRoot: React.FC = () => {
             : `جولة ${coachState.roundNumber} من ٥ • اختر لاعبك التكتيكي بدون ما تكرر لاعب غيرك!`
         }
         isHost
-        onSkipTimer={coachState.phase === 'DRAFTING' ? advanceDraftTurn : advanceBingoRoulette}
+        onSkipTimer={coachState.phase === 'DRAFTING' ? advanceSimultaneousRound : advanceBingoRoulette}
         onReturnToLobby={handleReturnToLobby}
         onExit={handleExit}
       />
@@ -696,10 +878,11 @@ export const CoachTVRoot: React.FC = () => {
             roundNumber={coachState.roundNumber}
             totalRounds={coachState.totalRounds || 5}
             readyPlayers={coachState.readyPlayersNextRound || []}
-            currentTurnPlayerId={coachState.currentTurnPlayerId}
-            currentTurnPlayerName={coachState.currentTurnPlayerName}
-            turnSecondsRemaining={coachState.turnSecondsRemaining}
-            onNextRound={handleAdvanceToNextRound}
+            claimedPlayers={coachState.claimedPlayers}
+            currentRoundSelections={coachState.currentRoundSelections || {}}
+            turnSecondsRemaining={timerSeconds}
+            activeConditionDescription={currentCondition.description}
+            onNextRound={advanceSimultaneousRound}
             onReturnToLobby={handleReturnToLobby}
           />
         ) : (

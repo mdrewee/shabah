@@ -13,13 +13,14 @@ import {
   hybridFootballSearch,
   FootballSearchResult,
   normalizeFootballSearch,
-  SILHOUETTE_SVG,
 } from '../footballDataService';
 import { formatPercent, toArabicNumber } from '../../../../utils/numberFormat';
-import { Search, CheckCircle, AlertCircle, Clock, Check, X } from 'lucide-react';
+import { Search, CheckCircle, AlertCircle, Clock, Check, X, Lock, ShieldCheck } from 'lucide-react';
 import { sound } from '../../../../lib/audio';
+import { roomBus } from '../../../../lib/roomBus';
 
 interface CoachDraftMobileViewProps {
+  roomCode?: string;
   contestantId: string;
   contestantName: string;
   squad: CoachSquad;
@@ -27,7 +28,9 @@ interface CoachDraftMobileViewProps {
   totalRounds?: number;
   conditionTitle: string;
   conditionId: string;
+  conditionDescription?: string;
   claimedPlayers: Record<string, ClaimedPlayerInfo>;
+  currentRoundSelections?: Record<string, CoachPlayerPick>;
   usedPlayersAcrossMatch?: string[];
   isReadyForNextRound?: boolean;
   onReadyForNextRound?: () => void;
@@ -39,6 +42,7 @@ interface CoachDraftMobileViewProps {
 }
 
 export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
+  roomCode = '',
   contestantId,
   contestantName,
   squad,
@@ -46,23 +50,29 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
   totalRounds = 5,
   conditionTitle,
   conditionId,
+  conditionDescription,
   claimedPlayers,
+  currentRoundSelections = {},
   usedPlayersAcrossMatch = [],
   isReadyForNextRound = false,
   onReadyForNextRound,
-  onConfirmPick,
   evaluationResult,
-  isMyTurn = true,
-  currentTurnPlayerName,
   turnSecondsRemaining,
 }) => {
-  // Determine current active slot based on round number or user manual tap
-  const defaultSlot = COACH_SLOTS_ORDER[(roundNumber - 1) % 5] || 'FWD';
-  const [selectedSlot, setSelectedSlot] = useState<CoachSlotKey>(defaultSlot);
+  // Current active slot for this round (Round 1: GK, Round 2: DEF_1, Round 3: DEF_2, Round 4: MID, Round 5: FWD)
+  const currentSlotKey = COACH_SLOTS_ORDER[(roundNumber - 1) % 5] || 'FWD';
+  const currentSlotConfig = COACH_SLOT_CONFIG[currentSlotKey];
+
+  // Local 30s countdown timer per round
+  const [localSecondsLeft, setLocalSecondsLeft] = useState(turnSecondsRemaining ?? 30);
 
   useEffect(() => {
-    setSelectedSlot(COACH_SLOTS_ORDER[(roundNumber - 1) % 5] || 'FWD');
-  }, [roundNumber]);
+    setLocalSecondsLeft(turnSecondsRemaining ?? 30);
+    const interval = window.setInterval(() => {
+      setLocalSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [roundNumber, turnSecondsRemaining]);
 
   // Search input & suggestions state
   const [searchInput, setSearchInput] = useState('');
@@ -70,7 +80,29 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Debounced search
+  // Clear search on round change
+  useEffect(() => {
+    setSearchInput('');
+    setSuggestions([]);
+    setErrorMessage(null);
+  }, [roundNumber]);
+
+  // Listen for claim rejection from TV host
+  useEffect(() => {
+    const unsubRejection = roomBus.on('CLAIM_PLAYER_REJECTED', (evt: any) => {
+      const payload = evt?.data || evt;
+      if (payload && payload.contestantId === contestantId) {
+        sound.playBuzz?.();
+        setErrorMessage(payload.reason || 'تعذر حجز اللاعب! سبقه شخص آخر');
+      }
+    });
+
+    return () => {
+      unsubRejection();
+    };
+  }, [contestantId]);
+
+  // Debounced search with master data & Wikipedia fallback
   useEffect(() => {
     const clean = searchInput.trim();
     if (!clean || clean.length < 2) {
@@ -92,7 +124,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
       } catch {
         if (!isCancelled) setIsSearching(false);
       }
-    }, 180);
+    }, 150);
 
     return () => {
       isCancelled = true;
@@ -100,6 +132,10 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
     };
   }, [searchInput]);
 
+  // Check if current contestant already drafted a player in this round
+  const myCurrentPick = squad.slots[currentSlotKey] || currentRoundSelections[contestantId];
+
+  // Request Claim for player (Simultaneous race with first-come first-served)
   const handleSelectSuggestedPlayer = (player: FootballSearchResult) => {
     sound.playClick();
     setErrorMessage(null);
@@ -107,28 +143,34 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
     const norm = normalizeFootballSearch(player.name);
     const claim = claimedPlayers[norm];
 
-    // Global match blocklist check (across all previous rounds)
-    if (usedPlayersAcrossMatch && usedPlayersAcrossMatch.includes(norm)) {
-      setErrorMessage('هذا اللاعب تم استخدامه في جولة سابقة! اختر لاعباً آخر');
-      sound.playTick();
-      return;
-    }
-
-    // Current round player lock check
+    // Local instant lock check
     if (claim && claim.contestantId !== contestantId) {
-      setErrorMessage(`سبقك عليها غيرك! اختاره: ${claim.contestantName}`);
-      sound.playTick();
+      sound.playBuzz?.();
+      setErrorMessage(`اللاعب حجزه ${claim.contestantName} قبلك! اختر لاعباً آخر بسرعة`);
       return;
     }
 
-    onConfirmPick(selectedSlot, {
-      playerName: player.name,
-      isCustom: !player.isLocalDb,
-      playerPhoto: player.photoUrl,
-      matchedDbId: player.id,
-      conditionId,
-      conditionTitle,
-      confirmedAt: Date.now(),
+    // Global match blocklist check
+    if (usedPlayersAcrossMatch && usedPlayersAcrossMatch.includes(norm)) {
+      sound.playBuzz?.();
+      setErrorMessage('هذا اللاعب تم استخدامه في جولة سابقة! اختر لاعباً آخر');
+      return;
+    }
+
+    // Send Real-Time Claim Request to TV host (authoritative lock)
+    roomBus.broadcastClaimPlayerRequest(roomCode, {
+      contestantId,
+      contestantName,
+      player: {
+        id: player.id,
+        name: player.name,
+        photoUrl: player.photoUrl,
+        position: player.position,
+        isLocalDb: player.isLocalDb,
+      },
+      roundIndex: roundNumber,
+      slotKey: currentSlotKey,
+      roomCode,
     });
 
     setSearchInput('');
@@ -143,35 +185,36 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
     if (!clean) return;
 
     const norm = normalizeFootballSearch(clean);
-
-    // Global match blocklist check (across all previous rounds)
-    if (usedPlayersAcrossMatch && usedPlayersAcrossMatch.includes(norm)) {
-      setErrorMessage('هذا اللاعب تم استخدامه في جولة سابقة! اختر لاعباً آخر');
-      sound.playTick();
-      return;
-    }
-
     const claim = claimedPlayers[norm];
 
     if (claim && claim.contestantId !== contestantId) {
-      setErrorMessage(`سبقك عليها غيرك! اختاره: ${claim.contestantName}`);
-      sound.playTick();
+      sound.playBuzz?.();
+      setErrorMessage(`اللاعب حجزه ${claim.contestantName} قبلك! اختر لاعباً آخر بسرعة`);
       return;
     }
 
-    onConfirmPick(selectedSlot, {
-      playerName: clean,
-      isCustom: true,
-      conditionId,
-      conditionTitle,
-      confirmedAt: Date.now(),
+    if (usedPlayersAcrossMatch && usedPlayersAcrossMatch.includes(norm)) {
+      sound.playBuzz?.();
+      setErrorMessage('هذا اللاعب تم استخدامه في جولة سابقة! اختر لاعباً آخر');
+      return;
+    }
+
+    roomBus.broadcastClaimPlayerRequest(roomCode, {
+      contestantId,
+      contestantName,
+      player: {
+        id: `custom_${Date.now()}`,
+        name: clean,
+        isLocalDb: false,
+      },
+      roundIndex: roundNumber,
+      slotKey: currentSlotKey,
+      roomCode,
     });
 
     setSearchInput('');
     setSuggestions([]);
   };
-
-  const currentSlotPick = squad.slots[selectedSlot];
 
   // If match evaluation is ready, show personal evaluation card
   if (evaluationResult) {
@@ -279,182 +322,176 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
 
   return (
     <div className="w-full max-w-md mx-auto flex flex-col gap-4 py-2 px-3 select-none">
-      {/* 0. Snake Draft Turn Status Banner */}
-      {!isMyTurn ? (
-        <div className="w-full p-3.5 rounded-2xl bg-zinc-950 border-2 border-zinc-800 text-center flex items-center justify-between shadow-lg">
-          <div className="flex items-center gap-2">
-            <Clock className="w-5 h-5 text-amber-400 animate-spin" />
-            <span className="font-sans font-bold text-sm text-zinc-300">
-              دور المتسابق <strong className="text-white underline">{currentTurnPlayerName || 'المنافس'}</strong> يختار...
-            </span>
+      {/* 1. Top Condition Banner with Round Number and Live Countdown */}
+      <div className="w-full p-4 rounded-2xl bg-zinc-950 border-2 border-zinc-800 flex flex-col gap-2 shadow-xl">
+        <div className="flex items-center justify-between text-xs font-black">
+          <span className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-300">
+            الجولة {toArabicNumber(roundNumber)} من {toArabicNumber(totalRounds)} • {currentSlotConfig.label}
+          </span>
+          <div
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-mono font-black border transition-colors ${
+              localSecondsLeft <= 6
+                ? 'bg-red-950 text-red-400 border-red-700 animate-pulse'
+                : 'bg-zinc-900 text-amber-400 border-zinc-700'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>{toArabicNumber(localSecondsLeft)} ثانية</span>
           </div>
-          {turnSecondsRemaining !== undefined && (
-            <span className="font-mono text-xs font-black px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-amber-400">
-              {toArabicNumber(turnSecondsRemaining)} ث
-            </span>
+        </div>
+
+        <div className="flex flex-col gap-1 mt-1">
+          <h2 className="text-base sm:text-lg font-black text-white leading-tight">
+            {conditionTitle}
+          </h2>
+          {conditionDescription && (
+            <p className="text-xs font-bold text-zinc-400 leading-relaxed">
+              {conditionDescription}
+            </p>
           )}
         </div>
-      ) : (
-        <div className="w-full p-3.5 rounded-2xl bg-emerald-950/60 border-2 border-emerald-500 text-center flex items-center justify-between shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-          <span className="font-sans font-black text-sm text-emerald-300">
-            دورك الآن! اختر لاعباً يحقق الشرط التكتيكي
-          </span>
-          {turnSecondsRemaining !== undefined && (
-            <span className="font-mono text-xs font-black px-2.5 py-1 rounded-lg bg-black text-emerald-400 border border-emerald-600">
-              {toArabicNumber(turnSecondsRemaining)} ث
+      </div>
+
+      {/* 2. State Switch: Either Waiting (Player Already Locked) OR Active Searching */}
+      {myCurrentPick ? (
+        /* Confirmed / Locked In State */
+        <div className="w-full p-5 rounded-2xl bg-emerald-950/40 border-2 border-emerald-500/80 flex flex-col items-center text-center gap-3 shadow-[0_0_25px_rgba(16,185,129,0.2)]">
+          <div className="w-12 h-12 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center text-emerald-400">
+            <ShieldCheck className="w-7 h-7" />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-emerald-400">تم تثبيت اختيارك للجولة!</span>
+            <span className="text-xl sm:text-2xl font-black text-white">
+              {myCurrentPick.playerName}
             </span>
-          )}
+            <span className="text-xs font-bold text-zinc-400">
+              خانة: {currentSlotConfig.label}
+            </span>
+          </div>
+
+          <div className="w-full mt-2 pt-3 border-t border-emerald-900/50 flex items-center justify-center gap-2 text-xs font-bold text-emerald-300">
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>بانتظار اكتمال اختيارات باقي المدربين...</span>
+          </div>
+        </div>
+      ) : (
+        /* Active Search & Claim State */
+        <div className="shabah-border-wrap">
+          <div className="shabah-border-inner">
+            <div className="shabah-surface p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between text-xs font-black">
+                <span className="text-neutral-500">
+                  ابحث عن لاعب واختره قبل أن يسبقك أحد:
+                </span>
+              </div>
+
+              {/* Search input field */}
+              <div className="relative w-full">
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="ابحث عن اسم اللاعب..."
+                  className="w-full h-12 pr-10 pl-4 rounded-xl border-2 border-[#0A0A0A] text-[#0A0A0A] font-black placeholder-neutral-400 focus:outline-none bg-white text-sm"
+                  autoFocus
+                />
+                <Search className="w-5 h-5 text-neutral-400 absolute right-3 top-3.5 pointer-events-none" />
+              </div>
+
+              {/* Error message */}
+              {errorMessage && (
+                <div className="p-2.5 rounded-xl bg-red-100 border border-red-400 text-red-700 text-xs font-black flex items-center gap-1.5 animate-shake">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
+
+              {/* Suggestions list with brutalist lock indicators */}
+              {suggestions.length > 0 && (
+                <div className="max-h-56 overflow-y-auto flex flex-col gap-1.5 border-t border-neutral-200 pt-2">
+                  {suggestions.map((p) => {
+                    const norm = normalizeFootballSearch(p.name);
+                    const claim = claimedPlayers[norm];
+                    const isClaimedByOther = claim && claim.contestantId !== contestantId;
+                    const isUsedPrev = usedPlayersAcrossMatch && usedPlayersAcrossMatch.includes(norm);
+                    const isBlocked = isClaimedByOther || isUsedPrev;
+
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        disabled={isBlocked}
+                        onClick={() => handleSelectSuggestedPlayer(p)}
+                        className={`w-full p-2.5 rounded-xl text-right flex items-center justify-between border transition-all ${
+                          isBlocked
+                            ? 'bg-neutral-100 border-neutral-200 text-neutral-400 cursor-not-allowed opacity-60'
+                            : 'bg-white hover:bg-neutral-50 border-neutral-200 text-[#0A0A0A] cursor-pointer active:scale-98'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          {/* Position & Rating Badge */}
+                          <div className="w-9 h-9 rounded-xl bg-black border border-zinc-700 flex flex-col items-center justify-center text-white shrink-0">
+                            <span className="font-mono text-[9px] font-bold text-zinc-400 leading-none">
+                              {p.position || 'DEF'}
+                            </span>
+                            <span className="font-mono text-xs font-black text-emerald-400 leading-none mt-0.5">
+                              {p.rating || 85}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-col">
+                            <span className="font-black text-xs sm:text-sm">{p.name}</span>
+                            <span className="text-[10px] text-neutral-500">
+                              {p.currentClub || p.nationality || ''} • {p.position || 'لاعب'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {isClaimedByOther ? (
+                          <span className="px-2 py-1 rounded bg-red-100 text-red-700 text-[10px] font-black flex items-center gap-1 shrink-0">
+                            <Lock className="w-3 h-3" />
+                            <span>حجزه: {claim.contestantName}</span>
+                          </span>
+                        ) : isUsedPrev ? (
+                          <span className="px-2 py-1 rounded bg-zinc-200 text-zinc-600 text-[10px] font-black shrink-0">
+                            استُخدم سابقاً
+                          </span>
+                        ) : (
+                          <span className="px-3 py-1.5 rounded-lg bg-[#0A0A0A] text-white text-xs font-black shrink-0">
+                            حجز اللاعب
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Custom Name Entry Button */}
+              {searchInput.trim().length >= 2 && (
+                <button
+                  type="button"
+                  onClick={handleConfirmCustomName}
+                  className="w-full py-3 rounded-xl bg-[#0A0A0A] text-white font-black text-xs sm:text-sm hover:bg-neutral-800 transition-transform active:scale-95 cursor-pointer shadow-[2px_2px_0px_#0A0A0A]"
+                >
+                  حجز الاسم المكتوب: "{searchInput.trim()}"
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      {/* 1. Tactical Slot Selector Pills */}
-      <div className="flex items-center justify-between gap-1 p-1.5 bg-neutral-900 border border-neutral-800 rounded-2xl">
-        {COACH_SLOTS_ORDER.map((slotKey) => {
-          const isSelected = selectedSlot === slotKey;
-          const isFilled = Boolean(squad.slots[slotKey]?.playerName);
-
-          return (
-            <button
-              key={slotKey}
-              type="button"
-              disabled={!isMyTurn}
-              onClick={() => {
-                sound.playClick();
-                setSelectedSlot(slotKey);
-                setErrorMessage(null);
-              }}
-              className={`flex-1 py-1.5 px-1 rounded-xl text-xs font-black transition-all ${
-                isSelected
-                  ? 'bg-white text-[#0A0A0A] shadow-[2px_2px_0px_#0A0A0A]'
-                  : isFilled
-                  ? 'bg-neutral-800 text-neutral-300'
-                  : 'text-neutral-500 hover:text-neutral-300'
-              } ${!isMyTurn ? 'opacity-70 cursor-not-allowed' : ''}`}
-            >
-              {COACH_SLOT_CONFIG[slotKey].label}
-              {isFilled && <span className="mr-0.5 text-emerald-400">●</span>}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* 2. Search Box with Autocomplete & Custom Input Fallback */}
-      <div className="shabah-border-wrap">
-        <div className="shabah-border-inner">
-          <div className="shabah-surface p-4 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-black text-neutral-500">
-                الخانة المستهدفة: {COACH_SLOT_CONFIG[selectedSlot].label}
-              </span>
-              {currentSlotPick && (
-                <span className="text-xs font-black text-emerald-600">
-                  الحالي: {currentSlotPick.playerName}
-                </span>
-              )}
-            </div>
-
-            {/* Input field */}
-            <div className="relative w-full">
-              <input
-                type="text"
-                disabled={!isMyTurn}
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder={isMyTurn ? 'ابحث عن لاعب أو اكتب اسمه...' : 'انتظر دورك للبحث والاختيار...'}
-                className={`w-full h-12 pr-10 pl-4 rounded-xl border-2 border-[#0A0A0A] text-[#0A0A0A] font-black placeholder-neutral-400 focus:outline-none bg-white text-sm ${
-                  !isMyTurn ? 'bg-neutral-100 opacity-60 cursor-not-allowed' : ''
-                }`}
-              />
-              <Search className="w-5 h-5 text-neutral-400 absolute right-3 top-3.5 pointer-events-none" />
-            </div>
-
-            {/* Error message */}
-            {errorMessage && (
-              <div className="p-2.5 rounded-xl bg-red-100 border border-red-400 text-red-700 text-xs font-black flex items-center gap-1.5">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{errorMessage}</span>
-              </div>
-            )}
-
-            {/* Autocomplete suggestions list - Brutalist cards without cutouts img */}
-            {suggestions.length > 0 && isMyTurn && (
-              <div className="max-h-48 overflow-y-auto flex flex-col gap-1.5 border-t border-neutral-200 pt-2">
-                {suggestions.map((p) => {
-                  const norm = normalizeFootballSearch(p.name);
-                  const isClaimedByOther =
-                    claimedPlayers[norm] && claimedPlayers[norm].contestantId !== contestantId;
-
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      disabled={isClaimedByOther || !isMyTurn}
-                      onClick={() => handleSelectSuggestedPlayer(p)}
-                      className={`w-full p-2 rounded-xl text-right flex items-center justify-between border transition-all ${
-                        isClaimedByOther
-                          ? 'bg-neutral-100 border-neutral-200 text-neutral-400 cursor-not-allowed opacity-60'
-                          : 'bg-white hover:bg-neutral-50 border-neutral-200 text-[#0A0A0A] cursor-pointer active:scale-98'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        {/* Brutalist Position & Rating Badge (Zero Cutout img) */}
-                        <div className="w-9 h-9 rounded-xl bg-black border border-zinc-700 flex flex-col items-center justify-center text-white shrink-0">
-                          <span className="font-mono text-[9px] font-bold text-zinc-400 leading-none">
-                            {p.position || 'DEF'}
-                          </span>
-                          <span className="font-mono text-xs font-black text-emerald-400 leading-none mt-0.5">
-                            {p.rating || 85}
-                          </span>
-                        </div>
-
-                        <div className="flex flex-col">
-                          <span className="font-black text-xs sm:text-sm">{p.name}</span>
-                          <span className="text-[10px] text-neutral-500">
-                            {p.currentClub || p.nationality || ''} • {p.position || 'لاعب'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {isClaimedByOther ? (
-                        <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-black">
-                          اختاره: {claimedPlayers[norm].contestantName}
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-1 rounded-lg bg-[#0A0A0A] text-white text-xs font-black">
-                          اختيار
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Custom Name Entry Button */}
-            {searchInput.trim().length >= 2 && isMyTurn && (
-              <button
-                type="button"
-                onClick={handleConfirmCustomName}
-                className="w-full py-3 rounded-xl bg-[#0A0A0A] text-white font-black text-xs sm:text-sm hover:bg-neutral-800 transition-transform active:scale-95 cursor-pointer shadow-[2px_2px_0px_#0A0A0A]"
-              >
-                اعتماد الاسم المكتوب: "{searchInput.trim()}"
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* 3. Tactical Pitch Preview */}
-      <ShabahTacticalPitch
-        squad={squad}
-        activeSlot={selectedSlot}
-        onSlotClick={(slot) => {
-          sound.playClick();
-          setSelectedSlot(slot);
-          setErrorMessage(null);
-        }}
-        isCompact
-      />
+      <div className="w-full flex flex-col gap-1.5">
+        <span className="text-xs font-black text-zinc-400 px-1">تشكيلتك الحالية:</span>
+        <ShabahTacticalPitch
+          squad={squad}
+          activeSlot={currentSlotKey}
+          isCompact
+        />
+      </div>
     </div>
   );
 };

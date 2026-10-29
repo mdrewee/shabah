@@ -13,6 +13,7 @@ import { roomBus } from '../../../lib/roomBus';
 import { normalizeFootballSearch } from './footballDataService';
 import { FOOTBALL_PLAYERS_MASTER } from '../../../data/footballMasterData';
 import { DRAFT_CONDITIONS_BANK, generateMatchConditions } from '../../../data/draftConditions';
+import { getRandomMatchCriteria } from '../../../data/coachCriteria';
 import {
   STATIC_CLUBS,
   STATIC_TROPHIES,
@@ -45,6 +46,7 @@ export function createInitialCoachState(roomCode: string, mode: CoachGameMode = 
   }
 
   const matchConditions = generateMatchConditions(25);
+  const matchCriteria = getRandomMatchCriteria(5);
 
   const initial: CoachRoomState = {
     roomCode,
@@ -53,14 +55,17 @@ export function createInitialCoachState(roomCode: string, mode: CoachGameMode = 
     roundNumber: 1,
     totalRounds: 5,
     slotIndex: 0,
-    activeConditionId: matchConditions[0]?.id,
-    activeConditionTitle: matchConditions[0]?.title,
+    activeConditionId: matchCriteria[0]?.id || matchConditions[0]?.id,
+    activeConditionTitle: matchCriteria[0]?.title || matchConditions[0]?.title,
+    activeConditionDescription: matchCriteria[0]?.description,
     claimedPlayers: {},
+    currentRoundSelections: {},
     usedPlayersAcrossMatch: [],
     readyPlayersNextRound: [],
     cumulativeScores: {},
     squads: {},
     matchConditions,
+    matchCriteria,
     bingoCards: {},
     rouletteHistory: [],
     rouletteSkipVotes: [],

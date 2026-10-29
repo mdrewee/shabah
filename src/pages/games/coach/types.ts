@@ -1,10 +1,12 @@
 import { DraftCondition } from '../../../data/draftConditions';
+import { CoachCriterion } from '../../../data/coachCriteria';
 
 export type CoachGameMode = 'draft' | 'bingo';
 
 export type CoachGamePhase =
   | 'LOBBY'
   | 'DRAFTING'
+  | 'ROUND_REVEAL'
   | 'EVALUATING'
   | 'VERDICT'
   | 'BINGO_PLAYING'
@@ -130,13 +132,16 @@ export interface CoachRoomState {
   slotIndex: number;   // 0 to 4 (GK, DEF_1, DEF_2, MID, FWD)
   activeConditionId?: string;
   activeConditionTitle?: string;
+  activeConditionDescription?: string;
   roundEndsAt?: number; // timestamp ms
-  claimedPlayers: Record<string, ClaimedPlayerInfo>; // normalizedName -> ClaimedPlayerInfo (current round)
+  claimedPlayers: Record<string, ClaimedPlayerInfo>; // normalizedName -> ClaimedPlayerInfo (all claimed players across match)
+  currentRoundSelections: Record<string, CoachPlayerPick>; // contestantId -> pick in current round
   usedPlayersAcrossMatch: string[]; // Global Match Blocklist across all 5 rounds
   readyPlayersNextRound: string[]; // IDs of players who clicked "جاهز للجولة التالية"
   cumulativeScores: Record<string, number>; // playerId -> sum of round percentage scores
   squads: Record<string, CoachSquad>; // playerId -> CoachSquad
   matchConditions?: DraftCondition[]; // 25 non-repeating conditions
+  matchCriteria?: CoachCriterion[]; // 5 simultaneous round criteria
   verdict?: CoachVerdict | null;
 
   // Snake Draft Turn-Based State

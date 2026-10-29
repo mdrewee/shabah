@@ -57,6 +57,55 @@ export const CoachMobileRoot: React.FC = () => {
       }
     });
 
+    const unsubClaimSuccess = roomBus.on('PLAYER_CLAIM_SUCCESS', (evt: any) => {
+      const payload = evt?.data || evt;
+      if (payload && payload.pick) {
+        sound.playSuccess?.();
+        setCoachState((prev) => {
+          const norm = normalizeFootballSearch(payload.player.name || payload.player.playerName || payload.pick.playerName);
+          const updatedClaims = {
+            ...prev.claimedPlayers,
+            [norm]: {
+              normalizedName: norm,
+              originalName: payload.player.name || payload.player.playerName || payload.pick.playerName,
+              contestantId: payload.contestantId,
+              contestantName: payload.contestantName,
+              timestamp: Date.now(),
+            },
+          };
+
+          const pSquad = prev.squads[payload.contestantId] || {
+            playerId: payload.contestantId,
+            playerName: payload.contestantName,
+            slots: {},
+          };
+
+          const targetSlot = (payload.slotKey as CoachSlotKey) || COACH_SLOTS_ORDER[(prev.roundNumber || 1) - 1] || 'FWD';
+
+          const updatedSquads = {
+            ...prev.squads,
+            [payload.contestantId]: {
+              ...pSquad,
+              slots: {
+                ...pSquad.slots,
+                [targetSlot]: payload.pick,
+              },
+            },
+          };
+
+          return {
+            ...prev,
+            claimedPlayers: updatedClaims,
+            squads: updatedSquads,
+            currentRoundSelections: {
+              ...(prev.currentRoundSelections || {}),
+              [payload.contestantId]: payload.pick,
+            },
+          };
+        });
+      }
+    });
+
     const unsubClaimed = roomBus.on('PLAYER_CLAIMED', (evt: any) => {
       const payload = (evt?.data || evt) as ClaimedPlayerInfo;
       if (payload && payload.normalizedName) {
@@ -127,6 +176,7 @@ export const CoachMobileRoot: React.FC = () => {
 
     return () => {
       unsubSync();
+      unsubClaimSuccess();
       unsubClaimed();
       unsubMode();
       unsubBingoPlayer();
@@ -334,6 +384,7 @@ export const CoachMobileRoot: React.FC = () => {
       <main className="w-full flex-1 flex flex-col items-center justify-start py-2">
         {coachState.mode === 'draft' ? (
           <CoachDraftMobileView
+            roomCode={roomCode}
             contestantId={playerId}
             contestantName={playerName}
             squad={mySquad}
@@ -341,14 +392,15 @@ export const CoachMobileRoot: React.FC = () => {
             totalRounds={coachState.totalRounds || 5}
             conditionTitle={coachState.activeConditionTitle || 'شرط تكتيكي'}
             conditionId={coachState.activeConditionId || 'c_default'}
+            conditionDescription={coachState.activeConditionDescription}
             claimedPlayers={coachState.claimedPlayers}
+            currentRoundSelections={coachState.currentRoundSelections || {}}
             usedPlayersAcrossMatch={coachState.usedPlayersAcrossMatch || []}
             isReadyForNextRound={isMeReadyForNext}
             onReadyForNextRound={handleToggleReadyForNextRound}
             onConfirmPick={handleConfirmPick}
             evaluationResult={myEvaluation}
-            isMyTurn={coachState.currentTurnPlayerId ? coachState.currentTurnPlayerId === playerId : true}
-            currentTurnPlayerName={coachState.currentTurnPlayerName || undefined}
+            isMyTurn={true}
             turnSecondsRemaining={coachState.turnSecondsRemaining}
           />
         ) : (

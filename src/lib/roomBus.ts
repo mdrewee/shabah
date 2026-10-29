@@ -280,6 +280,9 @@ class RoomBus {
       'JUDGE_SUBMIT_EXCUSE',
       'BROKER_BID_SUBMITTED',
       'COACH_PICK_SUBMITTED',
+      'CLAIM_PLAYER_REQUEST',
+      'PLAYER_CLAIM_SUCCESS',
+      'CLAIM_PLAYER_REJECTED',
       'ARABIC_SUBMIT_ANSWERS',
       'SUBMIT_ARABIC_ANSWERS',
       'ARABIC_TIME_UP',
@@ -438,6 +441,24 @@ class RoomBus {
     const clean = cleanRoomCode(roomCode);
     this.emit('COACH_PICK_SUBMITTED', clean, payload);
     this.safeBroadcast(clean, 'COACH_PICK_SUBMITTED', payload);
+  }
+
+  public broadcastClaimPlayerRequest(roomCode: string, payload: any): void {
+    const clean = cleanRoomCode(roomCode);
+    this.emit('CLAIM_PLAYER_REQUEST', clean, payload);
+    this.safeBroadcast(clean, 'CLAIM_PLAYER_REQUEST', payload);
+  }
+
+  public broadcastPlayerClaimSuccess(roomCode: string, payload: any): void {
+    const clean = cleanRoomCode(roomCode);
+    this.emit('PLAYER_CLAIM_SUCCESS', clean, payload);
+    this.safeBroadcast(clean, 'PLAYER_CLAIM_SUCCESS', payload);
+  }
+
+  public broadcastClaimPlayerRejected(roomCode: string, payload: any): void {
+    const clean = cleanRoomCode(roomCode);
+    this.emit('CLAIM_PLAYER_REJECTED', clean, payload);
+    this.safeBroadcast(clean, 'CLAIM_PLAYER_REJECTED', payload);
   }
 
   public broadcastArabicSync(roomCode: string, state: any): void {
@@ -1261,6 +1282,33 @@ class RoomBus {
           this.emit('COACH_PICK_SUBMITTED', cleanCode, payload);
         } catch (err) {
           console.error('[roomBus] COACH_PICK_SUBMITTED broadcast error shielded:', err);
+        }
+      });
+
+      ch.on('broadcast', { event: 'CLAIM_PLAYER_REQUEST' }, ({ payload }) => {
+        try {
+          if (this.isSelfBroadcast(payload)) return;
+          this.emit('CLAIM_PLAYER_REQUEST', cleanCode, payload);
+        } catch (err) {
+          console.error('[roomBus] CLAIM_PLAYER_REQUEST broadcast error shielded:', err);
+        }
+      });
+
+      ch.on('broadcast', { event: 'PLAYER_CLAIM_SUCCESS' }, ({ payload }) => {
+        try {
+          if (this.isSelfBroadcast(payload)) return;
+          this.emit('PLAYER_CLAIM_SUCCESS', cleanCode, payload);
+        } catch (err) {
+          console.error('[roomBus] PLAYER_CLAIM_SUCCESS broadcast error shielded:', err);
+        }
+      });
+
+      ch.on('broadcast', { event: 'CLAIM_PLAYER_REJECTED' }, ({ payload }) => {
+        try {
+          if (this.isSelfBroadcast(payload)) return;
+          this.emit('CLAIM_PLAYER_REJECTED', cleanCode, payload);
+        } catch (err) {
+          console.error('[roomBus] CLAIM_PLAYER_REJECTED broadcast error shielded:', err);
         }
       });
 

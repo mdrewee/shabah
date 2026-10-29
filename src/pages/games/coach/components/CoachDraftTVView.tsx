@@ -1,8 +1,8 @@
 import React from 'react';
-import { CoachSquad, CoachVerdict } from '../types';
+import { CoachSquad, CoachVerdict, CoachPlayerPick, ClaimedPlayerInfo } from '../types';
 import { ShabahTacticalPitch } from './ShabahTacticalPitch';
 import { formatPercent, toArabicNumber } from '../../../../utils/numberFormat';
-import { CheckCircle2, RotateCcw, Trophy, Users } from 'lucide-react';
+import { CheckCircle2, RotateCcw, Trophy, Users, Clock, Flame, Lock } from 'lucide-react';
 import { sound } from '../../../../lib/audio';
 
 interface ContestantItem {
@@ -18,9 +18,10 @@ interface CoachDraftTVViewProps {
   roundNumber?: number;
   totalRounds?: number;
   readyPlayers?: string[];
-  currentTurnPlayerId?: string | null;
-  currentTurnPlayerName?: string | null;
+  claimedPlayers?: Record<string, ClaimedPlayerInfo>;
+  currentRoundSelections?: Record<string, CoachPlayerPick>;
   turnSecondsRemaining?: number;
+  activeConditionDescription?: string;
   onNextRound?: () => void;
   onReturnToLobby?: () => void;
 }
@@ -33,9 +34,10 @@ export const CoachDraftTVView: React.FC<CoachDraftTVViewProps> = ({
   roundNumber = 1,
   totalRounds = 5,
   readyPlayers = [],
-  currentTurnPlayerId,
-  currentTurnPlayerName,
+  claimedPlayers = {},
+  currentRoundSelections = {},
   turnSecondsRemaining,
+  activeConditionDescription,
   onNextRound,
   onReturnToLobby,
 }) => {
@@ -63,28 +65,44 @@ export const CoachDraftTVView: React.FC<CoachDraftTVViewProps> = ({
 
   return (
     <div className="w-full flex flex-col items-center gap-4 py-2 px-3 sm:px-6 select-none">
-      {/* 1. Live Broadcast Status Banner or Active Turn Indicator */}
-      {!verdict && currentTurnPlayerName && (
-        <div className="w-full max-w-2xl shabah-border-wrap animate-in fade-in duration-300">
+      {/* 1. Simultaneous Race Top Live Status Indicator */}
+      {!verdict && (
+        <div className="w-full max-w-4xl shabah-border-wrap animate-in fade-in duration-300">
           <div className="shabah-border-inner">
-            <div className="shabah-surface px-6 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
-                <span className="text-base font-black text-[#0A0A0A]">
-                  دور المتسابق: <strong className="underline text-emerald-700">{currentTurnPlayerName}</strong> يختار لاعبه التكتيكي...
-                </span>
+            <div className="shabah-surface px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 animate-ping" />
+                <div className="flex flex-col text-right">
+                  <span className="text-sm sm:text-base font-black text-[#0A0A0A] flex items-center gap-2">
+                    <Flame className="w-4 h-4 text-amber-500" />
+                    سباق متزامن: الجميع يبحث ويخطف لاعبه في نفس اللحظة!
+                  </span>
+                  {activeConditionDescription && (
+                    <span className="text-xs font-bold text-neutral-600">
+                      {activeConditionDescription}
+                    </span>
+                  )}
+                </div>
               </div>
-              {turnSecondsRemaining !== undefined && (
-                <span className="px-3 py-1 rounded-full bg-[#0A0A0A] text-emerald-400 font-mono text-sm font-black shadow-md">
-                  {toArabicNumber(turnSecondsRemaining)} ث
-                </span>
-              )}
+
+              {/* Countdown Pill & Picks Progress */}
+              <div className="flex items-center gap-3 shrink-0">
+                <div className="px-3.5 py-1.5 rounded-xl bg-neutral-100 border border-neutral-300 text-xs font-black text-neutral-700">
+                  تم الاختيار: {toArabicNumber(Object.keys(currentRoundSelections).length)} من {toArabicNumber(contestants.length)}
+                </div>
+                {turnSecondsRemaining !== undefined && (
+                  <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#0A0A0A] text-emerald-400 font-mono text-sm font-black shadow-md border-2 border-emerald-500/50">
+                    <Clock className="w-4 h-4" />
+                    <span>{toArabicNumber(turnSecondsRemaining)} ث</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {statusBanner && !verdict && !currentTurnPlayerName && (
+      {statusBanner && !verdict && (
         <div className="w-full max-w-3xl shabah-pill-wrap animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="shabah-pill-inner">
             <div className="shabah-pill-surface px-6 py-2 text-sm sm:text-base font-black text-[#0A0A0A] text-center">
@@ -160,12 +178,22 @@ export const CoachDraftTVView: React.FC<CoachDraftTVViewProps> = ({
           return (
             <div key={c.id} className="flex flex-col items-center gap-2 w-full">
               {/* Pitch */}
-              <ShabahTacticalPitch
-                squad={squad}
-                contestantName={c.name}
-                evaluationSlots={evalItem?.slots}
-                isCompact={isCompact}
-              />
+              <div className="relative w-full">
+                <ShabahTacticalPitch
+                  squad={squad}
+                  contestantName={c.name}
+                  evaluationSlots={evalItem?.slots}
+                  isCompact={isCompact}
+                />
+
+                {/* Live pick indicator for current simultaneous round */}
+                {!verdict && currentRoundSelections[c.id] && (
+                  <div className="absolute top-2 left-2 z-10 px-2 py-1 rounded-lg bg-emerald-500 text-white font-black text-[10px] flex items-center gap-1 shadow-md animate-in zoom-in-75">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>تم الاختيار: {currentRoundSelections[c.id].playerName}</span>
+                  </div>
+                )}
+              </div>
 
               {/* Evaluation score pill & coach roast summary */}
               {evalItem && (
