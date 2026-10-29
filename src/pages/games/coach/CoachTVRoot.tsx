@@ -30,9 +30,14 @@ import { CoachDraftTVView } from './components/CoachDraftTVView';
 import { CoachBingoTVView } from './components/CoachBingoTVView';
 import { sound } from '../../../lib/audio';
 import { useRoomSync } from '../../../hooks/useRoomSync';
+import {
+  DRAFT_SLOT_TIME,
+  DRAFT_ROUND_TIME,
+  TOTAL_COACH_ROUNDS,
+  BINGO_ROULETTE_TIME,
+} from './coachConfig';
 
-const DRAFT_ROUND_TIME = 30; // 30 seconds per simultaneous round
-const BINGO_ROULETTE_TIME = 8; // 8 seconds per roulette player
+const roundTimeLimit = typeof DRAFT_SLOT_TIME !== 'undefined' ? DRAFT_SLOT_TIME : 30;
 
 export const CoachTVRoot: React.FC = () => {
   const { code: rawCode } = useParams<{ code?: string }>();
@@ -60,7 +65,7 @@ export const CoachTVRoot: React.FC = () => {
   }, [coachState, roomCode]);
 
   // Round Timers
-  const [timerSeconds, setTimerSeconds] = useState(DRAFT_SLOT_TIME);
+  const [timerSeconds, setTimerSeconds] = useState(roundTimeLimit);
   const [bingoTimerSeconds, setBingoTimerSeconds] = useState(BINGO_ROULETTE_TIME);
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
 
@@ -671,7 +676,7 @@ export const CoachTVRoot: React.FC = () => {
       cleanSquads[c.id] = { playerId: c.id, playerName: c.name, slots: {} };
     });
 
-    setTimerSeconds(DRAFT_SLOT_TIME);
+    setTimerSeconds(roundTimeLimit);
 
     const nextState: CoachRoomState = {
       ...cur,

@@ -18,6 +18,9 @@ import { formatPercent, toArabicNumber } from '../../../../utils/numberFormat';
 import { Search, CheckCircle, AlertCircle, Clock, Check, X, Lock, ShieldCheck } from 'lucide-react';
 import { sound } from '../../../../lib/audio';
 import { roomBus } from '../../../../lib/roomBus';
+import { DRAFT_SLOT_TIME, TOTAL_COACH_ROUNDS } from '../coachConfig';
+
+const defaultRoundTime = typeof DRAFT_SLOT_TIME !== 'undefined' ? DRAFT_SLOT_TIME : 30;
 
 interface CoachDraftMobileViewProps {
   roomCode?: string;
@@ -47,7 +50,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
   contestantName,
   squad,
   roundNumber,
-  totalRounds = 5,
+  totalRounds = TOTAL_COACH_ROUNDS,
   conditionTitle,
   conditionId,
   conditionDescription,
@@ -63,11 +66,11 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
   const currentSlotKey = COACH_SLOTS_ORDER[(roundNumber - 1) % 5] || 'FWD';
   const currentSlotConfig = COACH_SLOT_CONFIG[currentSlotKey];
 
-  // Local 30s countdown timer per round
-  const [localSecondsLeft, setLocalSecondsLeft] = useState(turnSecondsRemaining ?? 30);
+  // Local countdown timer per round
+  const [localSecondsLeft, setLocalSecondsLeft] = useState(turnSecondsRemaining ?? defaultRoundTime);
 
   useEffect(() => {
-    setLocalSecondsLeft(turnSecondsRemaining ?? 30);
+    setLocalSecondsLeft(turnSecondsRemaining ?? defaultRoundTime);
     const interval = window.setInterval(() => {
       setLocalSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
