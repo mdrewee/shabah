@@ -405,12 +405,12 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
         </div>
       </div>
 
-      {/* 2. Step 1: Select Vacant Position (Strict Selection Route) */}
+      {/* 2. Step 1: Select Position (Strict Selection Route) */}
       <div className="w-full flex flex-col gap-1.5 p-3 rounded-2xl bg-zinc-950 border border-zinc-800 shadow-md">
         <div className="flex items-center justify-between text-xs font-black">
-          <span className="text-zinc-300">الخطوة ١: حدد الخانة في تشكيلتك:</span>
+          <span className="text-zinc-300">الخطوة ١: حدد المركز في تشكيلتك:</span>
           <span className="text-emerald-400 font-mono text-[11px]">
-            الخانة المحددة: {activeSlotConfig.label}
+            المركز المحدد: {activeSlotConfig.label}
           </span>
         </div>
 
@@ -419,6 +419,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
             const pick = squad.slots[slotKey];
             const isFilled = Boolean(pick?.playerName && !pick.playerName.includes('خانة فارغة'));
             const isSelected = selectedSlotKey === slotKey;
+            const slotLabel = COACH_SLOT_CONFIG[slotKey].label;
 
             return (
               <button
@@ -436,16 +437,20 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                     : 'bg-black border-dashed border-zinc-700 text-zinc-400 hover:border-zinc-500'
                 }`}
               >
-                <span
-                  className={`font-mono text-[10px] font-black leading-none ${
-                    isSelected ? 'text-black' : 'text-zinc-400'
-                  }`}
-                >
-                  {COACH_SLOT_CONFIG[slotKey].label}
-                </span>
-                <span className="font-black text-[10px] truncate max-w-full mt-1">
-                  {isFilled ? pick.playerName : 'فارغة +'}
-                </span>
+                {isFilled ? (
+                  <>
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-zinc-800 text-emerald-400">
+                      {slotLabel}
+                    </span>
+                    <span className="font-black text-[10px] truncate max-w-full mt-1">
+                      {pick.playerName}
+                    </span>
+                  </>
+                ) : (
+                  <span className="font-black text-[10px] leading-tight text-center py-1">
+                    اختر {slotLabel}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -462,7 +467,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
 
           <div className="flex flex-col gap-0.5">
             <span className="text-xs font-bold text-emerald-400">
-              تم حجز {activeSlotConfig.label}:
+              تم حجز مركز {activeSlotConfig.label}:
             </span>
             <span className="text-xl sm:text-2xl font-black text-white">
               {myPickForSelectedSlot?.playerName}
@@ -470,7 +475,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
           </div>
 
           <p className="text-xs font-bold text-zinc-400 mt-1">
-            لاختيار لاعب لخانة أخرى، اضغط على إحدى الخانات أعلاه أو في الملعب.
+            لاختيار لاعب لمركز آخر، اضغط على أحد المراكز أعلاه أو في الملعب.
           </p>
         </div>
       ) : (
@@ -480,7 +485,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
             <div className="shabah-surface p-4 flex flex-col gap-3">
               <div className="flex items-center justify-between text-xs font-black">
                 <span className="text-neutral-700">
-                  الخطوة ٢: ابحث واعتمد لاعباً لـ [{activeSlotConfig.label}]:
+                  الخطوة ٢: ابحث واعتمد لاعباً لمركز [{activeSlotConfig.label}]:
                 </span>
               </div>
 
@@ -490,7 +495,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                   type="text"
                   value={searchInput}
                   onChange={handleSearchChange}
-                  placeholder={`ابحث عن لاعب لـ ${activeSlotConfig.label}...`}
+                  placeholder={`ابحث عن لاعب لمركز ${activeSlotConfig.label}...`}
                   className="w-full h-12 pr-10 pl-4 rounded-xl border-2 border-[#0A0A0A] text-[#0A0A0A] font-black placeholder-neutral-400 focus:outline-none bg-white text-sm"
                   autoFocus
                 />
@@ -557,7 +562,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                           </span>
                         ) : (
                           <span className="px-3 py-1.5 rounded-lg bg-[#0A0A0A] hover:bg-emerald-600 text-white text-xs font-black shrink-0 transition-colors">
-                            اعتماد في {activeSlotConfig.label}
+                            اعتماد كـ {activeSlotConfig.label}
                           </span>
                         )}
                       </button>
@@ -573,7 +578,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                   onClick={handleConfirmCustomName}
                   className="w-full py-3 rounded-xl bg-[#0A0A0A] hover:bg-emerald-700 text-white font-black text-xs sm:text-sm transition-transform active:scale-95 cursor-pointer shadow-[2px_2px_0px_#0A0A0A]"
                 >
-                  اعتماد "{searchInput.trim()}" في {activeSlotConfig.label}
+                  اعتماد "{searchInput.trim()}" كـ {activeSlotConfig.label}
                 </button>
               )}
             </div>

@@ -18,14 +18,31 @@ export const COACH_SLOT_CONFIG: Record<
   CoachSlotKey,
   { label: string; role: 'FWD' | 'MID' | 'DEF' | 'GK'; order: number }
 > = {
-  GK: { label: 'الخانة 1', role: 'GK', order: 1 },
-  DEF_1: { label: 'الخانة 2', role: 'DEF', order: 2 },
-  DEF_2: { label: 'الخانة 3', role: 'DEF', order: 3 },
-  MID: { label: 'الخانة 4', role: 'MID', order: 4 },
-  FWD: { label: 'الخانة 5', role: 'FWD', order: 5 },
+  GK: { label: 'حارس', role: 'GK', order: 1 },
+  DEF_1: { label: 'مدافع', role: 'DEF', order: 2 },
+  DEF_2: { label: 'مدافع', role: 'DEF', order: 3 },
+  MID: { label: 'وسط', role: 'MID', order: 4 },
+  FWD: { label: 'مهاجم', role: 'FWD', order: 5 },
 };
 
 export const COACH_SLOTS_ORDER: CoachSlotKey[] = ['GK', 'DEF_1', 'DEF_2', 'MID', 'FWD'];
+
+export const FORMATION_SLOTS = [
+  { id: 'slot_gk', label: 'حارس', role: 'حارس مرمى' },
+  { id: 'slot_def_1', label: 'مدافع', role: 'دفاع' },
+  { id: 'slot_def_2', label: 'مدافع', role: 'دفاع' },
+  { id: 'slot_mid_1', label: 'وسط', role: 'خط وسط' },
+  { id: 'slot_att', label: 'مهاجم', role: 'هجوم' },
+];
+
+export function getSlotDisplayName(slotKey: string): string {
+  const lower = (slotKey || '').toLowerCase();
+  if (lower.includes('gk')) return 'حارس';
+  if (lower.includes('def')) return 'مدافع';
+  if (lower.includes('mid')) return 'وسط';
+  if (lower.includes('att') || lower.includes('fwd') || lower.includes('st')) return 'مهاجم';
+  return slotKey;
+}
 
 export interface CoachPlayerPick {
   playerName: string;

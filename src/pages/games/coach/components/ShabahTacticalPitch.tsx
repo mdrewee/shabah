@@ -46,10 +46,9 @@ export const ShabahTacticalPitch: React.FC<ShabahTacticalPitchProps> = ({
               isSelected ? 'ring-2 ring-emerald-400' : ''
             } ${isCompact ? 'min-w-[80px] max-w-[110px]' : 'min-w-[100px] max-w-[140px]'}`}
           >
+            {/* Role Badge: حارس / مدافع / وسط / مهاجم */}
             <span
-              className={`text-[#0A0A0A]/60 font-black mb-0.5 ${
-                isCompact ? 'text-[9px]' : 'text-[10px]'
-              }`}
+              className={`px-2 py-0.5 rounded-full text-[9px] font-black bg-[#0A0A0A] text-white border border-neutral-700 mb-1 shadow-xs`}
             >
               {slotLabel}
             </span>
@@ -92,11 +91,11 @@ export const ShabahTacticalPitch: React.FC<ShabahTacticalPitchProps> = ({
             )}
           </div>
         ) : (
-          // Empty Slot: Dark gray dashed box with white label
+          // Empty Slot: Explicit role choice prompt [اختر مهاجم] / [اختر وسط] / [اختر مدافع] / [اختر حارس]
           <div
             className={`border-2 border-dashed rounded-xl flex items-center justify-center text-center transition-colors ${
               isSelected
-                ? 'border-white bg-white/10 text-white'
+                ? 'border-emerald-400 bg-emerald-950/40 text-emerald-300 ring-2 ring-emerald-400'
                 : 'border-neutral-600 bg-neutral-900/60 text-neutral-300 hover:border-neutral-400'
             } ${
               isCompact
@@ -104,7 +103,7 @@ export const ShabahTacticalPitch: React.FC<ShabahTacticalPitchProps> = ({
                 : 'min-w-[95px] max-w-[130px] py-2 px-2.5 text-xs sm:text-sm'
             } font-black`}
           >
-            {slotLabel}
+            اختر {slotLabel}
           </div>
         )}
       </div>
