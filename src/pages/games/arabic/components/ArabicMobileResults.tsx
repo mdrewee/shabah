@@ -54,11 +54,13 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
   const myIndex = contestantsList.findIndex((c) => c.contestantId === currentContestantId);
   const [activeIndex, setActiveIndex] = useState<number>(() => (myIndex >= 0 ? myIndex : 0));
 
-  // Objection countdown timer in modal
-  const [objectionSecondsLeft, setObjectionSecondsLeft] = useState<number>(8);
+  // 10-second Objection countdown timer in modal
+  const [objectionSecondsLeft, setObjectionSecondsLeft] = useState<number>(10);
 
   useEffect(() => {
     if (!activeObjection || activeObjection.resolved) return;
+
+    sound.playNotification?.();
 
     const interval = setInterval(() => {
       const remaining = Math.max(0, Math.ceil((activeObjection.endsAt - Date.now()) / 1000));
@@ -66,7 +68,7 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
     }, 200);
 
     return () => clearInterval(interval);
-  }, [activeObjection]);
+  }, [activeObjection?.id]);
 
   const activeContestant = contestantsList[activeIndex] || contestantsList[0];
   const isMe = activeContestant?.contestantId === currentContestantId;
@@ -92,7 +94,7 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
       dir="rtl"
       className="flex-1 w-full flex flex-col justify-between p-4 bg-black text-white overflow-hidden relative"
     >
-      {/* 8-Second Objection Voting Modal Overlay */}
+      {/* 10-Second Objection Voting Modal Overlay */}
       {activeObjection && !activeObjection.resolved && (
         <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-4">
           <div className="w-full max-w-sm bg-zinc-950 border-2 border-amber-500/80 rounded-3xl p-5 shadow-[0_0_40px_rgba(245,158,11,0.3)] text-center animate-in fade-in duration-200">
@@ -109,14 +111,14 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
             </div>
 
             {/* Objection Details */}
-            <p className="font-sans text-sm text-zinc-300 mb-1">
-              المتسابق <strong className="text-white">{activeObjection.contestantName}</strong> يعترض على خانة:
+            <p className="font-sans text-sm text-zinc-300 mb-1 leading-relaxed">
+              اعتراض من <strong className="text-white font-black">{activeObjection.contestantName}</strong> على إجابة{' '}
+              <strong className="text-emerald-400 font-black">"{activeObjection.answer}"</strong> في فئة{' '}
+              <strong className="text-white font-bold">{activeObjection.categoryName}</strong>!
             </p>
-            <div className="my-3 p-3 rounded-2xl bg-black border border-zinc-800">
-              <div className="text-xs font-sans text-zinc-400">{activeObjection.categoryName}</div>
-              <div className="text-lg font-sans font-black text-emerald-400 mt-0.5">
-                "{activeObjection.answer}"
-              </div>
+
+            <div className="my-3 py-2 px-3 rounded-2xl bg-black border border-zinc-800 font-sans font-bold text-base text-zinc-200">
+              هل تقبلون إجابته؟
             </div>
 
             {/* Voting buttons or waiting status */}
@@ -136,20 +138,20 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
                     sound.playClick();
                     onVoteObjection(activeObjection.id, true);
                   }}
-                  className="py-3 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-sans font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                  className="py-3 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-sans font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer"
                 >
-                  <ThumbsUp className="w-4 h-4" />
-                  <span>صحيحة (قبول)</span>
+                  <Check className="w-4 h-4 stroke-[2.5]" />
+                  <span>موافق على الإجابة</span>
                 </button>
                 <button
                   onClick={() => {
                     sound.playClick();
                     onVoteObjection(activeObjection.id, false);
                   }}
-                  className="py-3 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-sans font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-[0_0_15px_rgba(239,68,68,0.3)]"
+                  className="py-3 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-sans font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-[0_0_15px_rgba(239,68,68,0.3)] cursor-pointer"
                 >
-                  <ThumbsDown className="w-4 h-4" />
-                  <span>شطحة (رفض)</span>
+                  <X className="w-4 h-4 stroke-[2.5]" />
+                  <span>أرفض الإجابة</span>
                 </button>
               </div>
             )}

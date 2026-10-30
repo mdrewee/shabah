@@ -489,6 +489,14 @@ class RoomBus {
     const clean = cleanRoomCode(roomCode);
     this.emit('ARABIC_OBJECTION_FILED', clean, payload);
     this.safeBroadcast(clean, 'ARABIC_OBJECTION_FILED', payload);
+    this.emit('ARABIC_OBJECTION_RAISED', clean, payload);
+    this.safeBroadcast(clean, 'ARABIC_OBJECTION_RAISED', payload);
+  }
+
+  public broadcastArabicObjectionResolved(roomCode: string, payload: any): void {
+    const clean = cleanRoomCode(roomCode);
+    this.emit('ARABIC_OBJECTION_RESOLVED', clean, payload);
+    this.safeBroadcast(clean, 'ARABIC_OBJECTION_RESOLVED', payload);
   }
 
   public broadcastArabicVote(roomCode: string, payload: any): void {

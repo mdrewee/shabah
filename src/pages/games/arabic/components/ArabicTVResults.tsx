@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArabicRoomState,
   ContestantEvaluation,
@@ -25,6 +25,16 @@ export const ArabicTVResults: React.FC<ArabicTVResultsProps> = ({
 }) => {
   const categories = state.currentCategories || [];
   const activeObjection: ObjectionState | null = state.activeObjection;
+
+  // Live 10-second countdown for TV objection overlay
+  const [secondsLeft, setSecondsLeft] = useState<number>(10);
+  useEffect(() => {
+    if (!activeObjection || activeObjection.resolved) return;
+    const interval = setInterval(() => {
+      setSecondsLeft(Math.max(0, Math.ceil((activeObjection.endsAt - Date.now()) / 1000)));
+    }, 200);
+    return () => clearInterval(interval);
+  }, [activeObjection]);
 
   // Harmonize new PlayerArabicEvaluation[] with legacy evaluations
   const playerEvals: PlayerArabicEvaluation[] =
@@ -248,6 +258,68 @@ export const ArabicTVResults: React.FC<ArabicTVResultsProps> = ({
           </div>
         )}
       </div>
+
+      {/* Full-Screen Emergency Objection Voting Overlay Modal on TV */}
+      {activeObjection && !activeObjection.resolved && (
+        <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-200">
+          <div className="w-full max-w-2xl bg-zinc-950 border-2 border-amber-500 rounded-3xl p-8 shadow-[0_0_60px_rgba(245,158,11,0.25)] text-center relative overflow-hidden">
+            {/* Top Countdown & Status */}
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-4 mb-6">
+              <div className="flex items-center gap-2 text-amber-400 font-sans font-black text-lg">
+                <AlertCircle className="w-6 h-6 animate-pulse" />
+                <span>اعتراض على التصحيح</span>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-950/80 border border-amber-800 text-amber-300 font-sans font-black text-base">
+                <Clock className="w-5 h-5 animate-spin" />
+                <span>تصويت مباشر ({toArabicNumber(secondsLeft)} ثوانٍ)</span>
+              </div>
+            </div>
+
+            {/* Main Details */}
+            <div className="mb-6">
+              <div className="text-zinc-400 font-sans text-sm mb-1">
+                اعتراض من المتسابق <span className="text-white font-black text-base">{activeObjection.contestantName}</span>
+              </div>
+              <div className="my-4 p-5 rounded-2xl bg-black border border-zinc-800">
+                <div className="text-xs font-sans text-zinc-400 font-bold mb-1">
+                  الفئة: {activeObjection.categoryName}
+                </div>
+                <div className="text-4xl font-sans font-black text-emerald-400">
+                  "{activeObjection.answer}"
+                </div>
+              </div>
+              <div className="text-2xl font-sans font-black text-white mt-2">
+                هل تقبلون إجابته؟
+              </div>
+              <div className="text-xs font-sans text-zinc-400 mt-1">
+                صوتوا الآن عبر جوالاتكم خلال العد التنازلي
+              </div>
+            </div>
+
+            {/* Live Vote Counters */}
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-zinc-800/80">
+              <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-800/60 flex items-center justify-between">
+                <div className="flex items-center gap-2 font-sans font-black text-emerald-400 text-base">
+                  <Check className="w-5 h-5 stroke-[2.5]" />
+                  <span>موافق على الإجابة</span>
+                </div>
+                <span className="font-sans font-black text-2xl text-emerald-400">
+                  {toArabicNumber(activeObjection.votesFor.length)}
+                </span>
+              </div>
+              <div className="p-4 rounded-2xl bg-red-950/40 border border-red-800/60 flex items-center justify-between">
+                <div className="flex items-center gap-2 font-sans font-black text-red-400 text-base">
+                  <X className="w-5 h-5 stroke-[2.5]" />
+                  <span>أرفض الإجابة</span>
+                </div>
+                <span className="font-sans font-black text-2xl text-red-400">
+                  {toArabicNumber(activeObjection.votesAgainst.length)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

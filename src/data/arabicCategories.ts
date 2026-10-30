@@ -13,10 +13,13 @@ export const ARABIC_CATEGORIES_POOL: string[] = [
   'عذر للتأخير', 'ما تسافر بدونه', 'اسم نبي أو صحابي', 'ريحته حلوة', 'في المدرسة'
 ];
 
-export const ARABIC_LETTERS: string[] = [
-  'أ', 'ب', 'ت', 'ث', 'ج', 'ح', 'خ', 'د', 'ذ', 'ر', 'ز', 'س', 'ش',
-  'ص', 'ض', 'ط', 'ظ', 'ع', 'غ', 'ف', 'ق', 'ك', 'ل', 'م', 'ن', 'هـ', 'و', 'ي'
+export const WEIGHTED_LETTERS: string[] = [
+  'أ', 'ب', 'ت', 'ث', 'ج', 'ح', 'خ', 'د', 'ر', 'ز', 'س', 'ش', 'ص',
+  'ط', 'ع', 'غ', 'ف', 'ق', 'ك', 'ل', 'م', 'ن', 'هـ', 'و', 'ي'
+  // تم استبعاد الحروف التعجيزية المسببة للملل مثل 'ض' و 'ظ'
 ];
+
+export const ARABIC_LETTERS: string[] = WEIGHTED_LETTERS;
 
 /**
  * Normalizes Arabic letters for lenient comparison (e.g. أ, إ, آ -> ا; ة -> ه)

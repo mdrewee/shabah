@@ -99,6 +99,19 @@ export const ArabicMobileRoot: React.FC = () => {
       }));
     });
 
+    const unsubResolved = roomBus.on('ARABIC_OBJECTION_RESOLVED', (evt: any) => {
+      const incomingCode = evt?.roomCode;
+      const payload = evt?.data ?? evt;
+      if (incomingCode && incomingCode !== roomCode) return;
+      if (!payload) return;
+
+      if (payload.isOverturned) {
+        sound.playVictory();
+      } else {
+        sound.playIncorrect?.();
+      }
+    });
+
     const unsubLobby = roomBus.on('RETURN_TO_LOBBY', (evt: any) => {
       const incomingCode = evt?.roomCode;
       if (incomingCode && incomingCode !== roomCode) return;
@@ -113,6 +126,7 @@ export const ArabicMobileRoot: React.FC = () => {
     return () => {
       unsubSync?.();
       unsubResults?.();
+      unsubResolved?.();
       unsubLobby?.();
     };
   }, [roomCode]);
@@ -140,12 +154,16 @@ export const ArabicMobileRoot: React.FC = () => {
   // Handle Objection Filing
   const handleFileObjection = (categoryIndex: number, answer: string) => {
     sound.playClick();
-    roomBus.broadcastArabicObjection(roomCode, {
+    const categoryName = arabicState.currentCategories[categoryIndex] || '';
+    const payload = {
       contestantId: playerId,
       contestantName: playerName,
+      category: categoryName,
       categoryIndex,
       answer,
-    });
+    };
+    roomBus.broadcastArabicObjection(roomCode, payload);
+    roomBus.safeBroadcast(roomCode, 'ARABIC_OBJECTION_RAISED', payload);
   };
 
   // Handle Objection Vote
