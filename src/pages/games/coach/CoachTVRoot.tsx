@@ -78,6 +78,11 @@ export const CoachTVRoot: React.FC = () => {
     .slice(0, 10)
     .map((p) => ({ id: p.id, name: p.name || 'متسابق' }));
 
+  const contestantsRef = useRef(contestants);
+  useEffect(() => {
+    contestantsRef.current = contestants;
+  }, [contestants]);
+
   // Helper to get active condition for current round and slot index
   const getActiveCondition = (state: CoachRoomState) => {
     if (state.matchCriteria && state.matchCriteria.length > 0) {
@@ -211,9 +216,10 @@ export const CoachTVRoot: React.FC = () => {
       window.setTimeout(() => setStatusBanner(null), 3000);
 
       // Check if ALL contestants have made their pick for this round
+      const liveContestants = contestantsRef.current;
       const allSelected =
-        contestants.length > 0 &&
-        contestants.every((c) => Boolean(updatedSelections[c.id]));
+        liveContestants.length > 0 &&
+        liveContestants.every((c) => Boolean(updatedSelections[c.id]));
 
       if (allSelected) {
         window.setTimeout(() => {
@@ -255,9 +261,10 @@ export const CoachTVRoot: React.FC = () => {
         roomBus.broadcastCoachSync(roomCode, nextState);
 
         // Auto-advance if ALL connected contestants are ready
+        const liveContestants = contestantsRef.current;
         const allReady =
-          contestants.length > 0 &&
-          contestants.every((c) => nextReady.includes(c.id));
+          liveContestants.length > 0 &&
+          liveContestants.every((c) => nextReady.includes(c.id));
 
         if (allReady && prev.phase === 'VERDICT') {
           window.setTimeout(() => {
@@ -305,7 +312,8 @@ export const CoachTVRoot: React.FC = () => {
         roomBus.broadcastCoachSync(roomCode, nextState);
 
         // Early advance if all contestants have marked or skipped
-        if (contestants.length > 0 && contestants.every((c) => skipVotes.includes(c.id))) {
+        const liveContestants = contestantsRef.current;
+        if (liveContestants.length > 0 && liveContestants.every((c) => skipVotes.includes(c.id))) {
           window.setTimeout(() => advanceBingoRoulette(), 400);
         }
 
@@ -324,7 +332,8 @@ export const CoachTVRoot: React.FC = () => {
         roomBus.broadcastCoachSync(roomCode, nextState);
 
         // Early advance if all contestants have skipped or marked
-        if (contestants.length > 0 && contestants.every((c) => skipVotes.includes(c.id))) {
+        const liveContestants = contestantsRef.current;
+        if (liveContestants.length > 0 && liveContestants.every((c) => skipVotes.includes(c.id))) {
           window.setTimeout(() => advanceBingoRoulette(), 400);
         }
         return nextState;
@@ -361,6 +370,12 @@ export const CoachTVRoot: React.FC = () => {
       }
     });
 
+    const unsubHostStart = roomBus.on('HOST_START_GAME', () => {
+      if (coachStateRef.current.phase === 'LOBBY') {
+        handleStartGame();
+      }
+    });
+
     return () => {
       unsubClaimRequest();
       unsubPick();
@@ -369,8 +384,9 @@ export const CoachTVRoot: React.FC = () => {
       unsubBingoSkip();
       unsubBingoClaim();
       unsubMode();
+      unsubHostStart();
     };
-  }, [roomCode, contestants.length]);
+  }, [roomCode]);
 
   // Simultaneous Real-Time 30s Countdown Timer per round
   useEffect(() => {
@@ -407,8 +423,16 @@ export const CoachTVRoot: React.FC = () => {
 
     // Record empty slot for any contestant who didn't select before timer
     const updatedSquads = { ...cur.squads };
-    contestants.forEach((c) => {
-      const s = updatedSquads[c.id] || { playerId: c.id, playerName: c.name, slots: {} };
+    const allParticipantsMap = new Map<string, string>();
+    contestantsRef.current.forEach((c) => allParticipantsMap.set(c.id, c.name));
+    Object.values(updatedSquads).forEach((sq) => {
+      if (sq?.playerId && !allParticipantsMap.has(sq.playerId)) {
+        allParticipantsMap.set(sq.playerId, sq.playerName || 'متسابق');
+      }
+    });
+
+    allParticipantsMap.forEach((pName, pId) => {
+      const s = updatedSquads[pId] || { playerId: pId, playerName: pName, slots: {} };
       if (!s.slots[currentSlotKey] || !s.slots[currentSlotKey]?.playerName) {
         s.slots[currentSlotKey] = {
           playerName: 'خانة فارغة (فاتك الوقت)',
@@ -417,7 +441,7 @@ export const CoachTVRoot: React.FC = () => {
           conditionTitle: cond.title,
         };
       }
-      updatedSquads[c.id] = s;
+      updatedSquads[pId] = s;
     });
 
     // If 5 rounds completed, trigger final evaluation!
@@ -696,21 +720,25 @@ export const CoachTVRoot: React.FC = () => {
   };
 
   const handleStartGame = () => {
-    sound.playSuccess();
+    const cur = coachStateRef.current;
+    if (cur.phase !== 'LOBBY') return;
 
-    if (coachState.mode === 'draft') {
+    sound.playSuccess();
+    const liveContestants = contestantsRef.current;
+
+    if (cur.mode === 'draft') {
       const matchCriteria = getRandomMatchCriteria(5);
       const firstCrit = matchCriteria[0];
 
       const cleanSquads: Record<string, CoachSquad> = {};
-      contestants.forEach((c) => {
+      liveContestants.forEach((c) => {
         cleanSquads[c.id] = { playerId: c.id, playerName: c.name, slots: {} };
       });
 
       setTimerSeconds(DRAFT_ROUND_TIME);
 
       const nextState: CoachRoomState = {
-        ...coachState,
+        ...cur,
         phase: 'DRAFTING',
         roundNumber: 1,
         totalRounds: 5,
@@ -737,12 +765,12 @@ export const CoachTVRoot: React.FC = () => {
       generatePreloadedBingoPool();
       const firstPlayer = getRandomRoulettePlayer();
       const cards: Record<string, BingoCard> = {};
-      contestants.forEach((c) => {
+      liveContestants.forEach((c) => {
         cards[c.id] = generateBingoCard(c.id);
       });
 
       const nextState: CoachRoomState = {
-        ...coachState,
+        ...cur,
         phase: 'BINGO_PLAYING',
         currentRoulettePlayer: firstPlayer,
         rouletteHistory: [firstPlayer.id],

@@ -7,12 +7,15 @@ import {
   CoachSlotKey,
   CoachPlayerPick,
   ClaimedPlayerInfo,
+  COACH_SLOTS_ORDER,
 } from './types';
 import {
   createInitialCoachState,
   savePersistedCoachState,
   generateBingoCard,
 } from './coachSync';
+import { normalizeFootballSearch } from './footballDataService';
+import { getRandomMatchCriteria } from '../../../data/coachCriteria';
 import { CoachLobby } from './CoachLobby';
 import { CoachTopBar } from './components/CoachTopBar';
 import { CoachDraftMobileView } from './components/CoachDraftMobileView';
@@ -200,13 +203,20 @@ export const CoachMobileRoot: React.FC = () => {
   const handleStartGame = () => {
     sound.playSuccess();
     if (coachState.mode === 'draft') {
+      const matchCriteria = getRandomMatchCriteria(5);
+      const firstCrit = matchCriteria[0];
       const nextState: CoachRoomState = {
         ...coachState,
         phase: 'DRAFTING',
         roundNumber: 1,
         totalRounds: 5,
         slotIndex: 0,
+        matchCriteria,
+        activeConditionId: firstCrit.id,
+        activeConditionTitle: firstCrit.title,
+        activeConditionDescription: firstCrit.description,
         claimedPlayers: {},
+        currentRoundSelections: {},
         usedPlayersAcrossMatch: [],
         readyPlayersNextRound: [],
         cumulativeScores: {},

@@ -16,6 +16,7 @@ import {
 } from './types';
 import {
   createInitialBrokerState,
+  savePersistedBrokerState,
 } from './brokerSync';
 import { getBrokerItemByIndex, ensureBrokerItem } from '../../../data/brokerItems';
 import { formatPriceArabic, toArabicDigits } from './brokerUtils';
@@ -113,6 +114,7 @@ export const BrokerMobileRoot: React.FC = () => {
         payload.currentItem = ensureBrokerItem(payload.currentItem, payload.roundNumber);
       }
       setBrokerState(payload);
+      savePersistedBrokerState(roomCode, payload);
     });
 
     const unsubNewRound = roomBus.on('BROKER_NEW_ROUND', (evt: any) => {
@@ -122,6 +124,7 @@ export const BrokerMobileRoot: React.FC = () => {
           payload.state.currentItem = ensureBrokerItem(payload.state.currentItem, payload.state.roundNumber);
         }
         setBrokerState(payload.state);
+        savePersistedBrokerState(roomCode, payload.state);
       }
     });
 
@@ -129,11 +132,15 @@ export const BrokerMobileRoot: React.FC = () => {
       const payload = evt?.data || evt;
       if (payload?.item) {
         const safe = ensureBrokerItem(payload.item, payload.roundNumber);
-        setBrokerState((prev) => ({
-          ...prev,
-          currentItem: safe,
-          roundNumber: payload.roundNumber || prev.roundNumber,
-        }));
+        setBrokerState((prev) => {
+          const next = {
+            ...prev,
+            currentItem: safe,
+            roundNumber: payload.roundNumber || prev.roundNumber,
+          };
+          savePersistedBrokerState(roomCode, next);
+          return next;
+        });
       }
     });
 
@@ -146,13 +153,22 @@ export const BrokerMobileRoot: React.FC = () => {
           payload.state.currentItem = ensureBrokerItem(payload.state.currentItem, payload.state.roundNumber);
         }
         setBrokerState(payload.state);
+        savePersistedBrokerState(roomCode, payload.state);
       } else {
-        setBrokerState((prev) => ({ ...prev, phase: 'SHOWCASE' }));
+        setBrokerState((prev) => {
+          const next: BrokerRoomState = { ...prev, phase: 'SHOWCASE' };
+          savePersistedBrokerState(roomCode, next);
+          return next;
+        });
       }
     });
 
     const unsubLobby = roomBus.on('RETURN_TO_LOBBY', () => {
-      setBrokerState((prev) => ({ ...prev, phase: 'LOBBY' }));
+      setBrokerState((prev) => {
+        const next: BrokerRoomState = { ...prev, phase: 'LOBBY' };
+        savePersistedBrokerState(roomCode, next);
+        return next;
+      });
       setIsReadyForNext(false);
       setCurrentBid(0);
       setMessages([]);
@@ -166,7 +182,7 @@ export const BrokerMobileRoot: React.FC = () => {
       unsubGameStart();
       unsubLobby();
     };
-  }, []);
+  }, [roomCode]);
 
   // Submit contestant pitch to Shuraiti
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -198,7 +214,7 @@ export const BrokerMobileRoot: React.FC = () => {
     try {
       // 2. Evaluate with Broker Engine (Local Guardrails + Opening Baseline + Gemini Flash)
       const evaluation = await evaluateBrokerPitch({
-        item: brokerState.currentItem,
+        item: currentAuctionItem,
         pitch,
         currentBid,
         isFirstBid,
@@ -294,8 +310,8 @@ export const BrokerMobileRoot: React.FC = () => {
     );
   }
 
-  // Phase 2: Host Pre-round Showcase View (Contestants enter chat & inspection instantly)
-  if (brokerState.phase === 'SHOWCASE' && isPlayerHost) {
+  // Phase 2: Pre-round Showcase View (10s item inspection before negotiation starts)
+  if (brokerState.phase === 'SHOWCASE') {
     return (
       <BrokerShowcaseStage
         item={currentAuctionItem}
@@ -304,12 +320,13 @@ export const BrokerMobileRoot: React.FC = () => {
         durationSeconds={10}
         isHost={isPlayerHost}
         onComplete={() => {
+          const nextState: BrokerRoomState = {
+            ...brokerState,
+            phase: 'NEGOTIATION',
+          };
+          setBrokerState(nextState);
+          savePersistedBrokerState(roomCode, nextState);
           if (isPlayerHost) {
-            const nextState: BrokerRoomState = {
-              ...brokerState,
-              phase: 'NEGOTIATION',
-            };
-            setBrokerState(nextState);
             roomBus.broadcastBrokerSync(roomCode, nextState);
           }
         }}

@@ -54,6 +54,11 @@ export const BrokerTVRoot: React.FC = () => {
       ? realtimeContestants
       : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv');
 
+  const mergedContestantsRef = useRef(mergedContestants);
+  useEffect(() => {
+    mergedContestantsRef.current = mergedContestants;
+  }, [mergedContestants]);
+
   // Keep contestant bids map populated with all connected players
   useEffect(() => {
     if (mergedContestants.length === 0) return;
@@ -174,12 +179,13 @@ export const BrokerTVRoot: React.FC = () => {
       }
     });
 
-    // Listen for contestant readiness updates in ROUND_WINNER phase
+    // Listen for contestant readiness updates ONLY in ROUND_WINNER phase
     const unsubReady = roomBus.on('PLAYER_READY_UPDATE', (evt: any) => {
       const payload = evt?.data || evt;
       if (!payload || !payload.playerId) return;
 
       setBrokerState((prev) => {
+        if (prev.phase !== 'ROUND_WINNER') return prev;
         if (!prev.contestantBids[payload.playerId]) return prev;
 
         const updatedBids = {
@@ -205,9 +211,17 @@ export const BrokerTVRoot: React.FC = () => {
       });
     });
 
+    // Listen for mobile host starting the game
+    const unsubHostStart = roomBus.on('HOST_START_GAME', () => {
+      if (brokerStateRef.current.phase === 'LOBBY') {
+        handleStartGame();
+      }
+    });
+
     return () => {
       unsubBid();
       unsubReady();
+      unsubHostStart();
     };
   }, [roomCode]);
 
@@ -269,17 +283,31 @@ export const BrokerTVRoot: React.FC = () => {
       setBrokerState(nextState);
       roomBus.broadcastBrokerSync(roomCode, nextState);
     } else {
-      setTimerSeconds(180);
+      const fallbackWinner = mergedContestantsRef.current[0]?.name || 'لا توجد سومات';
+      const nextState: BrokerRoomState = {
+        ...cur,
+        phase: 'ROUND_WINNER',
+        winnerId: mergedContestantsRef.current[0]?.id || null,
+        winnerName: fallbackWinner,
+        winningBid: 0,
+        winningQuote: 'انتهى وقت المزاد دون تقديم سومات!',
+      };
+      setBrokerState(nextState);
+      roomBus.broadcastBrokerSync(roomCode, nextState);
     }
   };
 
   // Start Game from Lobby: initialize 5 rounds, item 1, go to SHOWCASE
   const handleStartGame = () => {
+    const cur = brokerStateRef.current;
+    if (cur.phase !== 'LOBBY') return;
+
     sound.playSuccess();
     const { item: firstItem, updatedUsedIds } = getNextUniqueBrokerItem([]);
 
     const resetBids: Record<string, ContestantBidState> = {};
-    mergedContestants.forEach((p, idx) => {
+    const currentPlayers = mergedContestantsRef.current;
+    currentPlayers.forEach((p, idx) => {
       resetBids[p.id] = {
         playerId: p.id,
         playerName: p.name || 'متسابق',
@@ -292,7 +320,7 @@ export const BrokerTVRoot: React.FC = () => {
     });
 
     const nextState: BrokerRoomState = {
-      ...brokerState,
+      ...cur,
       phase: 'SHOWCASE',
       roundNumber: 1,
       totalRounds: 5,
@@ -315,6 +343,7 @@ export const BrokerTVRoot: React.FC = () => {
     setBrokerState(nextState);
     roomBus.broadcastGameStarted(roomCode, { gameId: 'ai-broker', state: nextState });
     roomBus.broadcastBrokerSync(roomCode, nextState);
+    roomBus.broadcast(roomCode, 'BROKER_ITEM_SYNC', { item: firstItem, roundNumber: 1 });
   };
 
   // Complete 10s Showcase -> Move to NEGOTIATION (180s)
@@ -452,13 +481,13 @@ export const BrokerTVRoot: React.FC = () => {
   }
 
   // Phase 4: Round Winner View
-  if (brokerState.phase === 'ROUND_WINNER' && brokerState.winnerName && brokerState.winningBid !== null) {
+  if (brokerState.phase === 'ROUND_WINNER') {
     return (
       <BrokerRoundWinner
         item={safeCurrentItem}
         roundNumber={brokerState.roundNumber}
         totalRounds={brokerState.totalRounds}
-        winnerName={brokerState.winnerName}
+        winnerName={brokerState.winnerName || 'لا توجد سومات'}
         winningBid={brokerState.winningBid || 0}
         winningQuote={brokerState.winningQuote || undefined}
         contestants={Object.values(brokerState.contestantBids)}
