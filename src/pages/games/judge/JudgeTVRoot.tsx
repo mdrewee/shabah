@@ -92,7 +92,7 @@ export const JudgeTVRoot: React.FC = () => {
 
     const nextState: JudgeRoomState = {
       ...curr,
-      phase: 'EXCUSE_INPUT',
+      phase: 'case_briefing',
       roundNumber: 1,
       currentPredicament: activeCase,
       usedPredicamentIds: [activeCase.id],
@@ -109,6 +109,23 @@ export const JudgeTVRoot: React.FC = () => {
       roomCode,
       currentCase: activeCase,
       roundNumber: 1,
+      phase: 'case_briefing',
+      timestamp: Date.now(),
+    });
+  }, [syncState, roomCode]);
+
+  const handleStartDefenseTimer = useCallback(async () => {
+    sound.playGavelStrike();
+    const curr = stateRef.current;
+    const nextState: JudgeRoomState = {
+      ...curr,
+      phase: 'defending',
+      timerSeconds: 60,
+    };
+    syncState(nextState);
+    await roomBus.broadcast('JUDGE_START_DEFENSE', {
+      roomCode,
+      duration: 60,
       timestamp: Date.now(),
     });
   }, [syncState, roomCode]);
@@ -241,7 +258,7 @@ export const JudgeTVRoot: React.FC = () => {
 
     const nextRoundState: JudgeRoomState = {
       ...curr,
-      phase: 'EXCUSE_INPUT',
+      phase: 'case_briefing',
       roundNumber: nextRoundNumber,
       currentPredicament: nextCase,
       usedPredicamentIds: [...(curr.usedPredicamentIds || []), nextCase.id],
@@ -258,6 +275,7 @@ export const JudgeTVRoot: React.FC = () => {
       roomCode,
       currentCase: nextCase,
       roundNumber: nextRoundNumber,
+      phase: 'case_briefing',
       timestamp: Date.now(),
     });
   }, [syncState, roomCode]);
@@ -283,14 +301,14 @@ export const JudgeTVRoot: React.FC = () => {
   }, [roomCode, syncState]);
 
   // -------------------------------------------------------------
-  // Countdown Timer for EXCUSE_INPUT Phase
+  // Countdown Timer for defending Phase (active only during defense)
   // -------------------------------------------------------------
   useEffect(() => {
-    if (judgeState.phase !== 'EXCUSE_INPUT') return;
+    if (judgeState.phase !== 'defending' && judgeState.phase !== 'EXCUSE_INPUT') return;
 
     const interval = setInterval(() => {
       setJudgeState((prev) => {
-        if (prev.phase !== 'EXCUSE_INPUT') return prev;
+        if (prev.phase !== 'defending' && prev.phase !== 'EXCUSE_INPUT') return prev;
         const nextSec = prev.timerSeconds - 1;
 
         if (nextSec <= 0) {
@@ -335,7 +353,7 @@ export const JudgeTVRoot: React.FC = () => {
       if (!payload || !payload.playerId) return;
 
       const curr = stateRef.current;
-      if (curr.phase !== 'EXCUSE_INPUT') return;
+      if (curr.phase !== 'defending' && curr.phase !== 'EXCUSE_INPUT') return;
 
       const playerId = payload.playerId;
       const playerName = payload.playerName || 'متهم';
@@ -417,7 +435,11 @@ export const JudgeTVRoot: React.FC = () => {
   // Dynamic Watcher: Early evaluation if an active player leaves and all remaining have submitted
   // -------------------------------------------------------------
   useEffect(() => {
-    if (judgeState.phase !== 'EXCUSE_INPUT' || isJudgingRef.current) return;
+    if (
+      (judgeState.phase !== 'defending' && judgeState.phase !== 'EXCUSE_INPUT') ||
+      isJudgingRef.current
+    )
+      return;
     const connectedPlayers = mergedContestants.filter((p) => p.id !== 'host_tv');
     if (connectedPlayers.length === 0) return;
 
@@ -519,8 +541,13 @@ export const JudgeTVRoot: React.FC = () => {
     );
   }
 
-  // 3. Input Phase (TV Screen View)
-  if (judgeState.phase === 'EXCUSE_INPUT') {
+  // 3. Case Briefing & Defense Input Phase (TV Screen View)
+  if (
+    judgeState.phase === 'case_briefing' ||
+    judgeState.phase === 'defending' ||
+    judgeState.phase === 'EXCUSE_INPUT'
+  ) {
+    const isBriefing = judgeState.phase === 'case_briefing';
     const submittedCount = Object.keys(judgeState.excuses || {}).length;
     const totalCount = Math.max(1, mergedContestants.length);
 
@@ -555,10 +582,17 @@ export const JudgeTVRoot: React.FC = () => {
 
           {/* Countdown Timer & Navigation Actions */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-zinc-900 border border-zinc-700 text-purple-400 font-sans font-extrabold text-2xl shadow-[0_0_15px_rgba(168,85,247,0.2)]">
-              <Clock className="w-6 h-6 animate-pulse" />
-              <span>{toArabicNumber(judgeState.timerSeconds)} ثانية</span>
-            </div>
+            {isBriefing ? (
+              <div className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-zinc-900 border border-amber-500/60 text-amber-400 font-sans font-black text-lg shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                <Clock className="w-5 h-5 text-amber-400" />
+                <span>قراءة القضية (العداد متوقف)</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-zinc-900 border border-zinc-700 text-purple-400 font-sans font-extrabold text-2xl shadow-[0_0_15px_rgba(168,85,247,0.2)]">
+                <Clock className="w-6 h-6 animate-pulse" />
+                <span>{toArabicNumber(judgeState.timerSeconds)} ثانية</span>
+              </div>
+            )}
 
             <button
               onClick={handleReturnToLobby}
@@ -576,13 +610,13 @@ export const JudgeTVRoot: React.FC = () => {
           </div>
         </div>
 
-        {/* Center: The Predicament Showcase Card with Key Evidence */}
+        {/* Center: The Predicament Showcase Card with Key Evidence & Start Button */}
         <div className="w-full max-w-4xl my-auto text-center space-y-4">
           <div className="p-8 rounded-3xl bg-zinc-950 border-2 border-zinc-800 shadow-[0_0_40px_rgba(0,0,0,0.8)]">
             <div className="text-xs font-sans font-bold text-purple-400 mb-2">
               لائحة الاتهام ووقائع القضية:
             </div>
-            <p className="font-sans font-black text-2xl text-zinc-100 leading-relaxed mb-6">
+            <p className="font-sans font-black text-2xl sm:text-3xl text-zinc-100 leading-relaxed mb-6">
               "{judgeState.currentPredicament.description}"
             </p>
 
@@ -597,27 +631,49 @@ export const JudgeTVRoot: React.FC = () => {
               </div>
             )}
 
-            <div className="inline-block mt-4 px-4 py-2 rounded-xl bg-black border border-zinc-800 text-xs font-sans text-zinc-400">
-              فككوا الدليل الآن واكتبوا أعذاركم في الجوال قبل انتهاء الوقت...
-            </div>
+            {isBriefing ? (
+              <div className="mt-6 flex flex-col items-center gap-3">
+                <button
+                  onClick={handleStartDefenseTimer}
+                  className="px-8 py-4 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-sans font-black text-2xl rounded-2xl shadow-[0_0_30px_rgba(245,158,11,0.4)] transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
+                >
+                  بدء الجلسة وكتابة الأعذار ⏳
+                </button>
+                <span className="text-xs font-sans text-zinc-400">
+                  المتسابقون يقرؤون القضية الآن في جوالاتهم.. اضغط الزر لبدء العداد (60 ثانية)
+                </span>
+              </div>
+            ) : (
+              <div className="inline-block mt-4 px-4 py-2 rounded-xl bg-black border border-zinc-800 text-xs font-sans text-zinc-400">
+                فككوا الدليل الآن واكتبوا أعذاركم في الجوال قبل انتهاء الوقت...
+              </div>
+            )}
           </div>
         </div>
 
         {/* Bottom Submission Progress Bar */}
         <div className="w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between">
-          <div className="font-sans text-sm text-zinc-300">
-            أعذار معتمدة للمحكمة:{' '}
-            <strong className="text-purple-400 font-black text-base">
-              {toArabicNumber(submittedCount)} من {toArabicNumber(totalCount)}
-            </strong>
-          </div>
+          {isBriefing ? (
+            <div className="w-full text-center font-sans text-xs font-bold text-zinc-400">
+              جلسة الاستماع مغلقة مؤقتاً لقراءة القضية وتأمل الأدلة
+            </div>
+          ) : (
+            <>
+              <div className="font-sans text-sm text-zinc-300">
+                أعذار معتمدة للمحكمة:{' '}
+                <strong className="text-purple-400 font-black text-base">
+                  {toArabicNumber(submittedCount)} من {toArabicNumber(totalCount)}
+                </strong>
+              </div>
 
-          <button
-            onClick={executeJudging}
-            className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white font-sans font-bold text-xs border border-zinc-700 transition-colors cursor-pointer"
-          >
-            إغلاق المرافعات والنطق بالحكم فوراً
-          </button>
+              <button
+                onClick={executeJudging}
+                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white font-sans font-bold text-xs border border-zinc-700 transition-colors cursor-pointer"
+              >
+                إغلاق المرافعات والنطق بالحكم فوراً
+              </button>
+            </>
+          )}
         </div>
       </div>
     );

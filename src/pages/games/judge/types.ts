@@ -3,6 +3,8 @@ import { JudgeCase, Predicament } from '../../../data/judgePredicaments';
 export type JudgePhase =
   | 'LOBBY'
   | 'PREDICAMENT_REVEAL'
+  | 'case_briefing'
+  | 'defending'
   | 'EXCUSE_INPUT'
   | 'JUDGING'
   | 'COURTROOM_VERDICT'

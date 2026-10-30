@@ -19,6 +19,7 @@ interface JudgeMobileViewProps {
   predicament: Predicament;
   roundNumber: number;
   totalRounds: number;
+  phase?: string;
   timerSeconds: number;
   hasSubmitted: boolean;
   onSubmitExcuse: (excuse: string, wasAutoSubmitted?: boolean) => void;
@@ -34,6 +35,7 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
   predicament,
   roundNumber,
   totalRounds,
+  phase,
   timerSeconds,
   hasSubmitted,
   onSubmitExcuse,
@@ -44,6 +46,8 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
   readyCount,
   totalConnectedCount,
 }) => {
+  const isBriefing = phase === 'case_briefing';
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [excuseText, setExcuseText] = useState<string>('');
   const excuseRef = useRef<string>('');
   const isSubmittedRef = useRef<boolean>(hasSubmitted);
@@ -51,6 +55,15 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
   useEffect(() => {
     isSubmittedRef.current = hasSubmitted;
   }, [hasSubmitted]);
+
+  // Focus textarea when briefing ends
+  useEffect(() => {
+    if (!isBriefing && !hasSubmitted) {
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 100);
+    }
+  }, [isBriefing, hasSubmitted]);
 
   // Clear excuse field and refs between rounds
   useEffect(() => {
@@ -85,20 +98,20 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
 
   // 1. Trigger when local countdown hits 0
   useEffect(() => {
-    if (timerSeconds === 0 && !isSubmittedRef.current && !isCourtroomVerdict) {
+    if (timerSeconds === 0 && !isBriefing && !isSubmittedRef.current && !isCourtroomVerdict) {
       autoSubmitOnTimeout();
     }
-  }, [timerSeconds, isCourtroomVerdict, autoSubmitOnTimeout]);
+  }, [timerSeconds, isBriefing, isCourtroomVerdict, autoSubmitOnTimeout]);
 
   // 2. Trigger immediately on JUDGE_TIME_UP broadcast from TV host
   useEffect(() => {
     const unsub = roomBus.on('JUDGE_TIME_UP', () => {
-      if (!isSubmittedRef.current && !isCourtroomVerdict) {
+      if (!isBriefing && !isSubmittedRef.current && !isCourtroomVerdict) {
         autoSubmitOnTimeout();
       }
     });
     return () => unsub?.();
-  }, [isCourtroomVerdict, autoSubmitOnTimeout]);
+  }, [isBriefing, isCourtroomVerdict, autoSubmitOnTimeout]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -259,16 +272,23 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
           <span className="text-xs font-sans text-zinc-400">
             الجولة {toArabicNumber(roundNumber)} من {toArabicNumber(totalRounds)}
           </span>
-          <div
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-xl border text-xs font-sans font-bold ${
-              timerSeconds <= 10
-                ? 'bg-red-950/80 border-red-700 text-red-300 animate-pulse'
-                : 'bg-zinc-900 border-zinc-700 text-zinc-300'
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5 text-amber-400" />
-            <span>{toArabicNumber(timerSeconds)} ث</span>
-          </div>
+          {isBriefing ? (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-950/60 border border-amber-600/60 text-amber-300 text-xs font-sans font-bold shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+              <Clock className="w-3.5 h-3.5 text-amber-400" />
+              <span>قراءة القضية</span>
+            </div>
+          ) : (
+            <div
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-xl border text-xs font-sans font-bold ${
+                timerSeconds <= 10
+                  ? 'bg-red-950/80 border-red-700 text-red-300 animate-pulse'
+                  : 'bg-zinc-900 border-zinc-700 text-zinc-300'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-400" />
+              <span>{toArabicNumber(timerSeconds)} ث</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -303,8 +323,26 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
         )}
       </div>
 
-      {/* Submission State vs Input Form */}
-      {hasSubmitted ? (
+      {/* Briefing State vs Submission State vs Input Form */}
+      {isBriefing ? (
+        <div className="my-auto py-8 text-center space-y-4">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-950/60 border-2 border-amber-500/80 flex items-center justify-center text-amber-400 shadow-[0_0_30px_rgba(245,158,11,0.3)]">
+            <Scale className="w-8 h-8 animate-pulse" />
+          </div>
+          <div className="space-y-2 max-w-sm mx-auto">
+            <h3 className="font-sans font-black text-xl text-white">
+              فترة تأمل وقراءة القضية
+            </h3>
+            <p className="font-sans text-sm font-bold text-amber-300/95 leading-relaxed bg-amber-950/40 border border-amber-600/50 p-4 rounded-2xl shadow-inner">
+              اقرأ القضية جيداً وجهز عذرك.. الجلسة ستبدأ عندما يضغط المضيف [بدء الجلسة]
+            </p>
+          </div>
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-sans text-zinc-400">
+            <Clock className="w-4 h-4 text-amber-400" />
+            <span>العداد متوقف حالياً لقراءة الأدلة</span>
+          </div>
+        </div>
+      ) : hasSubmitted ? (
         <div className="my-auto py-8 text-center space-y-4">
           <div className="w-16 h-16 mx-auto rounded-full bg-purple-950/80 border-2 border-purple-500/80 flex items-center justify-center text-purple-300 shadow-[0_0_25px_rgba(168,85,247,0.3)]">
             <Gavel className="w-8 h-8 animate-bounce" />
@@ -337,6 +375,7 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
             </div>
 
             <textarea
+              ref={textareaRef}
               value={excuseText}
               onChange={handleTextChange}
               placeholder="اكتب عذراً داهية ينجيك من السجن المؤبد..."

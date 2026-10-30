@@ -53,7 +53,10 @@ export const JudgeMobileRoot: React.FC = () => {
       setJudgeState(payload);
 
       // Reset submission flag when a new round starts
-      if (payload.phase === 'EXCUSE_INPUT' && payload.roundNumber !== judgeState.roundNumber) {
+      if (
+        (payload.phase === 'case_briefing' || payload.phase === 'defending' || payload.phase === 'EXCUSE_INPUT') &&
+        payload.roundNumber !== judgeState.roundNumber
+      ) {
         setHasSubmittedThisRound(false);
         setIsReadyForNextRound(false);
       }
@@ -105,7 +108,7 @@ export const JudgeMobileRoot: React.FC = () => {
 
       setJudgeState((prev) => ({
         ...prev,
-        phase: 'EXCUSE_INPUT',
+        phase: payload.phase || 'case_briefing',
         currentPredicament: payload.currentCase,
         roundNumber: payload.roundNumber || prev.roundNumber,
         timerSeconds: 60,
@@ -115,6 +118,19 @@ export const JudgeMobileRoot: React.FC = () => {
       }));
       setHasSubmittedThisRound(false);
       setIsReadyForNextRound(false);
+    });
+
+    const unsubStartDefense = roomBus.on('JUDGE_START_DEFENSE', (evt: any) => {
+      const incomingCode = evt?.roomCode;
+      const payload = evt?.data ?? evt;
+      if (incomingCode && incomingCode !== roomCode) return;
+      sound.playGavelStrike();
+      const duration = payload?.duration ?? 60;
+      setJudgeState((prev) => ({
+        ...prev,
+        phase: 'defending',
+        timerSeconds: duration,
+      }));
     });
 
     const unsubTerminated = roomBus.on('ROOM_TERMINATED', (evt: any) => {
@@ -129,6 +145,7 @@ export const JudgeMobileRoot: React.FC = () => {
     return () => {
       unsubSync?.();
       unsubNewRound?.();
+      unsubStartDefense?.();
       unsubResultsReady?.();
       unsubLobby?.();
       unsubTerminated?.();
@@ -189,8 +206,10 @@ export const JudgeMobileRoot: React.FC = () => {
     return <JudgeCourtWaitingScreen isTV={false} />;
   }
 
-  // 3. Input & Courtroom Verdict Phase
+  // 3. Case Briefing, Defense Input & Courtroom Verdict Phase
   if (
+    judgeState.phase === 'case_briefing' ||
+    judgeState.phase === 'defending' ||
     judgeState.phase === 'EXCUSE_INPUT' ||
     judgeState.phase === 'COURTROOM_VERDICT'
   ) {
@@ -203,6 +222,7 @@ export const JudgeMobileRoot: React.FC = () => {
         predicament={judgeState.currentPredicament}
         roundNumber={judgeState.roundNumber}
         totalRounds={judgeState.totalRounds}
+        phase={judgeState.phase}
         timerSeconds={judgeState.timerSeconds}
         hasSubmitted={hasSubmittedThisRound}
         onSubmitExcuse={handleSubmitExcuse}
