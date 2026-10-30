@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="100%" height="100%" fill="none">
+  <defs>
+    <linearGradient id="defShieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <filter id="glowDef" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#3B82F6" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+  <!-- Background Badge -->
+  <circle cx="60" cy="60" r="54" fill="#0A0A0A" stroke="#3B82F6" stroke-width="3" stroke-dasharray="4 2"/>
+  <circle cx="60" cy="60" r="48" fill="#0B132B"/>
+  
+  <!-- Tactical Wall / Grid Lines -->
+  <path d="M35 38 L85 38 M30 52 L90 52 M35 66 L85 66" stroke="#3B82F6" stroke-width="1" stroke-opacity="0.25"/>
+  <path d="M48 30 L48 76 M60 25 L60 80 M72 30 L72 76" stroke="#3B82F6" stroke-width="1" stroke-opacity="0.25"/>
+  
+  <!-- Impenetrable Shield of Defense -->
+  <g filter="url(#glowDef)">
+    <path d="M60 26 L86 36 C86 60 76 74 60 85 C44 74 34 60 34 36 L60 26 Z" fill="url(#defShieldGrad)" stroke="#60A5FA" stroke-width="2.5"/>
+    <!-- Inner Shield Inset -->
+    <path d="M60 32 L80 40 C80 58 72 68 60 77 C48 68 40 58 40 40 L60 32 Z" fill="#1E3A8A" opacity="0.6"/>
+    <!-- Central Fortress Brick Pattern -->
+    <rect x="48" y="44" width="10" height="6" fill="#93C5FD" rx="1"/>
+    <rect x="62" y="44" width="10" height="6" fill="#93C5FD" rx="1"/>
+    <rect x="43" y="52" width="10" height="6" fill="#93C5FD" rx="1"/>
+    <rect x="55" y="52" width="10" height="6" fill="#FFFFFF" rx="1"/>
+    <rect x="67" y="52" width="10" height="6" fill="#93C5FD" rx="1"/>
+    <rect x="48" y="60" width="10" height="6" fill="#93C5FD" rx="1"/>
+    <rect x="62" y="60" width="10" height="6" fill="#93C5FD" rx="1"/>
+  </g>
+  
+  <!-- Position Badge -->
+  <rect x="34" y="94" width="52" height="18" rx="9" fill="#3B82F6" stroke="#0A0A0A" stroke-width="2"/>
+  <text x="60" y="106" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="11" fill="#FFFFFF" text-anchor="middle" dominant-baseline="middle">مدافع (DEF)</text>
+</svg>

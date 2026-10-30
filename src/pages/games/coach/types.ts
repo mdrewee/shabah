@@ -110,7 +110,7 @@ export interface BingoCell {
   id: string;
   title: string;
   description: string;
-  type: 'club' | 'country' | 'trophy' | 'trait' | 'manager';
+  type: 'club' | 'country' | 'trophy' | 'trait' | 'manager' | 'position';
   targetValue: string;
   imageUrl?: string;
   isMarked: boolean;
@@ -134,6 +134,7 @@ export interface BingoRoulettePlayer {
   nationality: string;
   trophies: string[];
   traits: string[];
+  position?: 'GK' | 'DEF' | 'MID' | 'ATT' | string;
 }
 
 // -------------------------------------------------------------

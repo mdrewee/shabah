@@ -17,6 +17,8 @@ import { getRandomMatchCriteria } from '../../../data/coachCriteria';
 import {
   STATIC_CLUBS,
   STATIC_TROPHIES,
+  STATIC_MANAGERS,
+  STATIC_POSITIONS,
   STATIC_BINGO_PLAYERS,
   preloadBingoBatch,
 } from '../../../data/footballStaticAssets';
@@ -109,34 +111,40 @@ export const BINGO_CELL_POOL: Array<Omit<BingoCell, 'id' | 'isMarked'>> = [
   { title: 'يوفنتوس', description: 'لعب لنادي يوفنتوس', type: 'club', targetValue: 'يوفنتوس', imageUrl: STATIC_CLUBS.juventus.logoUrl },
   { title: 'إنتر ميلان', description: 'لعب لإنتر ميلان', type: 'club', targetValue: 'إنتر', imageUrl: STATIC_CLUBS.inter.logoUrl },
 
-  // البطولات والكؤوس
+  // البطولات والكؤوس الرسمية
   { title: 'كأس العالم', description: 'حقق بطولة كأس العالم', type: 'trophy', targetValue: 'كأس العالم', imageUrl: STATIC_TROPHIES.world_cup.imageUrl },
   { title: 'دوري أبطال أوروبا', description: 'حقق دوري أبطال أوروبا', type: 'trophy', targetValue: 'دوري أبطال أوروبا', imageUrl: STATIC_TROPHIES.ucl.imageUrl },
-  { title: 'الدوري الإنجليزي', description: 'حقق الدوري الإنجليزي', type: 'trophy', targetValue: 'الدوري الإنجليزي', imageUrl: STATIC_TROPHIES.premier_league.imageUrl },
   { title: 'دوري روشن', description: 'حقق دوري روشن السعودي', type: 'trophy', targetValue: 'دوري روشن', imageUrl: STATIC_TROPHIES.saudi_league.imageUrl },
-  { title: 'الكرة الذهبية', description: 'توج بالكرة الذهبية', type: 'trophy', targetValue: 'الكرة الذهبية', imageUrl: BALLON_DOR_SVG },
+  { title: 'الكرة الذهبية', description: 'توج بالكرة الذهبية', type: 'trophy', targetValue: 'الكرة الذهبية', imageUrl: STATIC_TROPHIES.ballon_dor.imageUrl },
+  { title: 'كوبا أمريكا', description: 'توج بكوبا أمريكا', type: 'trophy', targetValue: 'كوبا أمريكا', imageUrl: STATIC_TROPHIES.copa_america.imageUrl },
+  { title: 'دوري أبطال آسيا', description: 'توج بدوري أبطال آسيا', type: 'trophy', targetValue: 'دوري أبطال آسيا', imageUrl: STATIC_TROPHIES.afc.imageUrl },
 
   // المنتخبات والأعلام
-  { title: 'البرازيل', description: 'جنسيته برازيلي', type: 'country', targetValue: 'البرازيل', imageUrl: 'https://flagcdn.com/w80/br.png' },
-  { title: 'الأرجنتين', description: 'جنسيته أرجنتيني', type: 'country', targetValue: 'الأرجنتين', imageUrl: 'https://flagcdn.com/w80/ar.png' },
-  { title: 'فرنسا', description: 'جنسيته فرنسي', type: 'country', targetValue: 'فرنسا', imageUrl: 'https://flagcdn.com/w80/fr.png' },
-  { title: 'السعودية', description: 'جنسيته سعودي', type: 'country', targetValue: 'السعودية', imageUrl: 'https://flagcdn.com/w80/sa.png' },
-  { title: 'إسبانيا', description: 'جنسيته إسباني', type: 'country', targetValue: 'إسبانيا', imageUrl: 'https://flagcdn.com/w80/es.png' },
-  { title: 'البرتغال', description: 'جنسيته برتغالي', type: 'country', targetValue: 'البرتغال', imageUrl: 'https://flagcdn.com/w80/pt.png' },
-  { title: 'ألمانيا', description: 'جنسيته ألماني', type: 'country', targetValue: 'ألمانيا', imageUrl: 'https://flagcdn.com/w80/de.png' },
-  { title: 'إيطاليا', description: 'جنسيته إيطالي', type: 'country', targetValue: 'إيطاليا', imageUrl: 'https://flagcdn.com/w80/it.png' },
+  { title: 'البرازيل', description: 'جنسيته برازيلي', type: 'country', targetValue: 'البرازيل', imageUrl: '/assets/football/flags/br.png' },
+  { title: 'الأرجنتين', description: 'جنسيته أرجنتيني', type: 'country', targetValue: 'الأرجنتين', imageUrl: '/assets/football/flags/ar.png' },
+  { title: 'فرنسا', description: 'جنسيته فرنسي', type: 'country', targetValue: 'فرنسا', imageUrl: '/assets/football/flags/fr.png' },
+  { title: 'السعودية', description: 'جنسيته سعودي', type: 'country', targetValue: 'السعودية', imageUrl: '/assets/football/flags/sa.png' },
+  { title: 'إسبانيا', description: 'جنسيته إسباني', type: 'country', targetValue: 'إسبانيا', imageUrl: '/assets/football/flags/es.png' },
+  { title: 'البرتغال', description: 'جنسيته برتغالي', type: 'country', targetValue: 'البرتغال', imageUrl: '/assets/football/flags/pt.png' },
+  { title: 'ألمانيا', description: 'جنسيته ألماني', type: 'country', targetValue: 'ألمانيا', imageUrl: '/assets/football/flags/de.png' },
   { title: 'إنجلترا', description: 'جنسيته إنجليزي', type: 'country', targetValue: 'إنجلترا', imageUrl: 'https://flagcdn.com/w80/gb-eng.png' },
-  { title: 'هولندا', description: 'جنسيته هولندي', type: 'country', targetValue: 'هولندا', imageUrl: 'https://flagcdn.com/w80/nl.png' },
 
-  // المدربين (استخدام أيقونات موثوقة بدون روابط خارجية مكسورة)
-  { title: 'درّبه غوارديولا', description: 'لعب تحت قيادة بيب غوارديولا', type: 'manager', targetValue: 'غوارديولا' },
-  { title: 'درّبه أنشيلوتي', description: 'لعب تحت قيادة كارلو أنشيلوتي', type: 'manager', targetValue: 'أنشيلوتي' },
-  { title: 'درّبه مورينيو', description: 'لعب تحت قيادة جوزيه مورينيو', type: 'manager', targetValue: 'مورينيو' },
-  { title: 'درّبه زيدان', description: 'لعب تحت قيادة زين الدين زيدان', type: 'manager', targetValue: 'زيدان' },
+  // كبار المدربين مع صورهم الرسمية
+  { title: 'درّبه غوارديولا', description: 'لعب تحت قيادة بيب غوارديولا', type: 'manager', targetValue: 'غوارديولا', imageUrl: STATIC_MANAGERS.guardiola.imageUrl },
+  { title: 'درّبه أنشيلوتي', description: 'لعب تحت قيادة كارلو أنشيلوتي', type: 'manager', targetValue: 'أنشيلوتي', imageUrl: STATIC_MANAGERS.ancelotti.imageUrl },
+  { title: 'درّبه مورينيو', description: 'لعب تحت قيادة جوزيه مورينيو', type: 'manager', targetValue: 'مورينيو', imageUrl: STATIC_MANAGERS.mourinho.imageUrl },
+  { title: 'درّبه زيدان', description: 'لعب تحت قيادة زين الدين زيدان', type: 'manager', targetValue: 'زيدان', imageUrl: STATIC_MANAGERS.zidane.imageUrl },
+  { title: 'درّبه خيسوس', description: 'لعب تحت قيادة جورجي خيسوس', type: 'manager', targetValue: 'خيسوس', imageUrl: STATIC_MANAGERS.jesus.imageUrl },
 
-  // المواصفات الخاصة
-  { title: 'أشول (قدم يسرى)', description: 'يلعب بقدمه اليسرى', type: 'trait', targetValue: 'أشول' },
-  { title: 'أسمر البشرة', description: 'من أصحاب البشرة السمراء', type: 'trait', targetValue: 'أسمر' },
+  // الخصائص البدنية والمهارية
+  { title: 'أشول (قدم يسرى)', description: 'يلعب بقدمه اليسرى', type: 'trait', targetValue: 'أشول', imageUrl: '/assets/football/traits/left_foot.svg' },
+  { title: 'أسمر البشرة', description: 'من أصحاب البشرة السمراء', type: 'trait', targetValue: 'أسمر', imageUrl: '/assets/football/traits/dark_skin.jpg' },
+
+  // المراكز التكتيكية الرسمية
+  { title: 'حارس مرمى', description: 'مركزه حارس مرمى (GK)', type: 'position', targetValue: 'GK', imageUrl: STATIC_POSITIONS.gk.imageUrl },
+  { title: 'قلب دفاع / ظهير', description: 'مركزه مدافع (DEF)', type: 'position', targetValue: 'DEF', imageUrl: STATIC_POSITIONS.def.imageUrl },
+  { title: 'لاعب وسط', description: 'مركزه خط وسط (MID)', type: 'position', targetValue: 'MID', imageUrl: STATIC_POSITIONS.mid.imageUrl },
+  { title: 'مهاجم / جناح', description: 'مركزه مهاجم (ATT)', type: 'position', targetValue: 'ATT', imageUrl: STATIC_POSITIONS.att.imageUrl },
 ];
 
 export function generateBingoCard(playerId: string): BingoCard {
@@ -204,6 +212,7 @@ export function getRandomRoulettePlayer(excludeIds: string[] = []): BingoRoulett
     nationality: picked.country || picked.nationality || '',
     trophies: picked.trophies || [],
     traits: picked.traits || [],
+    position: picked.position || 'ATT',
   };
 }
 
@@ -231,6 +240,7 @@ export function generatePreloadedBingoPool(): {
     nationality: p.country || p.nationality || '',
     trophies: p.trophies || [],
     traits: p.traits || [],
+    position: p.position || 'ATT',
   }));
 
   const urlsToPreload: string[] = [
@@ -300,6 +310,23 @@ export function doesPlayerMatchBingoCell(
     if (target.includes('مورينيو') && player.clubs?.some((c) => ['ريال مدريد', 'تشيلسي', 'إنتر', 'مانشستر يونايتد', 'روما', 'بورتو'].includes(c))) return true;
     if (target.includes('زيدان') && player.clubs?.some((c) => ['ريال مدريد'].includes(c))) return true;
     if (target.includes('خيسوس') && player.clubs?.some((c) => ['الهلال', 'بنفيكا', 'فلامنغو', 'فنربخشة'].includes(c))) return true;
+  }
+
+  // 6. Position check (حارس، مدافع، وسط، مهاجم)
+  if (cell.type === 'position' || target === 'gk' || target === 'def' || target === 'mid' || target === 'att' || target.includes('حارس') || target.includes('دفاع') || target.includes('وسط') || target.includes('مهاجم')) {
+    const pos = (player.position || '').toUpperCase();
+    if (target === 'gk' || target.includes('حارس')) {
+      if (pos === 'GK' || pos.includes('GK') || ['بوفون', 'نوير', 'كورتوا', 'كاسياس', 'اليسون', 'بونو', 'العويس', 'دي خيا', 'تير شتيغن', 'دوناروما', 'اونانا', 'مارتينيز', 'الحضري', 'الدعيع'].some((g) => player.name.includes(g))) return true;
+    }
+    if (target === 'def' || target.includes('دفاع')) {
+      if (pos === 'DEF' || pos.includes('CB') || pos.includes('RB') || pos.includes('LB') || ['مالديني', 'راموس', 'فان دايك', 'بويول', 'مارسيلو', 'البليهي', 'روديغر', 'حكيمي', 'كانافارو', 'والكر', 'بيبي', 'الابا', 'تيري'].some((d) => player.name.includes(d))) return true;
+    }
+    if (target === 'mid' || target.includes('وسط')) {
+      if (pos === 'MID' || pos.includes('CM') || pos.includes('CAM') || pos.includes('CDM') || ['زيدان', 'مودريتش', 'تشافي', 'انييستا', 'كروس', 'دي بروين', 'كانتي', 'كاسيميرو', 'بوسكيتس', 'بيرلو', 'بيلينغهام', 'رودري', 'فالفيردي', 'نيفيز', 'سافيتش'].some((m) => player.name.includes(m))) return true;
+    }
+    if (target === 'att' || target.includes('مهاجم')) {
+      if (pos === 'ATT' || pos === 'FWD' || pos.includes('ST') || pos.includes('LW') || pos.includes('RW') || ['ميسي', 'رونالدو', 'بنزيما', 'مبابي', 'هالاند', 'نيمار', 'صلاح', 'فينيسيوس', 'ليفاندوفسكي', 'سالم الدوسري', 'محرز', 'كين', 'سواريز', 'دروغبا', 'ايتو', 'رونالدينيو', 'رونالدو نازاريو'].some((f) => player.name.includes(f))) return true;
+    }
   }
 
   return false;

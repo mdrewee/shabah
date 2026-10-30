@@ -275,8 +275,27 @@ export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
                   : 'hover:border-white'
               }`}
             >
-              {/* Unbreakable Criteria Icon or Stable Image */}
-              {cell.type === 'manager' ? (
+              {/* Football Visual Image with Fallback Icons */}
+              {cell.imageUrl ? (
+                <div className="my-auto z-10 flex items-center justify-center p-0.5">
+                  <img
+                    src={cell.imageUrl}
+                    alt={cell.title}
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                    className={`w-11 h-11 sm:w-12 sm:h-12 drop-shadow-md transition-transform group-hover:scale-105 ${
+                      cell.type === 'manager'
+                        ? 'object-cover rounded-full border-2 border-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.4)]'
+                        : cell.targetValue === 'أسمر'
+                        ? 'object-cover rounded-full border-2 border-amber-600 shadow-[0_0_8px_rgba(217,119,6,0.4)]'
+                        : cell.type === 'country'
+                        ? 'object-cover rounded-lg border border-white/30 shadow-md'
+                        : 'object-contain'
+                    }`}
+                  />
+                </div>
+              ) : cell.type === 'manager' ? (
                 <UserCheck className="w-8 h-8 text-amber-400 my-auto z-10" />
               ) : cell.type === 'trophy' ? (
                 <Trophy className="w-8 h-8 text-yellow-400 my-auto z-10" />
@@ -287,15 +306,6 @@ export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
                     أعسر
                   </span>
                 </div>
-              ) : cell.imageUrl ? (
-                <img
-                  src={cell.imageUrl}
-                  alt={cell.title}
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                  className="w-10 h-10 object-contain drop-shadow-md z-10 my-auto"
-                />
               ) : (
                 <Shield className="w-8 h-8 text-cyan-400 my-auto z-10" />
               )}

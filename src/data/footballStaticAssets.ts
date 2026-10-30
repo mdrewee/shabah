@@ -36,113 +36,120 @@ export interface StaticTrophyAsset {
 }
 
 // -------------------------------------------------------------
-// 1. Direct Static Clubs (Verified TheSportsDB CDN Badges & Fallbacks)
+// 1. Direct Static Clubs (Verified Local Assets & Fallbacks)
 // -------------------------------------------------------------
 export const STATIC_CLUBS: Record<string, StaticClubAsset> = {
   barcelona: {
     id: 'barcelona',
     name: 'برشلونة',
-    logoUrl: 'https://www.thesportsdb.com/images/media/team/badge/ypqssx1420756787.png',
-    imageUrl: 'https://www.thesportsdb.com/images/media/team/badge/ypqssx1420756787.png',
+    logoUrl: '/assets/football/clubs/barcelona.png',
+    imageUrl: '/assets/football/clubs/barcelona.png',
     country: 'إسبانيا',
   },
   realmadrid: {
     id: 'realmadrid',
     name: 'ريال مدريد',
-    logoUrl: 'https://www.thesportsdb.com/images/media/team/badge/8p1k8y1567431320.png',
-    imageUrl: 'https://www.thesportsdb.com/images/media/team/badge/8p1k8y1567431320.png',
+    logoUrl: '/assets/football/clubs/real_madrid.png',
+    imageUrl: '/assets/football/clubs/real_madrid.png',
     country: 'إسبانيا',
   },
   chelsea: {
     id: 'chelsea',
     name: 'تشيلسي',
-    logoUrl: 'https://www.thesportsdb.com/images/media/team/badge/yvwvtu1448813215.png',
-    imageUrl: 'https://www.thesportsdb.com/images/media/team/badge/yvwvtu1448813215.png',
+    logoUrl: '/assets/football/clubs/chelsea.png',
+    imageUrl: '/assets/football/clubs/chelsea.png',
     country: 'إنجلترا',
   },
   mancity: {
     id: 'mancity',
     name: 'مانشستر سيتي',
-    logoUrl: 'https://www.thesportsdb.com/images/media/team/badge/vwpvry1467462651.png',
-    imageUrl: 'https://www.thesportsdb.com/images/media/team/badge/vwpvry1467462651.png',
+    logoUrl: '/assets/football/clubs/man_city.png',
+    imageUrl: '/assets/football/clubs/man_city.png',
     country: 'إنجلترا',
   },
   liverpool: {
     id: 'liverpool',
     name: 'ليفربول',
-    logoUrl: 'https://www.thesportsdb.com/images/media/team/badge/uvxwwr1448813524.png',
-    imageUrl: 'https://www.thesportsdb.com/images/media/team/badge/uvxwwr1448813524.png',
+    logoUrl: '/assets/football/clubs/liverpool.png',
+    imageUrl: '/assets/football/clubs/liverpool.png',
     country: 'إنجلترا',
   },
   alhilal: {
     id: 'alhilal',
     name: 'الهلال',
-    logoUrl: 'https://www.thesportsdb.com/images/media/team/badge/rqwxuq1545474320.png',
-    imageUrl: 'https://www.thesportsdb.com/images/media/team/badge/rqwxuq1545474320.png',
+    logoUrl: '/assets/football/clubs/al_hilal.png',
+    imageUrl: '/assets/football/clubs/al_hilal.png',
     country: 'السعودية',
   },
   alnassr: {
     id: 'alnassr',
     name: 'النصر',
-    logoUrl: 'https://www.thesportsdb.com/images/media/team/badge/xspwyx1545474403.png',
-    imageUrl: 'https://www.thesportsdb.com/images/media/team/badge/xspwyx1545474403.png',
+    logoUrl: '/assets/football/clubs/al_nassr.png',
+    imageUrl: '/assets/football/clubs/al_nassr.png',
     country: 'السعودية',
   },
   ittihad: {
     id: 'ittihad',
     name: 'الاتحاد',
-    logoUrl: 'https://www.thesportsdb.com/images/media/team/badge/trvqxt1545474512.png',
-    imageUrl: 'https://www.thesportsdb.com/images/media/team/badge/trvqxt1545474512.png',
+    logoUrl: '/assets/football/clubs/al_ittihad.png',
+    imageUrl: '/assets/football/clubs/al_ittihad.png',
     country: 'السعودية',
   },
   alahli: {
     id: 'alahli',
     name: 'الأهلي',
-    logoUrl: 'https://www.thesportsdb.com/images/media/team/badge/tsrwyv1545474578.png',
-    imageUrl: 'https://www.thesportsdb.com/images/media/team/badge/tsrwyv1545474578.png',
+    logoUrl: '/assets/football/clubs/al_ahli.png',
+    imageUrl: '/assets/football/clubs/al_ahli.png',
     country: 'السعودية',
   },
   bayern: {
     id: 'bayern',
     name: 'بايرن ميونخ',
-    logoUrl: 'https://www.thesportsdb.com/images/media/team/badge/rwqrrq1473504808.png',
-    imageUrl: 'https://www.thesportsdb.com/images/media/team/badge/rwqrrq1473504808.png',
+    logoUrl: '/assets/football/clubs/bayern.png',
+    imageUrl: '/assets/football/clubs/bayern.png',
     country: 'ألمانيا',
   },
   psg: {
     id: 'psg',
     name: 'باريس سان جيرمان',
-    logoUrl: 'https://www.thesportsdb.com/images/media/team/badge/rwvryy1473504808.png',
+    logoUrl: '/assets/football/clubs/psg.png',
     imageUrl: '/assets/football/clubs/psg.png',
     country: 'فرنسا',
   },
   arsenal: {
     id: 'arsenal',
     name: 'أرسنال',
-    logoUrl: 'https://www.thesportsdb.com/images/media/team/badge/uyhb5o1512401659.png',
+    logoUrl: '/assets/football/clubs/arsenal.png',
     imageUrl: '/assets/football/clubs/arsenal.png',
     country: 'إنجلترا',
   },
   juventus: {
     id: 'juventus',
     name: 'يوفنتوس',
-    logoUrl: 'https://www.thesportsdb.com/images/media/team/badge/q4883g1586738920.png',
+    logoUrl: '/assets/football/clubs/juventus.png',
     imageUrl: '/assets/football/clubs/juventus.png',
     country: 'إيطاليا',
   },
   inter: {
     id: 'inter',
     name: 'إنتر ميلان',
-    logoUrl: 'https://www.thesportsdb.com/images/media/team/badge/u8e31k1621257121.png',
+    logoUrl: '/assets/football/clubs/inter.png',
     imageUrl: '/assets/football/clubs/inter.png',
     country: 'إيطاليا',
   },
   ac_milan: {
     id: 'ac_milan',
     name: 'ميلان',
-    logoUrl: 'https://www.thesportsdb.com/images/media/team/badge/d1s1l31586738920.png',
+    logoUrl: '/assets/football/clubs/ac_milan.png',
     imageUrl: '/assets/football/clubs/ac_milan.png',
     country: 'إيطاليا',
+  },
+  man_united: {
+    id: 'man_united',
+    name: 'مانشستر يونايتد',
+    logoUrl: '/assets/football/clubs/man_united.png',
+    imageUrl: '/assets/football/clubs/man_united.png',
+    country: 'إنجلترا',
   },
 };
 
@@ -155,22 +162,23 @@ export const STATIC_FOOTBALL_CLUBS: Record<string, StaticClubAsset> = {
   al_nassr: STATIC_CLUBS.alnassr,
   al_ittihad: STATIC_CLUBS.ittihad,
   al_ahli: STATIC_CLUBS.alahli,
+  man_united: STATIC_CLUBS.man_united,
 };
 
 // -------------------------------------------------------------
-// 2. Direct Static Trophies
+// 2. Direct Static Trophies (Verified Local Transparent PNGs)
 // -------------------------------------------------------------
 export const STATIC_TROPHIES: Record<string, StaticTrophyAsset> = {
   ucl: {
     id: 'ucl',
     name: 'دوري أبطال أوروبا',
-    imageUrl: 'https://www.thesportsdb.com/images/media/league/trophy/0v743a1686738920.png',
+    imageUrl: '/assets/football/trophies/ucl.png',
     type: 'continental',
   },
   world_cup: {
     id: 'world_cup',
     name: 'كأس العالم',
-    imageUrl: 'https://www.thesportsdb.com/images/media/league/trophy/1c97a51686738740.png',
+    imageUrl: '/assets/football/trophies/world_cup.png',
     type: 'world',
   },
   premier_league: {
@@ -182,7 +190,7 @@ export const STATIC_TROPHIES: Record<string, StaticTrophyAsset> = {
   saudi_league: {
     id: 'saudi_league',
     name: 'دوري روشن',
-    imageUrl: 'https://www.thesportsdb.com/images/media/league/trophy/saudi_pro.png',
+    imageUrl: '/assets/football/trophies/rpl.png',
     type: 'domestic',
   },
   ballon_dor: {
@@ -190,6 +198,12 @@ export const STATIC_TROPHIES: Record<string, StaticTrophyAsset> = {
     name: 'الكرة الذهبية',
     imageUrl: '/assets/football/trophies/ballon_dor.png',
     type: 'individual',
+  },
+  copa_america: {
+    id: 'copa_america',
+    name: 'كوبا أمريكا',
+    imageUrl: '/assets/football/trophies/copa_america.png',
+    type: 'continental',
   },
   afc: {
     id: 'afc',
@@ -200,6 +214,86 @@ export const STATIC_TROPHIES: Record<string, StaticTrophyAsset> = {
 };
 
 export const STATIC_FOOTBALL_TROPHIES = STATIC_TROPHIES;
+
+// -------------------------------------------------------------
+// 3. Direct Static Managers (High-Res Photos & Cutouts)
+// -------------------------------------------------------------
+export interface StaticManagerAsset {
+  id: string;
+  name: string;
+  imageUrl: string;
+  teams: string[];
+}
+
+export const STATIC_MANAGERS: Record<string, StaticManagerAsset> = {
+  guardiola: {
+    id: 'guardiola',
+    name: 'بيب غوارديولا',
+    imageUrl: '/assets/football/managers/guardiola.jpg',
+    teams: ['برشلونة', 'بايرن ميونخ', 'مانشستر سيتي'],
+  },
+  ancelotti: {
+    id: 'ancelotti',
+    name: 'كارلو أنشيلوتي',
+    imageUrl: '/assets/football/managers/ancelotti.jpg',
+    teams: ['ريال مدريد', 'ميلان', 'تشيلسي', 'باريس سان جيرمان', 'بايرن ميونخ', 'يوفنتوس', 'إيفرتون'],
+  },
+  mourinho: {
+    id: 'mourinho',
+    name: 'جوزيه مورينيو',
+    imageUrl: '/assets/football/managers/mourinho.jpg',
+    teams: ['ريال مدريد', 'تشيلسي', 'إنتر ميلان', 'مانشستر يونايتد', 'روما', 'بورتو', 'توتنهام'],
+  },
+  zidane: {
+    id: 'zidane',
+    name: 'زين الدين زيدان',
+    imageUrl: '/assets/football/managers/zidane.jpg',
+    teams: ['ريال مدريد'],
+  },
+  jesus: {
+    id: 'jesus',
+    name: 'جورجي خيسوس',
+    imageUrl: '/assets/football/managers/jesus.jpg',
+    teams: ['الهلال', 'بنفيكا', 'فلامنغو', 'سبورتينغ لشبونة', 'فنربخشة'],
+  },
+};
+
+// -------------------------------------------------------------
+// 4. Direct Static Positions (High-Contrast Football SVG Badges)
+// -------------------------------------------------------------
+export interface StaticPositionAsset {
+  id: string;
+  code: 'GK' | 'DEF' | 'MID' | 'ATT';
+  title: string;
+  imageUrl: string;
+}
+
+export const STATIC_POSITIONS: Record<string, StaticPositionAsset> = {
+  gk: {
+    id: 'gk',
+    code: 'GK',
+    title: 'حارس مرمى',
+    imageUrl: '/assets/football/positions/gk.svg',
+  },
+  def: {
+    id: 'def',
+    code: 'DEF',
+    title: 'مدافع',
+    imageUrl: '/assets/football/positions/def.svg',
+  },
+  mid: {
+    id: 'mid',
+    code: 'MID',
+    title: 'لاعب وسط',
+    imageUrl: '/assets/football/positions/mid.svg',
+  },
+  att: {
+    id: 'att',
+    code: 'ATT',
+    title: 'مهاجم',
+    imageUrl: '/assets/football/positions/att.svg',
+  },
+};
 
 // -------------------------------------------------------------
 // 3. TheSportsDB Static Player Cutouts & Superstars (Authoritative Offline-First Bank)

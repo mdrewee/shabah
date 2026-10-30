@@ -117,15 +117,33 @@ export const CoachBingoTVView: React.FC<CoachBingoTVViewProps> = ({
               )}
             </div>
 
-            {/* Modern Football Star Card (Zero Broken Player Photos) */}
-            <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-3xl bg-zinc-950 border-2 border-zinc-800 flex flex-col items-center justify-center text-white my-3 shadow-xl">
-              <div className="w-12 h-12 rounded-2xl bg-neutral-900 border border-neutral-700 flex items-center justify-center text-emerald-400 font-mono font-black text-sm mb-1 shadow-inner">
-                {p?.position || 'STAR'}
+            {/* Modern Football Star Card (High-Res Player Photo or Fallback Badge) */}
+            {p?.photoUrl ? (
+              <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-3xl bg-zinc-950 border-2 border-zinc-800 p-2 my-3 shadow-xl flex items-center justify-center overflow-hidden relative">
+                <img
+                  src={p.photoUrl}
+                  alt={p.name}
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                  className="w-full h-full object-contain drop-shadow-lg"
+                />
+                {p?.position && (
+                  <span className="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded-lg bg-emerald-500/90 text-white font-mono font-black text-[10px] shadow">
+                    {p.position}
+                  </span>
+                )}
               </div>
-              <span className="font-mono text-xs font-bold text-zinc-400">
-                {p?.nationality || 'لاعب دولي'}
-              </span>
-            </div>
+            ) : (
+              <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-3xl bg-zinc-950 border-2 border-zinc-800 flex flex-col items-center justify-center text-white my-3 shadow-xl">
+                <div className="w-12 h-12 rounded-2xl bg-neutral-900 border border-neutral-700 flex items-center justify-center text-emerald-400 font-mono font-black text-sm mb-1 shadow-inner">
+                  {p?.position || 'STAR'}
+                </div>
+                <span className="font-mono text-xs font-bold text-zinc-400">
+                  {p?.nationality || 'لاعب دولي'}
+                </span>
+              </div>
+            )}
 
             {/* Full Arabic Name */}
             <h3 className="font-sans font-black text-3xl sm:text-5xl text-[#0A0A0A] mb-1">
