@@ -1,3 +1,20 @@
+import { FOOTBALL_PLAYERS_MASTER } from './footballMasterData';
+
+export interface FootballPlayer {
+  id: string;
+  name: string;
+  nameEn?: string;
+  aliases?: string[];
+  nationality?: string;
+  currentClub?: string;
+  clubs?: string[];
+  position?: 'GK' | 'DEF' | 'MID' | 'FWD';
+  photo?: string;
+  photoUrl?: string;
+  rating?: number;
+  isLocalDb?: boolean;
+}
+
 export interface SimpleFootballPlayer {
   id: string;
   name: string;
@@ -110,4 +127,65 @@ export const ADDITIONAL_100_PLAYERS: SimpleFootballPlayer[] = [
   { id: 'p_200', name: 'مانويل نوير', nameEn: 'Manuel Neuer' },
 ];
 
-export const FOOTBALL_PLAYERS = ADDITIONAL_100_PLAYERS;
+// Convert master players and merge with additional 100 stars
+const masterItems: FootballPlayer[] = FOOTBALL_PLAYERS_MASTER.map((p) => ({
+  id: p.id,
+  name: p.name,
+  nameEn: p.aliases?.[0] || '',
+  aliases: p.aliases,
+  nationality: p.nationality,
+  currentClub: p.currentClub,
+  clubs: p.clubs,
+  position: p.position,
+  photo: p.photo,
+  photoUrl: p.photo,
+  rating: 88,
+  isLocalDb: true,
+}));
+
+const additionalItems: FootballPlayer[] = ADDITIONAL_100_PLAYERS.map((p) => ({
+  id: p.id,
+  name: p.name,
+  nameEn: p.nameEn,
+  aliases: [p.nameEn],
+  nationality: '',
+  currentClub: '',
+  clubs: [],
+  position: 'FWD',
+  rating: 88,
+  isLocalDb: true,
+}));
+
+export const FOOTBALL_PLAYERS: FootballPlayer[] = [...masterItems, ...additionalItems];
+
+// دالة تنظيف وتطبيع النصوص العربية للبحث المرن
+export function normalizeSearch(text: string): string {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[\-_.]/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+export function searchPlayersLocally(query: string, limit = 15): FootballPlayer[] {
+  if (!query || query.trim().length === 0) return [];
+
+  const cleanQuery = normalizeSearch(query);
+
+  return FOOTBALL_PLAYERS.filter((player) => {
+    const nameAr = normalizeSearch(player.name || '');
+    const nameEn = (player.nameEn || '').toLowerCase();
+    const aliases = (player.aliases || []).map(normalizeSearch).join(' ');
+
+    return (
+      nameAr.includes(cleanQuery) ||
+      nameEn.includes(cleanQuery) ||
+      aliases.includes(cleanQuery)
+    );
+  }).slice(0, limit);
+}

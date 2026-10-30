@@ -11,6 +11,7 @@ import {
 import { ShabahTacticalPitch } from './ShabahTacticalPitch';
 import {
   hybridFootballSearch,
+  searchLocalFootballPlayers,
   FootballSearchResult,
 } from '../footballDataService';
 import { formatPercent, toArabicNumber } from '../../../../utils/numberFormat';
@@ -134,35 +135,23 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
     };
   }, [contestantId]);
 
-  // Debounced search with master data & Wikipedia fallback
-  useEffect(() => {
-    const clean = searchInput.trim();
-    if (!clean || clean.length < 2) {
+  // Immediate 100% In-Memory Local Search (Zero Latency, Zero Network, Zero CORS)
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setSearchInput(val);
+    setErrorMessage(null);
+
+    const clean = val.trim();
+    if (!clean || clean.length < 1) {
       setSuggestions([]);
       setIsSearching(false);
       return;
     }
 
-    setIsSearching(true);
-    let isCancelled = false;
-
-    const timer = setTimeout(async () => {
-      try {
-        const results = await hybridFootballSearch(clean);
-        if (!isCancelled) {
-          setSuggestions(results);
-          setIsSearching(false);
-        }
-      } catch {
-        if (!isCancelled) setIsSearching(false);
-      }
-    }, 150);
-
-    return () => {
-      isCancelled = true;
-      clearTimeout(timer);
-    };
-  }, [searchInput]);
+    const results = searchLocalFootballPlayers(clean, 15);
+    setSuggestions(results);
+    setIsSearching(false);
+  };
 
   // Check if selected slot is already filled
   const myPickForSelectedSlot = squad.slots[selectedSlotKey];
@@ -500,7 +489,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                 <input
                   type="text"
                   value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
+                  onChange={handleSearchChange}
                   placeholder={`ابحث عن لاعب لـ ${activeSlotConfig.label}...`}
                   className="w-full h-12 pr-10 pl-4 rounded-xl border-2 border-[#0A0A0A] text-[#0A0A0A] font-black placeholder-neutral-400 focus:outline-none bg-white text-sm"
                   autoFocus
