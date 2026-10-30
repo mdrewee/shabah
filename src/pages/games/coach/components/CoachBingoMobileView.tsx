@@ -152,13 +152,14 @@ export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
       <div className="w-full shabah-border-wrap">
         <div className="shabah-border-inner">
           <div className="shabah-surface p-3 flex items-center gap-3">
-            <div className="w-14 h-14 rounded-xl bg-neutral-100 border border-neutral-300 flex-shrink-0 flex items-center justify-center overflow-hidden">
-              <img
-                src={!imgError && p?.photoUrl ? p.photoUrl : SILHOUETTE_SVG}
-                alt={p?.name || 'لاعب'}
-                onError={() => setImgError(true)}
-                className="max-w-full max-h-full object-contain"
-              />
+            {/* Modern Clean Football Card (Zero Broken Player Images) */}
+            <div className="w-14 h-14 rounded-xl bg-zinc-950 border-2 border-zinc-700 flex-shrink-0 flex flex-col items-center justify-center text-white shadow-md">
+              <span className="font-mono text-[10px] font-black text-emerald-400 leading-none">
+                {p?.position || 'STAR'}
+              </span>
+              <span className="text-[10px] font-black text-zinc-300 mt-1">
+                {p?.nationality ? p.nationality.slice(0, 6) : 'لاعب'}
+              </span>
             </div>
 
             <div className="flex flex-col flex-1 overflow-hidden">
@@ -174,12 +175,21 @@ export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
                   {hasAlreadyPickedThisTurn ? 'تم استهلاك الفرصة' : 'فرصة واحدة للاختيار'}
                 </span>
               </div>
-              <span className="font-black text-sm text-[#0A0A0A] truncate mt-0.5">
+              <span className="font-sans font-black text-base text-[#0A0A0A] truncate mt-0.5">
                 {p?.name || 'جاري سحب اللاعب...'}
               </span>
-              <span className="text-[10px] text-neutral-600 font-bold truncate">
-                {p?.currentClub || ''} • {p?.nationality || ''}
-              </span>
+              <div className="flex items-center gap-1.5 text-[11px] text-neutral-700 font-bold truncate">
+                {p?.currentClub && (
+                  <span className="px-1.5 py-0.5 rounded bg-neutral-100 border border-neutral-300 text-neutral-800">
+                    {p.currentClub}
+                  </span>
+                )}
+                {p?.nationality && (
+                  <span className="px-1.5 py-0.5 rounded bg-neutral-100 border border-neutral-300 text-neutral-800">
+                    {p.nationality}
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Skip Button */}
@@ -221,46 +231,41 @@ export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
           const isWrongCell = wrongCellIndex === index;
 
           if (cell.isMarked) {
-            // Locked / Correct Cell: Player's photo as full background with bright emerald border
-            const bgPhoto = cell.markedPlayerPhoto || p?.photoUrl || SILHOUETTE_SVG;
-
+            // Locked / Correct Cell: Modern Card with marked player name (Zero broken player photos)
             return (
               <div
                 key={cell.id}
-                className={`aspect-square rounded-2xl border-2 border-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.5)] flex flex-col justify-between p-1.5 relative overflow-hidden select-none bg-neutral-900 ${
+                className={`aspect-square rounded-2xl border-2 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)] flex flex-col justify-between p-2 relative overflow-hidden select-none bg-zinc-950 text-white ${
                   isWinningCell ? 'ring-2 ring-emerald-300 animate-pulse' : ''
                 }`}
               >
-                {/* Full player image */}
-                <img
-                  src={bgPhoto}
-                  alt={cell.title}
-                  className="absolute inset-0 w-full h-full object-cover object-top opacity-85"
-                />
-
-                {/* Slight gradient overlay for contrast */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none" />
-
                 {/* Top Corner Check SVG in Circle */}
                 <div className="relative z-10 self-start w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md">
                   <Check className="w-3.5 h-3.5 stroke-[3] text-white" />
                 </div>
 
+                {/* Marked Player Name */}
+                <div className="relative z-10 flex flex-col items-center justify-center text-center my-auto px-0.5">
+                  <span className="font-sans font-black text-[11px] sm:text-xs text-emerald-300 leading-tight line-clamp-2">
+                    {cell.markedPlayerName || 'لاعب مطابق'}
+                  </span>
+                </div>
+
                 {/* Cell Title at bottom */}
-                <span className="relative z-10 text-[10px] font-black text-white text-center leading-tight truncate px-1 py-0.5 rounded bg-black/70 backdrop-blur-sm">
+                <span className="relative z-10 text-[9px] font-bold text-zinc-400 text-center leading-tight truncate px-1 py-0.5 rounded bg-black/80">
                   {cell.title}
                 </span>
               </div>
             );
           }
 
-          // Unmarked Cell: Real image background (90% visible), soft gradient overlay, bold white title with sharp drop shadow
+          // Unmarked Cell: Stable CDN visual criteria image with graceful fallback and sharp title
           return (
             <button
               key={cell.id}
               type="button"
               onClick={() => handleCellClick(index)}
-              className={`aspect-square rounded-2xl border-2 border-white/90 shadow-[0_0_10px_rgba(255,255,255,0.15)] flex flex-col items-center justify-center text-center transition-all cursor-pointer active:scale-95 select-none relative overflow-hidden p-1 ${
+              className={`aspect-square rounded-2xl border-2 border-white/90 shadow-[0_0_10px_rgba(255,255,255,0.15)] flex flex-col items-center justify-between text-center transition-all cursor-pointer active:scale-95 select-none relative overflow-hidden p-2 bg-[#0A0A0A] ${
                 isWrongCell ? 'border-red-500 ring-2 ring-red-500 animate-shake' : ''
               } ${
                 hasAlreadyPickedThisTurn
@@ -268,36 +273,20 @@ export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
                   : 'hover:border-white'
               }`}
             >
-              {/* Left-Foot Vector SVG for "أشول" */}
-              {(cell.title.includes('أشول') || cell.targetValue === 'left_foot') ? (
-                <div className="flex flex-col items-center justify-center p-1 z-10">
-                  <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-emerald-400 drop-shadow-md">
-                    <path d="M4 17l4-1 6 3 6-2v-3l-7-3-3 1-6 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    <circle cx="19" cy="11" r="2.5" fill="#4ADE80" />
-                  </svg>
-                </div>
-              ) : cell.imageUrl && !failedImages[index] ? (
+              {/* Visual Criteria Image or Icon */}
+              {cell.imageUrl && (
                 <img
                   src={cell.imageUrl}
                   alt={cell.title}
-                  onError={() => {
-                    setFailedImages((prev) => ({ ...prev, [index]: true }));
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
                   }}
-                  className="absolute inset-0 w-full h-full object-contain p-2 opacity-90 bg-[#0A0A0A]"
+                  className="w-10 h-10 object-contain drop-shadow-md z-10 my-auto"
                 />
-              ) : (
-                <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center p-2 text-center bg-zinc-950 border border-zinc-800">
-                  <span className="text-[11px] font-black text-white leading-tight">
-                    {cell.title}
-                  </span>
-                </div>
               )}
 
-              {/* Gradient Overlay for high visibility */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
-
-              {/* Centered White Bold Title with Sharp Drop Shadow */}
-              <span className="relative z-10 font-black text-[11px] sm:text-xs text-white leading-tight drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] px-1">
+              {/* Title with sharp contrast */}
+              <span className="relative z-10 font-sans font-black text-[11px] sm:text-xs text-white leading-tight drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] px-1">
                 {cell.title}
               </span>
             </button>

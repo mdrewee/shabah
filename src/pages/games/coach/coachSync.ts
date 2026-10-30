@@ -117,19 +117,22 @@ export const BINGO_CELL_POOL: Array<Omit<BingoCell, 'id' | 'isMarked'>> = [
   { title: 'الكرة الذهبية', description: 'توج بالكرة الذهبية', type: 'trophy', targetValue: 'الكرة الذهبية', imageUrl: BALLON_DOR_SVG },
 
   // المنتخبات والأعلام
-  { title: 'البرازيل', description: 'جنسيته برازيلي', type: 'country', targetValue: 'البرازيل', imageUrl: '/assets/football/flags/br.png' },
-  { title: 'الأرجنتين', description: 'جنسيته أرجنتيني', type: 'country', targetValue: 'الأرجنتين', imageUrl: '/assets/football/flags/ar.png' },
-  { title: 'فرنسا', description: 'جنسيته فرنسي', type: 'country', targetValue: 'فرنسا', imageUrl: '/assets/football/flags/fr.png' },
-  { title: 'السعودية', description: 'جنسيته سعودي', type: 'country', targetValue: 'السعودية', imageUrl: '/assets/football/flags/sa.png' },
-  { title: 'إسبانيا', description: 'جنسيته إسباني', type: 'country', targetValue: 'إسبانيا', imageUrl: '/assets/football/flags/es.png' },
-  { title: 'البرتغال', description: 'جنسيته برتغالي', type: 'country', targetValue: 'البرتغال', imageUrl: '/assets/football/flags/pt.png' },
-  { title: 'ألمانيا', description: 'جنسيته ألماني', type: 'country', targetValue: 'ألمانيا', imageUrl: '/assets/football/flags/de.png' },
+  { title: 'البرازيل', description: 'جنسيته برازيلي', type: 'country', targetValue: 'البرازيل', imageUrl: 'https://flagcdn.com/w80/br.png' },
+  { title: 'الأرجنتين', description: 'جنسيته أرجنتيني', type: 'country', targetValue: 'الأرجنتين', imageUrl: 'https://flagcdn.com/w80/ar.png' },
+  { title: 'فرنسا', description: 'جنسيته فرنسي', type: 'country', targetValue: 'فرنسا', imageUrl: 'https://flagcdn.com/w80/fr.png' },
+  { title: 'السعودية', description: 'جنسيته سعودي', type: 'country', targetValue: 'السعودية', imageUrl: 'https://flagcdn.com/w80/sa.png' },
+  { title: 'إسبانيا', description: 'جنسيته إسباني', type: 'country', targetValue: 'إسبانيا', imageUrl: 'https://flagcdn.com/w80/es.png' },
+  { title: 'البرتغال', description: 'جنسيته برتغالي', type: 'country', targetValue: 'البرتغال', imageUrl: 'https://flagcdn.com/w80/pt.png' },
+  { title: 'ألمانيا', description: 'جنسيته ألماني', type: 'country', targetValue: 'ألمانيا', imageUrl: 'https://flagcdn.com/w80/de.png' },
+  { title: 'إيطاليا', description: 'جنسيته إيطالي', type: 'country', targetValue: 'إيطاليا', imageUrl: 'https://flagcdn.com/w80/it.png' },
+  { title: 'إنجلترا', description: 'جنسيته إنجليزي', type: 'country', targetValue: 'إنجلترا', imageUrl: 'https://flagcdn.com/w80/gb-eng.png' },
+  { title: 'هولندا', description: 'جنسيته هولندي', type: 'country', targetValue: 'هولندا', imageUrl: 'https://flagcdn.com/w80/nl.png' },
 
   // المدربين
-  { title: 'درّبه غوارديولا', description: 'لعب تحت قيادة بيب غوارديولا', type: 'manager', targetValue: 'غوارديولا', imageUrl: '/assets/football/managers/guardiola.jpg' },
-  { title: 'درّبه أنشيلوتي', description: 'لعب تحت قيادة كارلو أنشيلوتي', type: 'manager', targetValue: 'أنشيلوتي', imageUrl: '/assets/football/managers/ancelotti.jpg' },
-  { title: 'درّبه مورينيو', description: 'لعب تحت قيادة جوزيه مورينيو', type: 'manager', targetValue: 'مورينيو', imageUrl: '/assets/football/managers/mourinho.jpg' },
-  { title: 'درّبه زيدان', description: 'لعب تحت قيادة زين الدين زيدان', type: 'manager', targetValue: 'زيدان', imageUrl: '/assets/football/managers/zidane.jpg' },
+  { title: 'درّبه غوارديولا', description: 'لعب تحت قيادة بيب غوارديولا', type: 'manager', targetValue: 'غوارديولا', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/da/Pep_Guardiola_2017.jpg/220px-Pep_Guardiola_2017.jpg' },
+  { title: 'درّبه أنشيلوتي', description: 'لعب تحت قيادة كارلو أنشيلوتي', type: 'manager', targetValue: 'أنشيلوتي', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Carlo_Ancelotti_2016.jpg/220px-Carlo_Ancelotti_2016.jpg' },
+  { title: 'درّبه مورينيو', description: 'لعب تحت قيادة جوزيه مورينيو', type: 'manager', targetValue: 'مورينيو', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Jos%C3%A9_Mourinho_2018.jpg/220px-Jos%C3%A9_Mourinho_2018.jpg' },
+  { title: 'درّبه زيدان', description: 'لعب تحت قيادة زين الدين زيدان', type: 'manager', targetValue: 'زيدان', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Zinedine_Zidane_by_Tasnim_03.jpg/220px-Zinedine_Zidane_by_Tasnim_03.jpg' },
 
   // المواصفات الخاصة
   { title: 'أشول (قدم يسرى)', description: 'يلعب بقدمه اليسرى', type: 'trait', targetValue: 'أشول', imageUrl: LEFT_FOOT_TACTICAL_SVG },

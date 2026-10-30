@@ -62,9 +62,24 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
   evaluationResult,
   turnSecondsRemaining,
 }) => {
-  // Current active slot for this round (Round 1: GK, Round 2: DEF_1, Round 3: DEF_2, Round 4: MID, Round 5: FWD)
-  const currentSlotKey = COACH_SLOTS_ORDER[(roundNumber - 1) % 5] || 'FWD';
-  const currentSlotConfig = COACH_SLOT_CONFIG[currentSlotKey];
+  // 1. Step 1: Select Vacant Slot (Strict Slot Selection Route)
+  const defaultSlot = COACH_SLOTS_ORDER[(roundNumber - 1) % 5] || 'FWD';
+  const [selectedSlotKey, setSelectedSlotKey] = useState<CoachSlotKey>(defaultSlot);
+
+  useEffect(() => {
+    // If the default round slot is vacant, select it; otherwise find the first vacant slot
+    const roundSlot = COACH_SLOTS_ORDER[(roundNumber - 1) % 5] || 'FWD';
+    if (!squad.slots[roundSlot]?.playerName || squad.slots[roundSlot]?.playerName.includes('خانة فارغة')) {
+      setSelectedSlotKey(roundSlot);
+    } else {
+      const firstVacant = COACH_SLOTS_ORDER.find(
+        (k) => !squad.slots[k]?.playerName || squad.slots[k]?.playerName.includes('خانة فارغة')
+      );
+      if (firstVacant) setSelectedSlotKey(firstVacant);
+    }
+  }, [roundNumber]);
+
+  const activeSlotConfig = COACH_SLOT_CONFIG[selectedSlotKey] || COACH_SLOT_CONFIG['FWD'];
 
   // Local countdown timer per round
   const [localSecondsLeft, setLocalSecondsLeft] = useState(turnSecondsRemaining ?? defaultRoundTime);
@@ -135,8 +150,11 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
     };
   }, [searchInput]);
 
-  // Check if current contestant already drafted a player in this round
-  const myCurrentPick = squad.slots[currentSlotKey] || currentRoundSelections[contestantId];
+  // Check if selected slot is already filled
+  const myPickForSelectedSlot = squad.slots[selectedSlotKey];
+  const isSelectedSlotFilled = Boolean(
+    myPickForSelectedSlot?.playerName && !myPickForSelectedSlot.playerName.includes('خانة فارغة')
+  );
 
   // Request Claim for player (Simultaneous race with first-come first-served)
   const handleSelectSuggestedPlayer = (player: FootballSearchResult) => {
@@ -160,6 +178,19 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
       return;
     }
 
+    const pickData: CoachPlayerPick = {
+      playerName: player.name,
+      matchedDbId: player.id,
+      playerPhoto: player.photoUrl,
+      isCustom: !player.isLocalDb,
+      conditionId,
+      conditionTitle,
+      confirmedAt: Date.now(),
+    };
+
+    // Optimistic local update
+    onConfirmPick(selectedSlotKey, pickData);
+
     // Send Real-Time Claim Request to TV host (authoritative lock)
     roomBus.broadcastClaimPlayerRequest(roomCode, {
       contestantId,
@@ -172,7 +203,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
         isLocalDb: player.isLocalDb,
       },
       roundIndex: roundNumber,
-      slotKey: currentSlotKey,
+      slotKey: selectedSlotKey,
       roomCode,
     });
 
@@ -202,6 +233,18 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
       return;
     }
 
+    const pickData: CoachPlayerPick = {
+      playerName: clean,
+      id: `custom_${Date.now()}`,
+      isCustom: true,
+      conditionId,
+      conditionTitle,
+      confirmedAt: Date.now(),
+    } as any;
+
+    // Optimistic local update
+    onConfirmPick(selectedSlotKey, pickData);
+
     roomBus.broadcastClaimPlayerRequest(roomCode, {
       contestantId,
       contestantName,
@@ -211,7 +254,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
         isLocalDb: false,
       },
       roundIndex: roundNumber,
-      slotKey: currentSlotKey,
+      slotKey: selectedSlotKey,
       roomCode,
     });
 
@@ -329,7 +372,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
       <div className="w-full p-4 rounded-2xl bg-zinc-950 border-2 border-zinc-800 flex flex-col gap-2 shadow-xl">
         <div className="flex items-center justify-between text-xs font-black">
           <span className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-300">
-            الجولة {toArabicNumber(roundNumber)} من {toArabicNumber(totalRounds)} • {currentSlotConfig.label}
+            الجولة {toArabicNumber(roundNumber)} من {toArabicNumber(totalRounds)} • شرط تكتيكي
           </span>
           <div
             className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-mono font-black border transition-colors ${
@@ -355,28 +398,73 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
         </div>
       </div>
 
-      {/* 2. State Switch: Either Waiting (Player Already Locked) OR Active Searching */}
-      {myCurrentPick ? (
-        /* Confirmed / Locked In State */
-        <div className="w-full p-5 rounded-2xl bg-emerald-950/40 border-2 border-emerald-500/80 flex flex-col items-center text-center gap-3 shadow-[0_0_25px_rgba(16,185,129,0.2)]">
+      {/* 2. Step 1: Select Vacant Position (Strict Selection Route) */}
+      <div className="w-full flex flex-col gap-1.5 p-3 rounded-2xl bg-zinc-950 border border-zinc-800 shadow-md">
+        <div className="flex items-center justify-between text-xs font-black">
+          <span className="text-zinc-300">الخطوة ١: حدد المركز في خطتك:</span>
+          <span className="text-emerald-400 font-mono text-[11px]">
+            المركز المحدد: {activeSlotConfig.label} ({activeSlotConfig.position})
+          </span>
+        </div>
+
+        <div className="grid grid-cols-5 gap-1.5 w-full mt-1">
+          {COACH_SLOTS_ORDER.map((slotKey) => {
+            const pick = squad.slots[slotKey];
+            const isFilled = Boolean(pick?.playerName && !pick.playerName.includes('خانة فارغة'));
+            const isSelected = selectedSlotKey === slotKey;
+
+            return (
+              <button
+                key={slotKey}
+                type="button"
+                onClick={() => {
+                  sound.playClick();
+                  setSelectedSlotKey(slotKey);
+                }}
+                className={`p-2 rounded-xl border flex flex-col items-center justify-center text-center transition-all cursor-pointer active:scale-95 ${
+                  isSelected
+                    ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.4)] ring-2 ring-emerald-300'
+                    : isFilled
+                    ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500'
+                    : 'bg-black border-dashed border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                }`}
+              >
+                <span
+                  className={`font-mono text-[10px] font-black leading-none ${
+                    isSelected ? 'text-black' : 'text-zinc-400'
+                  }`}
+                >
+                  {COACH_SLOT_CONFIG[slotKey].position}
+                </span>
+                <span className="font-black text-[10px] truncate max-w-full mt-1">
+                  {isFilled ? pick.playerName : 'شاغر +'}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 3. Steps 2 & 3: Search & Confirm Exclusive Player Lock */}
+      {isSelectedSlotFilled ? (
+        /* Slot Already Filled by contestant */
+        <div className="w-full p-5 rounded-2xl bg-zinc-900 border-2 border-emerald-500/80 flex flex-col items-center text-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
           <div className="w-12 h-12 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center text-emerald-400">
             <ShieldCheck className="w-7 h-7" />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-emerald-400">تم تثبيت اختيارك للجولة!</span>
-            <span className="text-xl sm:text-2xl font-black text-white">
-              {myCurrentPick.playerName}
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs font-bold text-emerald-400">
+              تم حجز مركز {activeSlotConfig.label} ({activeSlotConfig.position}):
             </span>
-            <span className="text-xs font-bold text-zinc-400">
-              خانة: {currentSlotConfig.label}
+            <span className="text-xl sm:text-2xl font-black text-white">
+              {myPickForSelectedSlot?.playerName}
             </span>
           </div>
 
-          <div className="w-full mt-2 pt-3 border-t border-emerald-900/50 flex items-center justify-center gap-2 text-xs font-bold text-emerald-300">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            <span>بانتظار اكتمال اختيارات باقي المدربين...</span>
-          </div>
+          <p className="text-xs font-bold text-zinc-400 mt-1">
+            لاختيار لاعب لمركز آخر، اضغط على أحد المراكز الشاغرة أعلاه أو في الملعب.
+          </p>
         </div>
       ) : (
         /* Active Search & Claim State */
@@ -384,8 +472,8 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
           <div className="shabah-border-inner">
             <div className="shabah-surface p-4 flex flex-col gap-3">
               <div className="flex items-center justify-between text-xs font-black">
-                <span className="text-neutral-500">
-                  ابحث عن لاعب واختره قبل أن يسبقك أحد:
+                <span className="text-neutral-700">
+                  الخطوة ٢: ابحث واعتمد لاعباً لمركز [{activeSlotConfig.label}]:
                 </span>
               </div>
 
@@ -395,7 +483,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                   type="text"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="ابحث عن اسم اللاعب..."
+                  placeholder={`ابحث عن لاعب لمركز ${activeSlotConfig.label}...`}
                   className="w-full h-12 pr-10 pl-4 rounded-xl border-2 border-[#0A0A0A] text-[#0A0A0A] font-black placeholder-neutral-400 focus:outline-none bg-white text-sm"
                   autoFocus
                 />
@@ -453,7 +541,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
 
                         {isClaimedByOther ? (
                           <span className="px-2 py-1 rounded bg-red-100 text-red-700 text-[10px] font-black flex items-center gap-1 shrink-0">
-                            <Lock className="w-3 h-3" />
+                            <Lock className="w-3 h-3 text-red-600" />
                             <span>حجزه: {claim.contestantName}</span>
                           </span>
                         ) : isUsedPrev ? (
@@ -461,8 +549,8 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                             استُخدم سابقاً
                           </span>
                         ) : (
-                          <span className="px-3 py-1.5 rounded-lg bg-[#0A0A0A] text-white text-xs font-black shrink-0">
-                            حجز اللاعب
+                          <span className="px-3 py-1.5 rounded-lg bg-[#0A0A0A] hover:bg-emerald-600 text-white text-xs font-black shrink-0 transition-colors">
+                            اعتماد في {activeSlotConfig.position}
                           </span>
                         )}
                       </button>
@@ -476,9 +564,9 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                 <button
                   type="button"
                   onClick={handleConfirmCustomName}
-                  className="w-full py-3 rounded-xl bg-[#0A0A0A] text-white font-black text-xs sm:text-sm hover:bg-neutral-800 transition-transform active:scale-95 cursor-pointer shadow-[2px_2px_0px_#0A0A0A]"
+                  className="w-full py-3 rounded-xl bg-[#0A0A0A] hover:bg-emerald-700 text-white font-black text-xs sm:text-sm transition-transform active:scale-95 cursor-pointer shadow-[2px_2px_0px_#0A0A0A]"
                 >
-                  حجز الاسم المكتوب: "{searchInput.trim()}"
+                  اعتماد "{searchInput.trim()}" في مركز {activeSlotConfig.label}
                 </button>
               )}
             </div>
@@ -486,12 +574,19 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
         </div>
       )}
 
-      {/* 3. Tactical Pitch Preview */}
+      {/* 4. Tactical Pitch Preview with clickable slots */}
       <div className="w-full flex flex-col gap-1.5">
-        <span className="text-xs font-black text-zinc-400 px-1">تشكيلتك الحالية:</span>
+        <div className="flex items-center justify-between text-xs font-black px-1 text-zinc-400">
+          <span>تشكيلتك الحالية:</span>
+          <span className="text-[11px] text-zinc-500">اضغط على أي مركز لتحديده</span>
+        </div>
         <ShabahTacticalPitch
           squad={squad}
-          activeSlot={currentSlotKey}
+          activeSlot={selectedSlotKey}
+          onSlotClick={(slot) => {
+            sound.playClick();
+            setSelectedSlotKey(slot);
+          }}
           isCompact
         />
       </div>

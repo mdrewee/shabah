@@ -710,6 +710,69 @@ export function evaluateAllSquads(squads: Record<string, CoachSquad>): CoachVerd
 }
 
 /**
+ * AI verification result for an individual pick
+ */
+export interface SinglePickAIResult {
+  isValid: boolean;
+  points: number;
+  comment: string;
+}
+
+/**
+ * Strict single-pick AI verification adhering to Coach instructions
+ */
+export async function verifySinglePickWithAI(
+  playerName: string,
+  slotKey: CoachSlotKey,
+  criterion: { title: string; description: string }
+): Promise<SinglePickAIResult> {
+  const slotPosition = COACH_SLOT_CONFIG[slotKey]?.label || slotKey;
+
+  const prompt = `أنت "الشبح المدرب"؛ حكم ومحلل كروي عالمي صارم جداً ولا يقبل الخطأ.
+الشرط المطلوب في الجولة: [ ${criterion.title} - ${criterion.description} ]
+المركز المحدد: [ ${slotPosition} ]
+اللاعب المختار: [ ${playerName} ]
+
+القواعد الصارمة:
+1. تحقق تاريخياً بدقة تامة: هل تنطبق مواصفات أو إنجازات الشرط على هذا اللاعب فعلياً؟
+2. إذا كان اللاعب لا يطابق الشرط تماماً (أو تشابه أسماء أو معلومة مغلوطة): ارفضه فوراً (isValid: false) مع تعليق مدرب ساخر ومقتضب يوضح خطأه.
+3. هل المركز المختار منطقي ومقبول للاعب؟ (لا تقبل وضع حارس في الهجوم أو العكس).
+
+أرجع JSON فقط:
+{
+  "isValid": true/false,
+  "points": 10 أو 0,
+  "comment": "تعليق فني مقتضب وصارم (أقل من 6 كلمات)"
+}`;
+
+  try {
+    const responseText = await generateWithGemini(prompt, {
+      temperature: 0.2,
+      jsonMode: true,
+      maxOutputTokens: 250,
+    });
+
+    if (responseText) {
+      const parsed = JSON.parse(responseText);
+      const isValid = Boolean(parsed.isValid && (parsed.points === 10 || parsed.points > 0));
+      return {
+        isValid,
+        points: isValid ? 10 : 0,
+        comment: parsed.comment || (isValid ? 'متطابق تكتيكياً وتاريخياً' : 'مخالف للشرط والمركز'),
+      };
+    }
+  } catch (err) {
+    console.warn('[verifySinglePickWithAI] Gemini error:', err);
+  }
+
+  return {
+    isValid: false,
+    points: 0,
+    comment: 'تعذر التحقق التلقائي',
+  };
+}
+
+/**
  * 5. Batch Gemini AI evaluation for contestant squads & sarcastic tactical breakdown
  */
 export async function evaluateAllSquadsWithAI(
@@ -726,28 +789,41 @@ export async function evaluateAllSquadsWithAI(
       playerId: s.playerId,
       playerName: s.playerName,
       slots: Object.entries(s.slots).map(([slotKey, pick]) => ({
-        slot: slotKey,
-        player: pick?.playerName || 'خانة فارغة',
-        condition: pick?.conditionTitle || '',
-        isCustom: pick?.isCustom || false,
+        slotKey: slotKey as CoachSlotKey,
+        slotPosition: COACH_SLOT_CONFIG[slotKey as CoachSlotKey]?.label || slotKey,
+        playerName: pick?.playerName || 'خانة فارغة',
+        conditionTitle: pick?.conditionTitle || '',
+        conditionDescription: pick?.conditionPrompt || pick?.conditionTitle || '',
       })),
     }));
 
     const systemPrompt = `
-أنت "الشبح المدرب"، أسطورة التدريب التكتيكي الساخر والداهية في لعبة "شبح".
-مهمتك: تقييم تشكيلات اللاعبين الـ 5 لكل متسابق بعد انتهاء الجولات الـ 5.
-تحلل الخانات، وتكشف أي عك كروي أو لاعب يلعب في غير مركزه، وتتحقق من الأسماء المكتوبة يدوياً، وتولد تعليقاً ساخراً لاذعاً وممتعاً بالعامية السعودية لكل تشكيلة.
+أنت "الشبح المدرب"؛ حكم ومحلل كروي عالمي صارم جداً ولا يقبل الخطأ.
+مهمتك: التدقيق الصارم في اختيارات المتسابقين وتشكيلاتهم الخماسية بعد انتهاء الجولات.
 
-شروط الإخراج:
-- JSON حصراً:
+القواعد الصارمة:
+1. تحقق تاريخياً بدقة تامة: هل تنطبق مواصفات أو إنجازات الشرط المطلوب على كل لاعب تم اختياره؟
+2. إذا كان اللاعب لا يطابق الشرط تماماً (أو تشابه أسماء أو خانة فارغة أو معلومة مغلوطة): ارفضه فوراً (isValid: false, points: 0) مع تعليق فني ساخر ومقتضب يوضح خطأه (أقل من 6 كلمات).
+3. هل المركز المحدد منطقي ومقبول للاعب؟ (لا تقبل وضع حارس في الهجوم أو العكس). إذا كان المركز غير منطقي: ارفضه فوراً (isValid: false, points: 0).
+4. في حال تطابق الشرط والمركز تماماً: اجعل (isValid: true, points: 10) مع تعليق إشادة فني مقتضب (أقل من 6 كلمات).
+5. لكل متسابق، ضع تعليقاً تكتيكياً ساخراً لاذعاً ومقتضباً (critique) بالعامية يجلد العك الكروي أو يمدح التكتيك.
+
+أرجع JSON فقط بالهيكل التالي:
 {
   "winnerPlayerId": "string",
-  "coachBanner": "string (سطر إعلان البطل بحماس كروي ساخر)",
+  "coachBanner": "string (سطر إعلان البطل بحماس كروي صارم بدون أي إيموجي)",
   "evaluations": [
     {
       "playerId": "string",
-      "critique": "string (سطرين جلد وتحليل تكتيكي ساخر بالعامية السعودية)",
-      "totalPercentage": 85
+      "critique": "string (تعليق ساخر لاذع بالعامية)",
+      "slots": [
+        {
+          "slotKey": "GK",
+          "isValid": true,
+          "points": 10,
+          "comment": "string"
+        }
+      ]
     }
   ]
 }
@@ -757,9 +833,9 @@ export async function evaluateAllSquadsWithAI(
 
     const responseText = await generateWithGemini(userPrompt, {
       systemPrompt,
-      temperature: 0.75,
+      temperature: 0.2,
       jsonMode: true,
-      maxOutputTokens: 1200,
+      maxOutputTokens: 1600,
     });
 
     if (responseText) {
@@ -769,17 +845,74 @@ export async function evaluateAllSquadsWithAI(
           const match = deterministicVerdict.evaluations.find(
             (e) => e.playerId === aiEval.playerId
           );
-          if (match) {
-            if (aiEval.critique) match.critique = aiEval.critique;
-            if (typeof aiEval.totalPercentage === 'number' && aiEval.totalPercentage >= 0 && aiEval.totalPercentage <= 100) {
-              // Blend AI score with factual score
-              match.totalPercentage = Math.round((match.totalPercentage + aiEval.totalPercentage) / 2);
-            }
+          if (!match) return;
+
+          if (aiEval.critique) {
+            match.critique = aiEval.critique;
+          }
+
+          if (aiEval.slots && Array.isArray(aiEval.slots)) {
+            let validConditionsCount = 0;
+            let validPositionsCount = 0;
+            let totalPowerSum = 0;
+
+            aiEval.slots.forEach((aiSlot: any) => {
+              const currentSlot = match.slots[aiSlot.slotKey as CoachSlotKey];
+              if (!currentSlot) return;
+
+              const isSlotValid = Boolean(aiSlot.isValid && (aiSlot.points === 10 || aiSlot.points > 0));
+              if (isSlotValid) {
+                currentSlot.isValidCondition = true;
+                currentSlot.isValidPosition = true;
+                if (aiSlot.comment) currentSlot.conditionReason = aiSlot.comment;
+                validConditionsCount += 1;
+                validPositionsCount += 1;
+                totalPowerSum += currentSlot.playerPower > 0 ? currentSlot.playerPower : 75;
+              } else {
+                currentSlot.isValidCondition = false;
+                currentSlot.isValidPosition = false;
+                currentSlot.playerPower = 0;
+                if (aiSlot.comment) {
+                  currentSlot.conditionReason = aiSlot.comment;
+                  currentSlot.positionReason = aiSlot.comment;
+                }
+              }
+            });
+
+            match.conditionPoints = validConditionsCount * 8;
+            match.positionPoints = validPositionsCount * 5;
+            match.powerPoints = Math.round((totalPowerSum / 5) * 0.35);
+            match.totalPercentage = Math.min(
+              100,
+              Math.max(0, match.conditionPoints + match.positionPoints + match.powerPoints)
+            );
           }
         });
 
-        if (parsed.coachBanner) {
-          deterministicVerdict.coachBanner = parsed.coachBanner;
+        // Re-sort evaluations based on updated totalPercentage
+        deterministicVerdict.evaluations.sort((a, b) => {
+          if (b.totalPercentage !== a.totalPercentage) return b.totalPercentage - a.totalPercentage;
+          if (b.conditionPoints !== a.conditionPoints) return b.conditionPoints - a.conditionPoints;
+          return b.positionPoints - a.positionPoints;
+        });
+
+        // Reassign ranks
+        deterministicVerdict.evaluations.forEach((item, idx) => {
+          item.rank = idx + 1;
+          if (idx === 0) item.matchPointsAwarded = 5;
+          else if (idx === 1) item.matchPointsAwarded = 3;
+          else if (idx === 2) item.matchPointsAwarded = 1;
+          else item.matchPointsAwarded = 0;
+        });
+
+        const newWinner = deterministicVerdict.evaluations[0];
+        if (newWinner) {
+          deterministicVerdict.winnerId = newWinner.playerId;
+          deterministicVerdict.winnerName = newWinner.playerName;
+          deterministicVerdict.winnerScore = newWinner.totalPercentage;
+          deterministicVerdict.coachBanner =
+            parsed.coachBanner ||
+            `بطل التشكيلات: ${newWinner.playerName} بنسبة قوة ${formatPercent(newWinner.totalPercentage)}!`;
         }
       }
     }

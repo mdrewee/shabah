@@ -117,23 +117,28 @@ export const CoachBingoTVView: React.FC<CoachBingoTVViewProps> = ({
               )}
             </div>
 
-            {/* High-Resolution Cutout Photo */}
-            <div className="w-48 h-48 sm:w-56 sm:h-56 relative flex items-center justify-center my-2">
-              <img
-                src={!imgError && p?.photoUrl ? p.photoUrl : SILHOUETTE_SVG}
-                alt={p?.name || 'لاعب'}
-                onError={() => setImgError(true)}
-                className="max-w-full max-h-full object-contain filter drop-shadow-xl"
-              />
+            {/* Modern Football Star Card (Zero Broken Player Photos) */}
+            <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-3xl bg-zinc-950 border-2 border-zinc-800 flex flex-col items-center justify-center text-white my-3 shadow-xl">
+              <div className="w-12 h-12 rounded-2xl bg-neutral-900 border border-neutral-700 flex items-center justify-center text-emerald-400 font-mono font-black text-sm mb-1 shadow-inner">
+                {p?.position || 'STAR'}
+              </div>
+              <span className="font-mono text-xs font-bold text-zinc-400">
+                {p?.nationality || 'لاعب دولي'}
+              </span>
             </div>
 
             {/* Full Arabic Name */}
-            <h3 className="text-2xl sm:text-4xl font-black text-[#0A0A0A] mb-1">
+            <h3 className="font-sans font-black text-3xl sm:text-5xl text-[#0A0A0A] mb-1">
               {p?.name || 'جاري سحب اللاعب...'}
             </h3>
 
             {/* Club & Country Badges */}
             <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+              {p?.position && (
+                <span className="px-3 py-1 rounded-xl bg-zinc-900 text-emerald-400 font-mono text-xs font-black">
+                  {p.position}
+                </span>
+              )}
               {p?.currentClub && (
                 <span className="px-3 py-1 rounded-xl bg-neutral-100 border border-neutral-300 text-xs font-black text-[#0A0A0A]">
                   النادي: {p.currentClub}
