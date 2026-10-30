@@ -128,15 +128,15 @@ export const BINGO_CELL_POOL: Array<Omit<BingoCell, 'id' | 'isMarked'>> = [
   { title: 'إنجلترا', description: 'جنسيته إنجليزي', type: 'country', targetValue: 'إنجلترا', imageUrl: 'https://flagcdn.com/w80/gb-eng.png' },
   { title: 'هولندا', description: 'جنسيته هولندي', type: 'country', targetValue: 'هولندا', imageUrl: 'https://flagcdn.com/w80/nl.png' },
 
-  // المدربين
-  { title: 'درّبه غوارديولا', description: 'لعب تحت قيادة بيب غوارديولا', type: 'manager', targetValue: 'غوارديولا', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/da/Pep_Guardiola_2017.jpg/220px-Pep_Guardiola_2017.jpg' },
-  { title: 'درّبه أنشيلوتي', description: 'لعب تحت قيادة كارلو أنشيلوتي', type: 'manager', targetValue: 'أنشيلوتي', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Carlo_Ancelotti_2016.jpg/220px-Carlo_Ancelotti_2016.jpg' },
-  { title: 'درّبه مورينيو', description: 'لعب تحت قيادة جوزيه مورينيو', type: 'manager', targetValue: 'مورينيو', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Jos%C3%A9_Mourinho_2018.jpg/220px-Jos%C3%A9_Mourinho_2018.jpg' },
-  { title: 'درّبه زيدان', description: 'لعب تحت قيادة زين الدين زيدان', type: 'manager', targetValue: 'زيدان', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Zinedine_Zidane_by_Tasnim_03.jpg/220px-Zinedine_Zidane_by_Tasnim_03.jpg' },
+  // المدربين (استخدام أيقونات موثوقة بدون روابط خارجية مكسورة)
+  { title: 'درّبه غوارديولا', description: 'لعب تحت قيادة بيب غوارديولا', type: 'manager', targetValue: 'غوارديولا' },
+  { title: 'درّبه أنشيلوتي', description: 'لعب تحت قيادة كارلو أنشيلوتي', type: 'manager', targetValue: 'أنشيلوتي' },
+  { title: 'درّبه مورينيو', description: 'لعب تحت قيادة جوزيه مورينيو', type: 'manager', targetValue: 'مورينيو' },
+  { title: 'درّبه زيدان', description: 'لعب تحت قيادة زين الدين زيدان', type: 'manager', targetValue: 'زيدان' },
 
   // المواصفات الخاصة
-  { title: 'أشول (قدم يسرى)', description: 'يلعب بقدمه اليسرى', type: 'trait', targetValue: 'أشول', imageUrl: LEFT_FOOT_TACTICAL_SVG },
-  { title: 'أسمر البشرة', description: 'من أصحاب البشرة السمراء', type: 'trait', targetValue: 'أسمر', imageUrl: DARK_SKIN_SILHOUETTE_SVG },
+  { title: 'أشول (قدم يسرى)', description: 'يلعب بقدمه اليسرى', type: 'trait', targetValue: 'أشول' },
+  { title: 'أسمر البشرة', description: 'من أصحاب البشرة السمراء', type: 'trait', targetValue: 'أسمر' },
 ];
 
 export function generateBingoCard(playerId: string): BingoCard {

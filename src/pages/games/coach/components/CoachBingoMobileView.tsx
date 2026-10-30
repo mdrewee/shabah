@@ -1,9 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { BingoCard, BingoRoulettePlayer } from '../types';
+import { BingoCard, BingoRoulettePlayer, BingoCell } from '../types';
 import { checkBingoWin, doesPlayerMatchBingoCell } from '../coachSync';
 import { SILHOUETTE_SVG } from '../footballDataService';
 import { sound } from '../../../../lib/audio';
-import { Check, AlertCircle, FastForward, Trophy, CheckCircle2 } from 'lucide-react';
+import {
+  Check,
+  AlertCircle,
+  FastForward,
+  Trophy,
+  CheckCircle2,
+  UserCheck,
+  Footprints,
+  Shield,
+} from 'lucide-react';
 
 interface CoachBingoMobileViewProps {
   card: BingoCard;
@@ -224,42 +233,35 @@ export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
         </div>
       )}
 
-      {/* 2. The 4x4 Bingo Grid (16 cells with Mandatory Real Images & Perfect Contrast) */}
+      {/* 2. The 4x4 Bingo Grid (16 cells with Mandatory Contrast & Unbreakable Visuals) */}
       <div className="w-full grid grid-cols-4 gap-2">
         {card.cells.map((cell, index) => {
           const isWinningCell = winCheck.matchedVector?.includes(index);
           const isWrongCell = wrongCellIndex === index;
 
           if (cell.isMarked) {
-            // Locked / Correct Cell: Modern Card with marked player name (Zero broken player photos)
+            // Marked Cell: Display ONLY Player Name in bold & clear in the center (Zero star icon, zero club/flag)
             return (
               <div
                 key={cell.id}
-                className={`aspect-square rounded-2xl border-2 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)] flex flex-col justify-between p-2 relative overflow-hidden select-none bg-zinc-950 text-white ${
+                className={`aspect-square rounded-2xl border-2 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)] flex flex-col items-center justify-center p-2 relative overflow-hidden select-none bg-zinc-950 text-white ${
                   isWinningCell ? 'ring-2 ring-emerald-300 animate-pulse' : ''
                 }`}
               >
-                {/* Top Corner Check SVG in Circle */}
-                <div className="relative z-10 self-start w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md">
-                  <Check className="w-3.5 h-3.5 stroke-[3] text-white" />
+                {/* Top Corner Check Icon */}
+                <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md">
+                  <Check className="w-3 h-3 stroke-[3] text-white" />
                 </div>
 
-                {/* Marked Player Name */}
-                <div className="relative z-10 flex flex-col items-center justify-center text-center my-auto px-0.5">
-                  <span className="font-sans font-black text-[11px] sm:text-xs text-emerald-300 leading-tight line-clamp-2">
-                    {cell.markedPlayerName || 'لاعب مطابق'}
-                  </span>
-                </div>
-
-                {/* Cell Title at bottom */}
-                <span className="relative z-10 text-[9px] font-bold text-zinc-400 text-center leading-tight truncate px-1 py-0.5 rounded bg-black/80">
-                  {cell.title}
+                {/* Marked Player Name ONLY (Bold & Clear in Center) */}
+                <span className="font-sans font-black text-xs sm:text-sm text-emerald-300 text-center leading-tight break-words px-1">
+                  {cell.markedPlayerName || 'لاعب مطابق'}
                 </span>
               </div>
             );
           }
 
-          // Unmarked Cell: Stable CDN visual criteria image with graceful fallback and sharp title
+          // Unmarked Cell: Unbreakable Lucide icons & stable CDN images with sharp title
           return (
             <button
               key={cell.id}
@@ -273,8 +275,19 @@ export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
                   : 'hover:border-white'
               }`}
             >
-              {/* Visual Criteria Image or Icon */}
-              {cell.imageUrl && (
+              {/* Unbreakable Criteria Icon or Stable Image */}
+              {cell.type === 'manager' ? (
+                <UserCheck className="w-8 h-8 text-amber-400 my-auto z-10" />
+              ) : cell.type === 'trophy' ? (
+                <Trophy className="w-8 h-8 text-yellow-400 my-auto z-10" />
+              ) : cell.targetValue === 'أشول' ? (
+                <div className="flex flex-col items-center justify-center my-auto z-10 gap-0.5">
+                  <Footprints className="w-7 h-7 text-emerald-400" />
+                  <span className="text-[9px] font-sans font-black text-emerald-300 px-1 rounded bg-emerald-950/80 border border-emerald-700">
+                    أعسر
+                  </span>
+                </div>
+              ) : cell.imageUrl ? (
                 <img
                   src={cell.imageUrl}
                   alt={cell.title}
@@ -283,6 +296,8 @@ export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
                   }}
                   className="w-10 h-10 object-contain drop-shadow-md z-10 my-auto"
                 />
+              ) : (
+                <Shield className="w-8 h-8 text-cyan-400 my-auto z-10" />
               )}
 
               {/* Title with sharp contrast */}

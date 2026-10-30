@@ -1,4 +1,5 @@
 import { FOOTBALL_PLAYERS_MASTER, FootballPlayer } from '../../../data/footballMasterData';
+import { ADDITIONAL_100_PLAYERS } from '../../../data/footballPlayers';
 
 export interface FootballSearchResult {
   id: string;
@@ -27,8 +28,8 @@ export function normalizeFootballSearch(text: string): string {
     .replace(/\s+/g, ' ');
 }
 
-// In-memory index of 400+ local players
-const localPlayersIndex: Array<{
+// In-memory index of 500+ local players (master DB + additional 100 global stars)
+const localMasterItems: Array<{
   player: FootballPlayer;
   searchHaystack: string;
 }> = FOOTBALL_PLAYERS_MASTER.map((p) => {
@@ -44,6 +45,23 @@ const localPlayersIndex: Array<{
 
   return { player: p, searchHaystack: haystack };
 });
+
+const additional100Items: Array<{
+  player: FootballPlayer;
+  searchHaystack: string;
+}> = ADDITIONAL_100_PLAYERS.map((p) => {
+  const haystack = [p.name, p.nameEn].map(normalizeFootballSearch).join(' ');
+  const playerObj: FootballPlayer = {
+    id: p.id,
+    name: p.name,
+    nationality: '',
+    position: 'FWD',
+    rating: 88,
+  };
+  return { player: playerObj, searchHaystack: haystack };
+});
+
+const localPlayersIndex = [...localMasterItems, ...additional100Items];
 
 /**
  * 1. Search local master database with instant synchronous responsiveness

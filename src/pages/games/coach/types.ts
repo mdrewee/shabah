@@ -18,11 +18,11 @@ export const COACH_SLOT_CONFIG: Record<
   CoachSlotKey,
   { label: string; role: 'FWD' | 'MID' | 'DEF' | 'GK'; order: number }
 > = {
-  GK: { label: 'حارس', role: 'GK', order: 1 },
-  DEF_1: { label: 'مدافع ١', role: 'DEF', order: 2 },
-  DEF_2: { label: 'مدافع ٢', role: 'DEF', order: 3 },
-  MID: { label: 'وسط', role: 'MID', order: 4 },
-  FWD: { label: 'هجوم', role: 'FWD', order: 5 },
+  GK: { label: 'الخانة 1', role: 'GK', order: 1 },
+  DEF_1: { label: 'الخانة 2', role: 'DEF', order: 2 },
+  DEF_2: { label: 'الخانة 3', role: 'DEF', order: 3 },
+  MID: { label: 'الخانة 4', role: 'MID', order: 4 },
+  FWD: { label: 'الخانة 5', role: 'FWD', order: 5 },
 };
 
 export const COACH_SLOTS_ORDER: CoachSlotKey[] = ['GK', 'DEF_1', 'DEF_2', 'MID', 'FWD'];
