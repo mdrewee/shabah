@@ -9,7 +9,8 @@ export type ShabahGameCanonicalId =
   | 'ai-broker'
   | 'ai-judge'
   | 'ai-arabic'
-  | 'ai-guide';
+  | 'ai-guide'
+  | 'ai-flying';
 
 export function normalizeGameId(
   rawId: string | null | undefined,
@@ -48,6 +49,11 @@ export function normalizeGameId(
     case 'tourism':
     case 'guide':
       return 'ai-guide';
+
+    case 'ai-flying':
+    case 'flying':
+    case 'fly':
+      return 'ai-flying';
 
     default:
       return fallback;

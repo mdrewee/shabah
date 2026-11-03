@@ -38,6 +38,9 @@ function mapShabahIdToEngineId(gameId: string): string {
     case 'ai-guide':
     case 'geo-blind-tourism':
       return 'geo-blind-tourism';
+    case 'ai-flying':
+    case 'flying':
+      return 'ai-flying';
     default:
       return 'ai-lawyer';
   }

@@ -4,7 +4,7 @@ export interface ShabahGame {
   badgeText: string;
   shortExplanation: string;
   placeholderImage: string;
-  glowColor: 'purple' | 'green' | 'orange' | 'blue' | 'red';
+  glowColor: 'purple' | 'green' | 'orange' | 'blue' | 'red' | 'cyan';
   route: string;
 }
 
@@ -53,5 +53,14 @@ export const SHABAH_GAMES: ShabahGame[] = [
     placeholderImage: '/images/games/guide-placeholder.svg',
     glowColor: 'red',
     route: '/game/ai-guide'
+  },
+  {
+    id: 'ai-flying',
+    title: 'الشبح الطائر',
+    badgeText: 'أجوبة نادرة',
+    shortExplanation: 'جاوب أندر إجابة وخلّ شبحك يطير لأعلى مسافة في السماء! احذر من تكرار إجابتك مع غيرك فتحترق.',
+    placeholderImage: '/images/games/flying-placeholder.svg',
+    glowColor: 'cyan',
+    route: '/game/ai-flying'
   }
 ];

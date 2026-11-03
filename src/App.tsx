@@ -49,6 +49,7 @@ export function App() {
         <Route path="/room/:code/ai/the-scammer-tv" element={<TVScreenView />} />
         <Route path="/room/:code/words/scattergories-tv" element={<TVScreenView />} />
         <Route path="/room/:code/tourism-tv" element={<TVScreenView />} />
+        <Route path="/room/:code/flying-tv" element={<TVScreenView />} />
 
         {/* 5. Contestant Mobile Views for the 5 Games */}
         <Route path="/room/:code/play" element={<PlayerMobileView />} />
@@ -61,6 +62,8 @@ export function App() {
         <Route path="/room/:code/words/scattergories" element={<PlayerMobileView />} />
         <Route path="/room/:code/words/scattergories-play" element={<PlayerMobileView />} />
         <Route path="/room/:code/tourism-play" element={<PlayerMobileView />} />
+        <Route path="/room/:code/flying" element={<PlayerMobileView />} />
+        <Route path="/room/:code/flying-play" element={<PlayerMobileView />} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

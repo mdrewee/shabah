@@ -8,6 +8,7 @@ import { BrokerTVRoot } from './games/broker/BrokerTVRoot';
 import { ArabicTVRoot } from './games/arabic/ArabicTVRoot';
 import { JudgeTVRoot } from './games/judge/JudgeTVRoot';
 import { GuideTVRoot } from './games/guide/GuideTVRoot';
+import { FlyingTVRoot } from './games/flying/FlyingTVRoot';
 import { SHABAH_GAMES } from '../data/shabahGames';
 import { normalizeGameId, ShabahGameCanonicalId } from '../utils/gameIds';
 
@@ -94,6 +95,7 @@ export const TVScreenView: React.FC = () => {
     const unsubArabic = roomBus.on('ARABIC_STATE_SYNC', () => setLoadedGameId('ai-arabic'));
     const unsubJudge = roomBus.on('JUDGE_STATE_SYNC', () => setLoadedGameId('ai-judge'));
     const unsubGuide = roomBus.on('GUIDE_STATE_SYNC', () => setLoadedGameId('ai-guide'));
+    const unsubFlying = roomBus.on('FLYING_STATE_SYNC', () => setLoadedGameId('ai-flying'));
 
     const unsubTerminated = roomBus.on('ROOM_TERMINATED', () => {
       sessionStorage.clear();
@@ -109,6 +111,7 @@ export const TVScreenView: React.FC = () => {
       unsubArabic();
       unsubJudge();
       unsubGuide();
+      unsubFlying();
       unsubTerminated();
     };
   }, [roomCode]);
@@ -138,6 +141,8 @@ export const TVScreenView: React.FC = () => {
       return <ArabicTVRoot />;
     case 'ai-guide':
       return <GuideTVRoot />;
+    case 'ai-flying':
+      return <FlyingTVRoot />;
     default: {
       const matchedGame = SHABAH_GAMES.find((g) => g.id === finalGameId) || SHABAH_GAMES[0];
       return (

@@ -8,6 +8,7 @@ import { BrokerMobileRoot } from './games/broker/BrokerMobileRoot';
 import { ArabicMobileRoot } from './games/arabic/ArabicMobileRoot';
 import { JudgeMobileRoot } from './games/judge/JudgeMobileRoot';
 import { GuideMobileRoot } from './games/guide/GuideMobileRoot';
+import { FlyingMobileView } from './games/flying/FlyingMobileView';
 import { SHABAH_GAMES } from '../data/shabahGames';
 import {
   getOrCreatePlayerId,
@@ -112,6 +113,7 @@ export const PlayView: React.FC = () => {
     const unsubArabic = roomBus.on('ARABIC_STATE_SYNC', () => setGameId('ai-arabic'));
     const unsubJudge = roomBus.on('JUDGE_STATE_SYNC', () => setGameId('ai-judge'));
     const unsubGuide = roomBus.on('GUIDE_STATE_SYNC', () => setGameId('ai-guide'));
+    const unsubFlying = roomBus.on('FLYING_STATE_SYNC', () => setGameId('ai-flying'));
 
     const unsubTerminated = roomBus.on('ROOM_TERMINATED', (evt: any) => {
       const payload = evt?.data ?? evt;
@@ -130,6 +132,7 @@ export const PlayView: React.FC = () => {
       unsubArabic();
       unsubJudge();
       unsubGuide();
+      unsubFlying();
       unsubTerminated();
     };
   }, [roomCode]);
@@ -159,6 +162,8 @@ export const PlayView: React.FC = () => {
       return <ArabicMobileRoot />;
     case 'ai-guide':
       return <GuideMobileRoot />;
+    case 'ai-flying':
+      return <FlyingMobileView />;
     default: {
       const fallbackGame = SHABAH_GAMES.find((g) => g.id === gameId) || SHABAH_GAMES[0];
       return (

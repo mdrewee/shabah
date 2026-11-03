@@ -550,6 +550,18 @@ class RoomBus {
     this.safeBroadcast(clean, 'GUIDE_PIN_SUBMITTED', eventPayload);
   }
 
+  public broadcastFlyingSync(roomCode: string, state: any): void {
+    const clean = cleanRoomCode(roomCode);
+    this.emit('FLYING_STATE_SYNC', clean, state);
+    this.safeBroadcast(clean, 'FLYING_STATE_SYNC', state);
+  }
+
+  public broadcastFlyingAnswer(roomCode: string, payload: any): void {
+    const clean = cleanRoomCode(roomCode);
+    this.emit('FLYING_SUBMIT_ANSWER', clean, payload);
+    this.safeBroadcast(clean, 'FLYING_SUBMIT_ANSWER', payload);
+  }
+
   private channel: BroadcastChannel | null = null;
   public typedListeners: Map<string, Set<(event: RoomEventPayload) => void>> = new Map();
   public listeners = this.typedListeners;
