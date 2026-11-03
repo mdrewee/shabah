@@ -262,7 +262,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
 
   const readyCount = sanitizedPlayers.filter((p) => p.isReady).length;
   const totalCount = sanitizedPlayers.length;
-  const canHostStart = readyCount >= 1 || (totalCount >= 1 && isHostRole);
+  const canHostStart = isHostRole || readyCount >= 1;
 
   const prevPlayersCountRef = useRef<number>(totalCount);
   const prevReadyCountRef = useRef<number>(readyCount);
@@ -627,46 +627,33 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                 <div className="flex flex-col gap-2.5 w-full">
                   <button
                     type="button"
-                    disabled={!isSocketReady}
                     onClick={handleContestantToggleReady}
                     className={`w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] ${
-                      !isSocketReady
-                        ? 'bg-neutral-200 text-neutral-500 cursor-not-allowed border-2 border-neutral-300 opacity-60'
-                        : currentContestantReady
+                      currentContestantReady
                         ? 'bg-white text-[#0A0A0A] border-[3px] border-[#0A0A0A] hover:bg-neutral-100 cursor-pointer'
                         : 'shabah-btn-black cursor-pointer'
                     }`}
                   >
-                    {!isSocketReady ? 'جاري الاتصال بالسيرفر...' : currentContestantReady ? 'إلغاء الجاهزية' : 'أنا جاهز'}
+                    {currentContestantReady ? 'إلغاء الجاهزية' : 'أنا جاهز'}
                   </button>
 
                   {isHostRole && (
                     <button
                       type="button"
-                      disabled={!canHostStart}
                       onClick={handleHostStartGame}
-                      className={`w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] ${
-                        canHostStart
-                          ? 'shabah-btn-black cursor-pointer shadow-[0_0_20px_rgba(74,222,128,0.35)]'
-                          : 'bg-neutral-200 text-neutral-500 cursor-not-allowed border-2 border-neutral-300'
-                      }`}
+                      className="w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] shabah-btn-black cursor-pointer shadow-[0_0_20px_rgba(74,222,128,0.35)]"
                     >
-                      {canHostStart ? 'بدء اللعبة (كمضيف)' : 'بدء اللعبة (في انتظار جاهزية متسابق على الأقل)'}
+                      بدء اللعبة الآن 🚀
                     </button>
                   )}
                 </div>
               ) : (
                 <button
                   type="button"
-                  disabled={!canHostStart}
                   onClick={handleHostStartGame}
-                  className={`w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] ${
-                    canHostStart
-                      ? 'shabah-btn-black cursor-pointer'
-                      : 'bg-neutral-200 text-neutral-500 cursor-not-allowed border-2 border-neutral-300'
-                  }`}
+                  className="w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] shabah-btn-black cursor-pointer"
                 >
-                  {canHostStart ? 'بدء اللعبة' : 'بدء اللعبة (في انتظار جاهزية متسابق على الأقل)'}
+                  بدء اللعبة الآن 🚀
                 </button>
               )}
             </div>

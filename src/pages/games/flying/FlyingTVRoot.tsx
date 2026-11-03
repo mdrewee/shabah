@@ -61,6 +61,7 @@ export const FlyingTVRoot: React.FC = () => {
   const [isMuted, setIsMuted] = useState(sound.getMuted());
   const [animatingMeters, setAnimatingMeters] = useState<Record<string, number>>({});
   const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState<number>(6);
+  const [tvTestAnswer, setTvTestAnswer] = useState<string>('');
 
   const mergedContestants =
     realtimeContestants.length > 0
@@ -126,71 +127,88 @@ export const FlyingTVRoot: React.FC = () => {
   }, [roomCode, syncState]);
 
   // Execute AI Evaluation
-  const executeEvaluation = useCallback(async () => {
-    const curr = stateRef.current;
-    if (curr.phase === 'CALCULATING' || curr.phase === 'REVEALING') return;
+  const executeEvaluation = useCallback(
+    async (overrideSubmissions?: Record<string, FlyingSubmission>) => {
+      const curr = stateRef.current;
+      if (curr.phase === 'CALCULATING' || curr.phase === 'REVEALING') return;
 
-    sound.playTick();
-    const calcState: FlyingRoomState = {
-      ...curr,
-      phase: 'CALCULATING',
-    };
-    syncState(calcState);
+      sound.playTick();
+      const subs = overrideSubmissions || curr.submissions || {};
+      const calcState: FlyingRoomState = {
+        ...curr,
+        phase: 'CALCULATING',
+        submissions: subs,
+      };
+      stateRef.current = calcState;
+      syncState(calcState);
 
-    // Prepare submissions list from connected contestants
-    const subs = curr.submissions || {};
-    const submissionsList: FlyingSubmission[] = [];
-    const processedIds = new Set<string>();
+      // Prepare submissions list from connected contestants
+      const submissionsList: FlyingSubmission[] = [];
+      const processedIds = new Set<string>();
 
-    mergedContestants.forEach((c) => {
-      processedIds.add(c.id);
-      const sub = subs[c.id];
-      submissionsList.push({
-        contestantId: c.id,
-        contestantName: c.name,
-        answer: sub?.answer || '',
-        submittedAt: sub?.submittedAt || Date.now(),
+      mergedContestants.forEach((c) => {
+        processedIds.add(c.id);
+        const sub = subs[c.id];
+        submissionsList.push({
+          contestantId: c.id,
+          contestantName: c.name,
+          answer: sub?.answer || '',
+          submittedAt: sub?.submittedAt || Date.now(),
+        });
       });
-    });
 
-    // Safety net for any submission received from contestant not yet in mergedContestants
-    Object.values(subs).forEach((s) => {
-      if (!processedIds.has(s.contestantId)) {
-        processedIds.add(s.contestantId);
-        submissionsList.push(s);
+      // Safety net for any submission received from contestant not yet in mergedContestants
+      Object.values(subs).forEach((s) => {
+        if (!processedIds.has(s.contestantId)) {
+          processedIds.add(s.contestantId);
+          submissionsList.push(s);
+        }
+      });
+
+      // If solo testing on TV with 0 mobile contestants and no submissions yet
+      if (submissionsList.length === 0) {
+        submissionsList.push({
+          contestantId: 'solo_host',
+          contestantName: 'المضيف',
+          answer: '',
+          submittedAt: Date.now(),
+        });
       }
-    });
 
-    const evaluatedResults = await evaluateFlyingAnswers(
-      curr.currentQuestion,
-      submissionsList,
-      curr.cumulativeMeters
-    );
+      const evaluatedResults = await evaluateFlyingAnswers(
+        curr.currentQuestion,
+        submissionsList,
+        curr.cumulativeMeters
+      );
 
-    // Update cumulative scores & results map
-    const nextCumulative = { ...(curr.cumulativeMeters || {}) };
-    const resultMap: Record<string, FlyingContestantResult> = {};
+      // Update cumulative scores & results map
+      const nextCumulative = { ...(curr.cumulativeMeters || {}) };
+      const resultMap: Record<string, FlyingContestantResult> = {};
 
-    evaluatedResults.forEach((res) => {
-      resultMap[res.contestantId] = res;
-      nextCumulative[res.contestantId] = res.newTotalMeters;
-    });
+      evaluatedResults.forEach((res) => {
+        resultMap[res.contestantId] = res;
+        nextCumulative[res.contestantId] = res.newTotalMeters;
+      });
 
-    const revealingState: FlyingRoomState = {
-      ...curr,
-      phase: 'REVEALING',
-      results: resultMap,
-      cumulativeMeters: nextCumulative,
-      activeSpotlightIndex: 0,
-      cameraMode: 'spotlight',
-    };
+      const revealingState: FlyingRoomState = {
+        ...curr,
+        phase: 'REVEALING',
+        submissions: subs,
+        results: resultMap,
+        cumulativeMeters: nextCumulative,
+        activeSpotlightIndex: 0,
+        cameraMode: 'spotlight',
+      };
 
-    syncState(revealingState);
-    roomBus.safeBroadcast(roomCode, 'FLYING_RESULTS_READY', {
-      results: resultMap,
-      roundNumber: curr.roundNumber,
-    });
-  }, [mergedContestants, roomCode, syncState]);
+      stateRef.current = revealingState;
+      syncState(revealingState);
+      roomBus.safeBroadcast(roomCode, 'FLYING_RESULTS_READY', {
+        results: resultMap,
+        roundNumber: curr.roundNumber,
+      });
+    },
+    [mergedContestants, roomCode, syncState]
+  );
 
   // -------------------------------------------------------------
   // Question Timer Countdown
@@ -339,7 +357,17 @@ export const FlyingTVRoot: React.FC = () => {
       const connectedCount = Math.max(1, mergedContestants.length);
       const submittedCount = Object.keys(updatedSubmissions).length;
       if (submittedCount >= connectedCount) {
-        executeEvaluation();
+        executeEvaluation(updatedSubmissions);
+      } else {
+        syncState(updatedState);
+      }
+    });
+
+    const unsubGameStarted = roomBus.on('GAME_STARTED', (evt: any) => {
+      const incomingCode = evt?.roomCode;
+      if (incomingCode && incomingCode !== roomCode) return;
+      if (stateRef.current.phase === 'LOBBY') {
+        handleStartGame();
       }
     });
 
@@ -362,10 +390,11 @@ export const FlyingTVRoot: React.FC = () => {
 
     return () => {
       unsubAnswer?.();
+      unsubGameStarted?.();
       unsubNextRound?.();
       unsubReturn?.();
     };
-  }, [roomCode, mergedContestants.length, executeEvaluation, handleReturnToLobby, startQuestionRound, syncState]);
+  }, [roomCode, mergedContestants.length, executeEvaluation, handleStartGame, handleReturnToLobby, startQuestionRound, syncState]);
 
   // -------------------------------------------------------------
   // 1. Lobby Phase
@@ -597,6 +626,55 @@ export const FlyingTVRoot: React.FC = () => {
                     style={{ width: `${(submittedCount / totalContestants) * 100}%` }}
                   />
                 </div>
+
+                {/* Quick input on TV if solo testing or host wants to participate */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const clean = tvTestAnswer.trim();
+                    if (!clean) return;
+                    const newSub: FlyingSubmission = {
+                      contestantId: 'host_player',
+                      contestantName: 'المضيف',
+                      answer: clean,
+                      submittedAt: Date.now(),
+                    };
+                    const updatedSubs = {
+                      ...flyingState.submissions,
+                      host_player: newSub,
+                    };
+                    setTvTestAnswer('');
+                    if (mergedContestants.length === 0) {
+                      executeEvaluation(updatedSubs);
+                    } else {
+                      syncState({ ...flyingState, submissions: updatedSubs });
+                    }
+                  }}
+                  className="w-full flex items-center gap-2 mt-3"
+                >
+                  <input
+                    type="text"
+                    value={tvTestAnswer}
+                    onChange={(e) => setTvTestAnswer(e.target.value)}
+                    placeholder="إجابة سريعة من الشاشة (اختياري)..."
+                    maxLength={60}
+                    className="flex-1 py-2.5 px-4 rounded-xl bg-zinc-900 border border-zinc-700 text-white font-sans font-bold text-sm focus:outline-none focus:border-cyan-400"
+                  />
+                  <button
+                    type="submit"
+                    className="py-2.5 px-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-black text-xs cursor-pointer shrink-0"
+                  >
+                    أطلق 🚀
+                  </button>
+                </form>
+
+                <button
+                  type="button"
+                  onClick={() => executeEvaluation()}
+                  className="mt-2 px-5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white font-sans font-bold text-xs transition-colors cursor-pointer"
+                >
+                  إنهاء الوقت وإطلاق الأشباح فوراً 🚀
+                </button>
               </div>
             </div>
           ) : (
