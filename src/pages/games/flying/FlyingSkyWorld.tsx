@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { FlyingContestantResult } from './types';
 import { GhostAvatar } from './GhostAvatar';
 
-export const MAX_WORLD_METERS = 3000;
+export const MAX_WORLD_METERS = 5000;
 
 export interface FlyingSkyWorldProps {
   contestants: Array<{ id: string; name: string }>;
@@ -34,10 +34,10 @@ export const FlyingSkyWorld: React.FC<FlyingSkyWorldProps> = ({
     return () => clearTimeout(launchTimer);
   }, [activeSpotlightIndex, cameraMode]);
 
-  // Convert meters (0..3000) to vertical percentage inside the 260vh world
+  // Convert meters (0..5000) to vertical percentage inside the 260vh world
   const metersToBottomPercent = (meters: number): number => {
     const clamped = Math.max(0, Math.min(MAX_WORLD_METERS, meters));
-    // 0m sits at 3.5% from bottom (standing on traditional stone street), 3000m sits at 95%
+    // 0m sits at 3.5% from bottom (standing on traditional stone street), 5000m sits at 95%
     return 3.5 + (clamped / MAX_WORLD_METERS) * 91.5;
   };
 
@@ -91,14 +91,14 @@ export const FlyingSkyWorld: React.FC<FlyingSkyWorldProps> = ({
     const altitudeRatio = Math.max(0, Math.min(1, activeAltitude / MAX_WORLD_METERS));
     cameraTranslateYPercent = altitudeRatio * 58;
   } else {
-    cameraScale = highestMeters > 2000 ? 0.38 : highestMeters > 1000 ? 0.48 : 0.62;
+    cameraScale = highestMeters > 3500 ? 0.35 : highestMeters > 2000 ? 0.44 : highestMeters > 1000 ? 0.54 : 0.65;
     cameraTranslateXPercent = 0;
-    const midRatio = Math.min(0.5, (highestMeters / MAX_WORLD_METERS) * 0.4);
+    const midRatio = Math.min(0.52, (highestMeters / MAX_WORLD_METERS) * 0.48);
     cameraTranslateYPercent = midRatio * 45;
   }
 
-  // Large altitude markers up to 3000m as specified
-  const altitudeMarkers = [3000, 2500, 2000, 1500, 1000, 500, 200];
+  // Large altitude markers up to 5000m as specified
+  const altitudeMarkers = [5000, 4000, 3000, 2000, 1500, 1000, 500, 200];
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-[#030712] select-none">
@@ -110,7 +110,7 @@ export const FlyingSkyWorld: React.FC<FlyingSkyWorldProps> = ({
         }}
       >
         {/* =========================================================
-            LAYER 4: DEEP MIDNIGHT SKY & CELESTIAL REALM (1400m - 3000m)
+            LAYER 4: DEEP MIDNIGHT SKY & CELESTIAL REALM (1800m - 5000m)
             Deep Charcoal / Nocturnal Navy (#030712 to #0B0F17)
             ========================================================= */}
         <div
@@ -152,7 +152,7 @@ export const FlyingSkyWorld: React.FC<FlyingSkyWorldProps> = ({
         </div>
 
         {/* =========================================================
-            LAYER 3: SERENE NOCTURNAL CLOUDS (600m - 1400m)
+            LAYER 3: SERENE NOCTURNAL CLOUDS (800m - 1800m)
             Dark Slate / Midnight Slate-Blue (#0B0F19 to #111827)
             ========================================================= */}
         <div
@@ -185,7 +185,7 @@ export const FlyingSkyWorld: React.FC<FlyingSkyWorldProps> = ({
         </div>
 
         {/* =========================================================
-            LAYER 2: SAUDI MODERN LANDMARKS SKYLINE (160m - 600m)
+            LAYER 2: SAUDI MODERN LANDMARKS SKYLINE (200m - 800m)
             Kingdom Tower, Al Faisaliah, KAFD with Warm Glowing Windows
             ========================================================= */}
         <div
@@ -335,7 +335,7 @@ export const FlyingSkyWorld: React.FC<FlyingSkyWorldProps> = ({
         </div>
 
         {/* =========================================================
-            LAYER 1: AUTHENTIC SAUDI HERITAGE & DATE PALMS (0m - 160m)
+            LAYER 1: AUTHENTIC SAUDI HERITAGE & DATE PALMS (0m - 200m)
             Najdi Mud Houses, Triangular Plaster Vents & Ground Lanterns
             ========================================================= */}
         <div
@@ -497,8 +497,8 @@ export const FlyingSkyWorld: React.FC<FlyingSkyWorldProps> = ({
         </div>
 
         {/* =========================================================
-            CLEAN SOLID ALTITUDE RULER MARKERS (UP TO 3000 METERS)
-            [3000, 2500, 2000, 1500, 1000, 500, 200]
+            CLEAN SOLID ALTITUDE RULER MARKERS (UP TO 5000 METERS)
+            [5000, 4000, 3000, 2000, 1500, 1000, 500, 200]
             ========================================================= */}
         <div className="absolute inset-0 pointer-events-none z-10">
           {altitudeMarkers.map((meters) => {
@@ -557,18 +557,20 @@ export const FlyingSkyWorld: React.FC<FlyingSkyWorldProps> = ({
                   zIndex: isSpotlight ? 40 : 20,
                 }}
               >
-                <GhostAvatar
-                  name={c.name}
-                  colorIndex={index}
-                  totalMeters={displayedMeters}
-                  roundMeters={res?.roundMeters}
-                  answer={res?.answer}
-                  comment={res?.comment}
-                  tier={res?.tier}
-                  showAnswerCard={showAnswer}
-                  isSpotlight={isSpotlight}
-                  size={isSpotlight ? 'lg' : 'md'}
-                />
+                <div className="animate-hover-subtle">
+                  <GhostAvatar
+                    name={c.name}
+                    colorIndex={index}
+                    totalMeters={displayedMeters}
+                    roundMeters={res?.roundMeters}
+                    answer={res?.answer}
+                    comment={res?.comment}
+                    tier={res?.tier}
+                    showAnswerCard={showAnswer}
+                    isSpotlight={isSpotlight}
+                    size={isSpotlight ? 'lg' : 'md'}
+                  />
+                </div>
               </div>
             );
           })}

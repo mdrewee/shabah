@@ -1,52 +1,35 @@
-import { callGeminiWithFallback } from '../../../services/geminiClient';
 import { FlyingQuestion } from './flyingQuestions';
 import { FlyingSubmission, FlyingContestantResult, FlyingTier } from './types';
+import { callGeminiWithFallback } from '../../../services/geminiClient';
 
 /**
- * Strips all emojis and pictographs from any text string
+ * Remove any emojis or pictographs from strings
  */
-export function stripEmojis(text: string): string {
-  if (!text) return '';
-  return text
-    .replace(
-      /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F000}-\u{1F02F}\u{1F0A0}-\u{1F0FF}\u{1F100}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{FE00}-\u{FE0F}\u{200D}]/gu,
-      ''
-    )
-    .replace(/\s+/g, ' ')
+export function stripEmojis(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
     .trim();
 }
 
 /**
- * Normalizes Arabic text for strict equivalence and duplicate matching
+ * Normalize Arabic text for duplicate comparison
  */
-export function normalizeArabic(text: string): string {
-  if (!text) return '';
-  const clean = text
+function normalizeArabic(text: string): string {
+  return text
     .trim()
     .toLowerCase()
-    .replace(/[\u064B-\u065F\u0670]/g, '')
-    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/[أإآ]/g, 'ا')
     .replace(/ة/g, 'ه')
     .replace(/ى/g, 'ي')
-    .replace(/[\u0610-\u061A]/g, '')
-    .replace(/[^\u0600-\u06FFa-zA-Z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  const words = clean.split(' ').map((w) => {
-    if (w.startsWith('ال') && w.length >= 4) {
-      return w.slice(2);
-    }
-    return w;
-  });
-
-  return words.join(' ').trim();
+    .replace(/[\u064B-\u065F]/g, '') // Remove tashkeel
+    .replace(/\s+/g, ' ');
 }
 
 /**
- * Robust JSON Sanitization & Parsing
+ * Extract JSON safely from AI output even if wrapped in markdown
  */
-export function cleanAndParseJSON(rawText: string): any {
+function cleanAndParseJSON(rawText: string): any {
   if (!rawText) return null;
   let cleaned = rawText.trim();
 
@@ -110,16 +93,16 @@ function evaluateOfflineSubmissions(
       };
     }
 
-    let earned = 160;
+    let earned = 260;
     let tier: FlyingTier = 'uncommon';
     let comment = 'إجابة مسجلة، استمر بالتحليق';
 
     if (clean.length > 7) {
-      earned = 320;
+      earned = 550;
       tier = 'rare';
       comment = 'إجابة نادرة ومميزة';
     } else if (clean.length <= 3) {
-      earned = 70;
+      earned = 100;
       tier = 'common';
       comment = 'إجابة شائعة ومعروفة';
     }
@@ -142,7 +125,7 @@ function evaluateOfflineSubmissions(
 /**
  * Main AI Evaluation Engine for "الشبح الطائر"
  * Evaluates all submissions via Multi-Model Gemini Fallback Cascade,
- * enforcing duplicate zeroing and rarity tiers without emojis.
+ * enforcing duplicate zeroing and doubled rarity tiers without emojis.
  */
 export async function evaluateFlyingAnswers(
   question: FlyingQuestion,
@@ -193,7 +176,7 @@ ${JSON.stringify(payloadForAI, null, 2)}
 
 2. الفحص المنطقي والصحة الواقعية (isValid):
    - هل الإجابة صحيحة واقعياً ومنطقياً وتنتمي فعلاً للمطلوب في السؤال؟
-   - إذا كتب اللاعب أي كلمة حقيقية وصحيحة تنتمي للسؤال، اعتبرها صحيحة فورا isValid = true.
+   - إذا كتب اللاعب أي كلمة حقيقية وصحيحة تنتمي للسؤال، اعتبرها صحيحة فوراً isValid = true.
    - إذا كانت الإجابة فارغة تماماً أو لا تمت للموضوع بصلة إطلاقاً:
      اجعل isValid = false، و isDuplicated = false، و roundMeters = 0، و tier = "failed"، والتعليق: "إجابة خاطئة، صفر متر".
 
@@ -201,11 +184,11 @@ ${JSON.stringify(payloadForAI, null, 2)}
    - إذا كان isExactDuplicate = true، أو كتب متسابقان نفس الإجابة بمعناها (مثال: فستق وبستاشيو، أو مرسيدس وبنز):
      اجعل isDuplicated = true، و roundMeters = 0، و tier = "duplicated"، والتعليق حرفياً: "إجابة مكررة، صفر متر".
 
-4. حساب الندرة والأمتار (roundMeters من 30 إلى 600 متر) للإجابات الصحيحة وغير المكررة:
-   - "common" (إجابة شائعة): إجابة بديهية ومعتادة أول ما يخطر ببال الناس. الأمتار: بين 30 و 90 متراً.
-   - "uncommon" (إجابة متوسطة): إجابة صحيحة ومعروفة لكنها ليست الخيار الأول. الأمتار: بين 110 و 220 متراً.
-   - "rare" (إجابة نادرة ومميزة): إجابة ذكية ومميزة وغير متوقعة من الأغلبية. الأمتار: بين 250 و 420 متراً.
-   - "legendary" (إجابة أسطورية خارقة): إجابة عبقرية ونادرة جداً وصحيحة تماماً ومبهرة. الأمتار: بين 450 و 600 متر للجولة الواحدة.
+4. حساب الندرة والأمتار المضاعفة (roundMeters من 60 إلى 1000 متر) للإجابات الصحيحة وغير المكررة:
+   - "common" (إجابة شائعة وبديهية): إجابة متوقعة وأول ما يخطر ببال الناس. الأمتار: بين 60 و 140 متراً.
+   - "uncommon" (إجابة متوسطة): إجابة صحيحة ومعروفة لكنها ليست الخيار الأول. الأمتار: بين 180 و 350 متراً.
+   - "rare" (إجابة نادرة ومميزة): إجابة ذكية ومميزة وغير متوقعة من الأغلبية. الأمتار: بين 400 و 650 متراً.
+   - "legendary" (إجابة أسطورية خارقة): إجابة عبقرية ونادرة جداً وصحيحة تماماً ومبهرة. الأمتار: بين 700 و 1000 متر للجولة الواحدة.
 
 5. التعليق (comment):
    - جملة عربية صافية قصيرة جداً (من 3 إلى 6 كلمات) بدون أي إيموجي إطلاقاً.
@@ -217,7 +200,7 @@ ${JSON.stringify(payloadForAI, null, 2)}
       "contestantId": "string",
       "isValid": true,
       "isDuplicated": false,
-      "roundMeters": 140,
+      "roundMeters": 520,
       "tier": "rare",
       "comment": "إجابة نادرة وذكية جدا"
     }
@@ -287,7 +270,7 @@ ${JSON.stringify(payloadForAI, null, 2)}
 
       // If AI didn't include this contestant, award safe default
       if (!aiItem) {
-        const fallbackEarned = cleanAnswer.length > 6 ? 280 : 150;
+        const fallbackEarned = cleanAnswer.length > 6 ? 500 : 250;
         return {
           contestantId: sub.contestantId,
           contestantName: sub.contestantName,
@@ -317,19 +300,20 @@ ${JSON.stringify(payloadForAI, null, 2)}
         roundMeters = 0;
         tier = 'failed';
       } else {
-        // Safe extraction of meters with doubled scale (30 to 600m)
+        // Safe extraction of meters with doubled scale (60 to 1000m)
         const parsedMeters = Number(aiItem.roundMeters);
-        const rawMeters = !isNaN(parsedMeters) && parsedMeters > 0
-          ? parsedMeters
-          : cleanAnswer.length > 6
-          ? 280
-          : 150;
+        const rawMeters =
+          !isNaN(parsedMeters) && parsedMeters > 0
+            ? parsedMeters
+            : cleanAnswer.length > 6
+            ? 500
+            : 250;
 
-        roundMeters = Math.max(30, Math.min(600, Math.round(rawMeters)));
+        roundMeters = Math.max(60, Math.min(1000, Math.round(rawMeters)));
 
-        if (roundMeters >= 450) tier = 'legendary';
-        else if (roundMeters >= 250) tier = 'rare';
-        else if (roundMeters >= 110) tier = 'uncommon';
+        if (roundMeters >= 700) tier = 'legendary';
+        else if (roundMeters >= 400) tier = 'rare';
+        else if (roundMeters >= 180) tier = 'uncommon';
         else tier = 'common';
       }
 

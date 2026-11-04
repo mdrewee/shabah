@@ -233,16 +233,18 @@ export const FlyingMobileView: React.FC = () => {
     [mergedContestants, playerId, playerName, roomCode, syncState]
   );
 
-  // Question Timer Countdown (runs when isPlayerHost is true)
+  // Question Timer Countdown (ticks locally for smooth display, executes evaluation if solo host)
   useEffect(() => {
-    if (!isPlayerHost || flyingState.phase !== 'QUESTION') return;
+    if (flyingState.phase !== 'QUESTION') return;
 
     const timer = setInterval(() => {
       setFlyingState((prev) => {
         if (prev.phase !== 'QUESTION') return prev;
         if (prev.timerSeconds <= 1) {
           clearInterval(timer);
-          executeEvaluation();
+          if (isPlayerHost) {
+            executeEvaluation();
+          }
           return { ...prev, timerSeconds: 0 };
         }
         const updated = { ...prev, timerSeconds: prev.timerSeconds - 1 };
@@ -336,34 +338,101 @@ export const FlyingMobileView: React.FC = () => {
 
   // Synchronize with TV host / other contestants
   useEffect(() => {
+    // 1. Direct New Round Event (Single Source of Truth from TV Host)
+    const unsubNewRound = roomBus.on('FLYING_NEW_ROUND', (evt: any) => {
+      const incomingCode = evt?.roomCode;
+      const payload = evt?.data ?? evt;
+      if (incomingCode && incomingCode !== roomCode) return;
+      if (!payload || !payload.question) return;
+
+      sound.playClick();
+      const nextRound = Number(payload.roundIndex) || 1;
+      const nextTotal = Number(payload.totalRounds) || 5;
+      const nextDuration = Number(payload.roundDuration) || ROUND_TIME;
+
+      const newState: FlyingRoomState = {
+        ...stateRef.current,
+        phase: 'QUESTION',
+        roundNumber: nextRound,
+        totalRounds: nextTotal,
+        currentQuestion: payload.question,
+        timerSeconds: nextDuration,
+        submissions: {},
+        results: {},
+        activeSpotlightIndex: 0,
+        cameraMode: 'spotlight',
+      };
+
+      stateRef.current = newState;
+      setFlyingState(newState);
+      savePersistedFlyingState(roomCode, newState);
+
+      setAnswerInput('');
+      setSubmittedAnswer('');
+      setHasSubmittedThisRound(false);
+      setIsSubmitting(false);
+    });
+
+    // 2. Full State Sync
     const unsubSync = roomBus.on('FLYING_STATE_SYNC', (evt: any) => {
       const incomingCode = evt?.roomCode;
       const payload: FlyingRoomState = evt?.data ?? evt;
       if (incomingCode && incomingCode !== roomCode) return;
       if (!payload) return;
 
+      const prev = stateRef.current;
+      const isNewRoundOrQuestion =
+        payload.roundNumber !== prev.roundNumber ||
+        payload.currentQuestion?.id !== prev.currentQuestion?.id ||
+        (prev.phase !== 'QUESTION' && payload.phase === 'QUESTION');
+
       stateRef.current = payload;
       setFlyingState(payload);
       savePersistedFlyingState(roomCode, payload);
 
       if (payload.phase === 'QUESTION') {
-        const mySub = payload.submissions?.[playerId];
-        if (mySub) {
-          setHasSubmittedThisRound(true);
-          setSubmittedAnswer(mySub.answer);
-        } else {
+        if (isNewRoundOrQuestion) {
           setHasSubmittedThisRound(false);
           setAnswerInput('');
           setSubmittedAnswer('');
+          setIsSubmitting(false);
+        } else {
+          const mySub = payload.submissions?.[playerId];
+          if (mySub) {
+            setHasSubmittedThisRound(true);
+            setSubmittedAnswer(mySub.answer);
+          }
         }
+      } else if (payload.phase === 'PODIUM') {
+        setHasSubmittedThisRound(false);
+        setAnswerInput('');
       }
+    });
+
+    // 3. Game Over / Podium Event
+    const unsubGameOver = roomBus.on('FLYING_GAME_OVER', (evt: any) => {
+      const incomingCode = evt?.roomCode;
+      const payload = evt?.data ?? evt;
+      if (incomingCode && incomingCode !== roomCode) return;
+      sound.playVictory();
+      setFlyingState((prev) => ({
+        ...prev,
+        phase: 'PODIUM',
+        cumulativeMeters: payload?.cumulativeMeters || prev.cumulativeMeters,
+      }));
     });
 
     const unsubGameStarted = roomBus.on('GAME_STARTED', (evt: any) => {
       const incomingCode = evt?.roomCode;
       if (incomingCode && incomingCode !== roomCode) return;
-      if (stateRef.current.phase === 'LOBBY') {
-        handleStartGame();
+      // Only solo host without TV starts game locally
+      if (isPlayerHost && stateRef.current.phase === 'LOBBY') {
+        const hasTv = (activeRoom?.players || []).some(
+          (p) => p.id === 'host_tv' || (p as any).role === 'tv'
+        );
+        if (!hasTv) {
+          handleStartGame();
+        }
       }
     });
 
@@ -441,7 +510,9 @@ export const FlyingMobileView: React.FC = () => {
     });
 
     return () => {
+      unsubNewRound?.();
       unsubSync?.();
+      unsubGameOver?.();
       unsubGameStarted?.();
       unsubAnswer?.();
       unsubResults?.();
@@ -451,6 +522,7 @@ export const FlyingMobileView: React.FC = () => {
     roomCode,
     playerId,
     isPlayerHost,
+    activeRoom?.players,
     mergedContestants.length,
     executeEvaluation,
     handleStartGame,
