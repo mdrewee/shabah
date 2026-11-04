@@ -164,9 +164,20 @@ export const FlyingMobileView: React.FC = () => {
           ? mergedContestants
           : [{ id: playerId, name: playerName }];
 
+      // 1. Gather all connected contestants with resilient lookup (by ID, playerId, or name)
       allContestants.forEach((c) => {
         processedIds.add(c.id);
-        const sub = subs[c.id];
+        const sub =
+          subs[c.id] ||
+          Object.values(subs).find(
+            (s: any) =>
+              s.contestantId === c.id ||
+              s.playerId === c.id ||
+              (s.contestantName &&
+                c.name &&
+                s.contestantName.trim().toLowerCase() === c.name.trim().toLowerCase())
+          );
+
         submissionsList.push({
           contestantId: c.id,
           contestantName: c.name,
@@ -175,12 +186,16 @@ export const FlyingMobileView: React.FC = () => {
         });
       });
 
-      Object.values(subs).forEach((s) => {
-        if (!processedIds.has(s.contestantId)) {
-          processedIds.add(s.contestantId);
+      // 2. Include any other submissions in subs
+      Object.values(subs).forEach((s: any) => {
+        const sId = s.contestantId || s.playerId || s.id;
+        if (sId && !processedIds.has(sId)) {
+          processedIds.add(sId);
           submissionsList.push({
-            ...s,
+            contestantId: sId,
+            contestantName: s.contestantName || s.playerName || 'متسابق',
             answer: stripEmojis(s.answer || ''),
+            submittedAt: s.submittedAt || Date.now(),
           });
         }
       });
@@ -357,21 +372,28 @@ export const FlyingMobileView: React.FC = () => {
       const incomingCode = evt?.roomCode;
       const payload = evt?.data ?? evt;
       if (incomingCode && incomingCode !== roomCode) return;
-      if (!payload || !payload.contestantId) return;
+      if (!payload) return;
+
+      const contestantId = String(payload.contestantId || payload.playerId || payload.id || '');
+      if (!contestantId) return;
+
+      const contestantName = String(payload.contestantName || payload.playerName || payload.name || 'متسابق');
+      const rawAnswer = payload.answer !== undefined ? payload.answer : payload.text !== undefined ? payload.text : payload.rawAnswer;
+      const answer = stripEmojis(String(rawAnswer || '').trim());
 
       const curr = stateRef.current;
       if (curr.phase !== 'QUESTION') return;
 
       const newSub: FlyingSubmission = {
-        contestantId: payload.contestantId,
-        contestantName: payload.contestantName || 'متسابق',
-        answer: stripEmojis((payload.answer || '').trim()),
-        submittedAt: Date.now(),
+        contestantId,
+        contestantName,
+        answer,
+        submittedAt: payload.submittedAt || Date.now(),
       };
 
       const updatedSubmissions = {
         ...curr.submissions,
-        [payload.contestantId]: newSub,
+        [contestantId]: newSub,
       };
 
       const updatedState: FlyingRoomState = {
@@ -453,10 +475,21 @@ export const FlyingMobileView: React.FC = () => {
       submittedAt: Date.now(),
     };
 
-    roomBus.safeBroadcast(roomCode, 'FLYING_SUBMIT_ANSWER', {
+    const submitPayload = {
       ...mySubmission,
+      playerId,
+      playerName,
+      roundIndex: flyingState.roundNumber,
       roomCode,
-    });
+    };
+
+    // Broadcast across all socket channels for guaranteed arrival
+    roomBus.broadcast('FLYING_SUBMIT_ANSWER', submitPayload);
+    roomBus.safeBroadcast(roomCode, 'FLYING_SUBMIT_ANSWER', submitPayload);
+    roomBus.emit('FLYING_SUBMIT_ANSWER', roomCode, submitPayload);
+    if ((roomBus as any).broadcastFlyingAnswer) {
+      (roomBus as any).broadcastFlyingAnswer(roomCode, submitPayload);
+    }
 
     if (isPlayerHost) {
       const curr = stateRef.current;

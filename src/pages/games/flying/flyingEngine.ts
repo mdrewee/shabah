@@ -1,4 +1,4 @@
-import { generateWithGemini } from '../../../config/gemini';
+import { callGeminiWithFallback } from '../../../services/geminiClient';
 import { FlyingQuestion } from './flyingQuestions';
 import { FlyingSubmission, FlyingContestantResult, FlyingTier } from './types';
 
@@ -68,17 +68,17 @@ export function cleanAndParseJSON(rawText: string): any {
 }
 
 /**
- * Offline Heuristic Fallback in case of network or API outage
+ * Offline Heuristic Fallback in case of total network outage or API downtime
+ * Guarantees every non-empty answer gets altitude and the game never freezes.
  */
 function evaluateOfflineSubmissions(
-  _question: FlyingQuestion,
   submissions: FlyingSubmission[],
   exactDupeIds: Set<string>,
   previousMeters: Record<string, number>
 ): FlyingContestantResult[] {
   return submissions.map((sub) => {
     const prev = previousMeters[sub.contestantId] || 0;
-    const clean = stripEmojis(sub.answer || '');
+    const clean = stripEmojis(sub.answer || '').trim();
 
     if (exactDupeIds.has(sub.contestantId)) {
       return {
@@ -95,31 +95,31 @@ function evaluateOfflineSubmissions(
       };
     }
 
-    if (!clean || clean.length < 2) {
+    if (!clean || clean.length === 0) {
       return {
         contestantId: sub.contestantId,
         contestantName: sub.contestantName,
-        answer: clean || 'بدون إجابة',
+        answer: 'بدون إجابة',
         isValid: false,
         isDuplicated: false,
         roundMeters: 0,
         tier: 'failed' as FlyingTier,
-        comment: 'إجابة خاطئة، صفر متر',
+        comment: 'لم يكتب إجابة، صفر متر',
         previousTotalMeters: prev,
         newTotalMeters: prev,
       };
     }
 
-    let earned = 95;
+    let earned = 90;
     let tier: FlyingTier = 'uncommon';
-    let comment = 'إجابة صحيحة وغير شائعة';
+    let comment = 'إجابة مسجلة، استمر بالتحليق';
 
     if (clean.length > 7) {
-      earned = 185;
+      earned = 160;
       tier = 'rare';
       comment = 'إجابة نادرة ومميزة';
-    } else if (clean.length <= 4) {
-      earned = 40;
+    } else if (clean.length <= 3) {
+      earned = 45;
       tier = 'common';
       comment = 'إجابة شائعة ومعروفة';
     }
@@ -141,7 +141,8 @@ function evaluateOfflineSubmissions(
 
 /**
  * Main AI Evaluation Engine for "الشبح الطائر"
- * Evaluates all submissions in a single atomic batch, enforcing duplicate zeroing and rarity tiers without emojis.
+ * Evaluates all submissions via Multi-Model Gemini Fallback Cascade,
+ * enforcing duplicate zeroing and rarity tiers without emojis.
  */
 export async function evaluateFlyingAnswers(
   question: FlyingQuestion,
@@ -153,11 +154,14 @@ export async function evaluateFlyingAnswers(
   // Step 1: Pre-AI Strict Exact & Normalized Duplication Detection
   const normMap = new Map<string, string[]>();
   submissions.forEach((s) => {
-    const norm = normalizeArabic(s.answer);
-    if (norm) {
-      const list = normMap.get(norm) || [];
-      list.push(s.contestantId);
-      normMap.set(norm, list);
+    const rawAnswer = stripEmojis(s.answer || '').trim();
+    if (rawAnswer) {
+      const norm = normalizeArabic(rawAnswer);
+      if (norm) {
+        const list = normMap.get(norm) || [];
+        list.push(s.contestantId);
+        normMap.set(norm, list);
+      }
     }
   });
 
@@ -172,7 +176,7 @@ export async function evaluateFlyingAnswers(
   const payloadForAI = submissions.map((s) => ({
     contestantId: s.contestantId,
     contestantName: s.contestantName,
-    answer: stripEmojis(s.answer.trim()),
+    answer: stripEmojis((s.answer || '').trim()),
     isExactDuplicate: exactDupeIds.has(s.contestantId),
   }));
 
@@ -189,15 +193,16 @@ ${JSON.stringify(payloadForAI, null, 2)}
 
 2. الفحص المنطقي والصحة الواقعية (isValid):
    - هل الإجابة صحيحة واقعياً ومنطقياً وتنتمي فعلاً للمطلوب في السؤال؟
-   - إذا كانت الإجابة خاطئة تماماً أو فارغة أو لا علاقة لها بالسؤال:
-     اجعل isValid = false، و isDuplicated = false، و roundMeters = 0، و tier = "failed"، والتعليق يوضح الخطأ باختصار شديد بدون إيموجي.
+   - إذا كتب اللاعب أي كلمة حقيقية وصحيحة تنتمي للسؤال، اعتبرها صحيحة فورا isValid = true.
+   - إذا كانت الإجابة فارغة تماماً أو لا تمت للموضوع بصلة إطلاقاً:
+     اجعل isValid = false، و isDuplicated = false، و roundMeters = 0، و tier = "failed"، والتعليق: "إجابة خاطئة، صفر متر".
 
 3. فحص التكرار اللفظي والدلالي (isDuplicated):
    - إذا كان isExactDuplicate = true، أو كتب متسابقان نفس الإجابة بمعناها (مثال: فستق وبستاشيو، أو مرسيدس وبنز):
-     اجعل isDuplicated = true، و roundMeters = 0، و tier = "duplicated"، واجعل التعليق حرفياً: "إجابة مكررة، صفر متر".
+     اجعل isDuplicated = true، و roundMeters = 0، و tier = "duplicated"، والتعليق حرفياً: "إجابة مكررة، صفر متر".
 
 4. حساب الندرة والأمتار (roundMeters من 15 إلى 300 متر) للإجابات الصحيحة وغير المكررة:
-   - "common" (إجابة شائعة): إجابة بديهية ومعتادة أول ما يخطر ببال الناس. الأمتار: بين 15 و 55 متراً.
+   - "common" (إجابة شائعة): إجابة بديهية ومعتادة أول ما يخطر ببال الناس. الأمتار: بين 20 و 55 متراً.
    - "uncommon" (إجابة غير شائعة): إجابة صحيحة ومعروفة لكنها ليست الخيار الأول. الأمتار: بين 60 و 120 متراً.
    - "rare" (إجابة نادرة): إجابة ذكية ومميزة وغير متوقعة من الأغلبية. الأمتار: بين 130 و 215 متراً.
    - "legendary" (إجابة نادرة جداً): إجابة عبقرية ونادرة جداً وصحيحة تماماً. الأمتار: بين 220 و 300 متراً.
@@ -214,17 +219,26 @@ ${JSON.stringify(payloadForAI, null, 2)}
       "isDuplicated": false,
       "roundMeters": 140,
       "tier": "rare",
-      "comment": "إجابة نادرة وذكية جداً"
+      "comment": "إجابة نادرة وذكية جدا"
     }
   ]
 }`;
 
   try {
-    const rawResponse = await generateWithGemini(systemPrompt, true);
+    const rawResponse = await callGeminiWithFallback(
+      `قيم إجابات المتسابقين للسؤال: "${question.title}" وأرجع الـ JSON المطلوب.`,
+      {
+        systemInstruction: systemPrompt,
+        temperature: 0.2,
+        jsonMode: true,
+      }
+    );
+
     const parsed = cleanAndParseJSON(rawResponse);
 
     if (!parsed || !Array.isArray(parsed.results)) {
-      return evaluateOfflineSubmissions(question, submissions, exactDupeIds, previousMeters);
+      console.warn('[flyingEngine] Invalid AI JSON response, applying safe offline fallback');
+      return evaluateOfflineSubmissions(submissions, exactDupeIds, previousMeters);
     }
 
     const aiMap = new Map<string, any>();
@@ -237,7 +251,7 @@ ${JSON.stringify(payloadForAI, null, 2)}
     return submissions.map((sub) => {
       const prev = previousMeters[sub.contestantId] || 0;
       const aiItem = aiMap.get(sub.contestantId);
-      const cleanAnswer = stripEmojis(sub.answer || '');
+      const cleanAnswer = stripEmojis(sub.answer || '').trim();
 
       // Enforce Pre-AI exact duplication override
       if (exactDupeIds.has(sub.contestantId)) {
@@ -255,7 +269,8 @@ ${JSON.stringify(payloadForAI, null, 2)}
         };
       }
 
-      if (!cleanAnswer.trim()) {
+      // Check empty answer
+      if (!cleanAnswer || cleanAnswer.length === 0) {
         return {
           contestantId: sub.contestantId,
           contestantName: sub.contestantName,
@@ -270,12 +285,27 @@ ${JSON.stringify(payloadForAI, null, 2)}
         };
       }
 
+      // If AI didn't include this contestant, award safe default
       if (!aiItem) {
-        return evaluateOfflineSubmissions(question, [sub], exactDupeIds, previousMeters)[0];
+        const fallbackEarned = cleanAnswer.length > 6 ? 140 : 80;
+        return {
+          contestantId: sub.contestantId,
+          contestantName: sub.contestantName,
+          answer: cleanAnswer,
+          isValid: true,
+          isDuplicated: false,
+          roundMeters: fallbackEarned,
+          tier: (cleanAnswer.length > 6 ? 'rare' : 'uncommon') as FlyingTier,
+          comment: 'إجابة مسجلة، استمر بالتحليق',
+          previousTotalMeters: prev,
+          newTotalMeters: prev + fallbackEarned,
+        };
       }
 
       const isDuplicated = Boolean(aiItem.isDuplicated);
-      const isValid = Boolean(aiItem.isValid) && !isDuplicated;
+      const isAIValid = Boolean(aiItem.isValid);
+      // Safety rule: if player typed a genuine non-empty answer and wasn't marked duplicated, default isValid to true
+      const isValid = !isDuplicated && (isAIValid || cleanAnswer.length >= 2);
 
       let roundMeters = 0;
       let tier: FlyingTier = 'failed';
@@ -287,7 +317,14 @@ ${JSON.stringify(payloadForAI, null, 2)}
         roundMeters = 0;
         tier = 'failed';
       } else {
-        const rawMeters = Number(aiItem.roundMeters) || 35;
+        // Safe extraction of meters (prevent dropping to 0 for valid answers)
+        const parsedMeters = Number(aiItem.roundMeters);
+        const rawMeters = !isNaN(parsedMeters) && parsedMeters > 0
+          ? parsedMeters
+          : cleanAnswer.length > 6
+          ? 140
+          : 80;
+
         roundMeters = Math.max(15, Math.min(300, Math.round(rawMeters)));
 
         if (roundMeters >= 220) tier = 'legendary';
@@ -315,7 +352,10 @@ ${JSON.stringify(payloadForAI, null, 2)}
       };
     });
   } catch (err) {
-    console.warn('[flyingEngine] Gemini evaluation failed, using fallback:', err);
-    return evaluateOfflineSubmissions(question, submissions, exactDupeIds, previousMeters);
+    console.error(
+      '[FLYING_ENGINE] Gemini totally unavailable, applying safe heuristic fallback:',
+      err
+    );
+    return evaluateOfflineSubmissions(submissions, exactDupeIds, previousMeters);
   }
 }

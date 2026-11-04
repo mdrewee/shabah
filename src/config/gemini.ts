@@ -1,27 +1,21 @@
 import { supabase } from '../lib/supabaseClient';
+import {
+  callGeminiWithFallback,
+  GEMINI_MODELS_CASCADE,
+  getGeminiApiKey as clientGetApiKey,
+} from '../services/geminiClient';
+
+export { callGeminiWithFallback, GEMINI_MODELS_CASCADE };
 
 export const GEMINI_API_KEY =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) || '';
 
 export function getGeminiApiKey(): string {
-  return (
-    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
-    GEMINI_API_KEY ||
-    ''
-  );
+  return clientGetApiKey() || GEMINI_API_KEY || '';
 }
 
-export const GEMINI_MODEL = 'gemini-flash-lite-latest';
-const CANDIDATE_MODELS = [
-  'gemini-flash-lite-latest',
-  'gemini-3.5-flash-lite',
-  'gemini-3.5-flash',
-  'gemini-3.6-flash',
-  'gemini-flash-latest',
-  'gemini-3.8-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
-];
+export const GEMINI_MODEL = 'gemini-2.5-flash';
+export const CANDIDATE_MODELS = GEMINI_MODELS_CASCADE;
 
 export interface GeminiRequestOptions {
   systemPrompt?: string;
@@ -31,59 +25,37 @@ export interface GeminiRequestOptions {
 }
 
 /**
- * Unified robust caller for Gemini API with multi-model fallback and Supabase Edge Function backup
+ * Unified robust caller for Gemini API with multi-model fallback cascade
  */
 export async function generateWithGemini(
   prompt: string,
-  options: GeminiRequestOptions = {}
+  optionsOrJsonMode: GeminiRequestOptions | boolean = {}
 ): Promise<string | null> {
+  let options: GeminiRequestOptions = {};
+  if (typeof optionsOrJsonMode === 'boolean') {
+    options = { jsonMode: optionsOrJsonMode };
+  } else if (optionsOrJsonMode && typeof optionsOrJsonMode === 'object') {
+    options = optionsOrJsonMode;
+  }
+
   const {
     systemPrompt,
-    temperature = 0.7,
-    maxOutputTokens = 1200,
+    temperature = 0.3,
+    maxOutputTokens = 1500,
     jsonMode = false,
   } = options;
 
-  const apiKey = getGeminiApiKey();
-
-  // 1. Try Direct Google Generative Language API
-  if (apiKey) {
-    for (const model of CANDIDATE_MODELS) {
-      try {
-        const body: any = {
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature,
-            maxOutputTokens,
-          },
-        };
-
-        if (systemPrompt) {
-          body.systemInstruction = {
-            parts: [{ text: systemPrompt }],
-          };
-        }
-
-        if (jsonMode) {
-          body.generationConfig.responseMimeType = 'application/json';
-        }
-
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (text) return text.trim();
-        }
-      } catch (err) {
-        // try next candidate model
-      }
-    }
+  // 1. Try Resilient Multi-Model Cascade
+  try {
+    const text = await callGeminiWithFallback(prompt, {
+      systemInstruction: systemPrompt,
+      temperature,
+      maxOutputTokens,
+      jsonMode,
+    });
+    if (text) return text;
+  } catch (err) {
+    console.warn('[generateWithGemini] Direct cascade failed, attempting Supabase Edge Function...', err);
   }
 
   // 2. Fallback to Supabase Edge Function 'ai-judge'
