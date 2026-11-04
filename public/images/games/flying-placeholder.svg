@@ -1,50 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 260" fill="none">
-  <defs>
-    <linearGradient id="shabahGradFlying" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#38BDF8" />
-      <stop offset="40%" stop-color="#6366F1" />
-      <stop offset="75%" stop-color="#A855F7" />
-      <stop offset="100%" stop-color="#F59E0B" />
-    </linearGradient>
-    <pattern id="gridFlying" width="24" height="24" patternUnits="userSpaceOnUse">
-      <circle cx="12" cy="12" r="1.2" fill="#0A0A0A" fill-opacity="0.14" />
-    </pattern>
-  </defs>
-  <rect width="320" height="260" fill="#F8FAFC" />
-  <rect width="320" height="260" fill="url(#gridFlying)" />
+  <rect width="320" height="260" fill="#38BDF8" />
 
-  <!-- Sky Altitude Orbital Rings -->
-  <circle cx="160" cy="120" r="92" stroke="#0A0A0A" stroke-width="3" stroke-dasharray="6 6" opacity="0.2" />
-  <circle cx="160" cy="120" r="68" stroke="#0A0A0A" stroke-width="2" stroke-dasharray="4 4" opacity="0.2" />
+  <!-- Flat City Buildings Silhouette at Bottom -->
+  <rect x="0" y="210" width="320" height="50" fill="#1E293B" stroke="#0A0A0A" stroke-width="4" />
+  <rect x="24" y="160" width="52" height="50" fill="#334155" stroke="#0A0A0A" stroke-width="4" />
+  <rect x="244" y="150" width="56" height="60" fill="#334155" stroke="#0A0A0A" stroke-width="4" />
 
-  <!-- Rocket Boost Flames -->
+  <!-- Flat White Clouds -->
+  <g fill="#FFFFFF" stroke="#0A0A0A" stroke-width="3.5">
+    <rect x="26" y="70" width="76" height="24" rx="12" />
+    <rect x="224" y="84" width="74" height="24" rx="12" />
+  </g>
+
+  <!-- Solid Shadow for Ghost -->
   <path
-    d="M 144 186 C 144 210, 160 228, 160 228 C 160 228, 176 210, 176 186 Z"
-    fill="#F59E0B"
-    stroke="#0A0A0A"
-    stroke-width="4"
-  />
-  <path
-    d="M 152 186 C 152 202, 160 214, 160 214 C 160 214, 168 202, 168 186 Z"
-    fill="#FCD34D"
+    d="M 164 34 C 126 34 106 62 106 102 L 106 162 C 106 174 116 180 125 172 C 134 164 142 164 150 173 C 157 181 171 181 178 173 C 186 164 194 164 203 172 C 212 180 222 174 222 162 L 222 102 C 222 62 202 34 164 34 Z"
+    fill="#0A0A0A"
   />
 
-  <!-- Stars / Altitude Sparks -->
-  <path d="M 64 64 L 68 76 L 80 80 L 68 84 L 64 96 L 60 84 L 48 80 L 60 76 Z" fill="#F59E0B" stroke="#0A0A0A" stroke-width="2.5" />
-  <path d="M 252 50 L 255 58 L 264 60 L 255 62 L 252 70 L 249 62 L 240 60 L 249 58 Z" fill="#38BDF8" stroke="#0A0A0A" stroke-width="2" />
-  <circle cx="260" cy="150" r="4" fill="#6366F1" />
-  <circle cx="68" cy="160" r="5" fill="#A855F7" />
-
-  <!-- Ghost Silhouette (Rocket Flying Upward) -->
+  <!-- Ghost Silhouette Flying Upward -->
   <path
-    d="M 160 38 C 122 38 102 66 102 106 L 102 166 C 102 178 112 184 121 176 C 130 168 138 168 146 177 C 153 185 167 185 174 177 C 182 168 190 168 199 176 C 208 184 218 178 218 166 L 218 106 C 218 66 198 38 160 38 Z"
-    fill="#FFFFFF"
-    stroke="url(#shabahGradFlying)"
-    stroke-width="11"
-    stroke-linejoin="round"
-  />
-  <path
-    d="M 160 38 C 122 38 102 66 102 106 L 102 166 C 102 178 112 184 121 176 C 130 168 138 168 146 177 C 153 185 167 185 174 177 C 182 168 190 168 199 176 C 208 184 218 178 218 166 L 218 106 C 218 66 198 38 160 38 Z"
+    d="M 160 28 C 122 28 102 56 102 96 L 102 156 C 102 168 112 174 121 166 C 130 158 138 158 146 167 C 153 175 167 175 174 167 C 182 158 190 158 199 166 C 208 174 218 168 218 156 L 218 96 C 218 56 198 28 160 28 Z"
     fill="#FFFFFF"
     stroke="#0A0A0A"
     stroke-width="6"
@@ -52,14 +28,12 @@
   />
 
   <!-- Flying Eyes Looking Skyward -->
-  <circle cx="139" cy="94" r="12" fill="#0A0A0A" />
-  <circle cx="181" cy="94" r="12" fill="#0A0A0A" />
-  <circle cx="142" cy="90" r="4" fill="#FFFFFF" />
-  <circle cx="184" cy="90" r="4" fill="#FFFFFF" />
+  <circle cx="139" cy="84" r="11" fill="#0A0A0A" />
+  <circle cx="181" cy="84" r="11" fill="#0A0A0A" />
 
-  <!-- Altitude Meter Badge -->
-  <g transform="translate(112, 126)">
-    <rect width="96" height="26" rx="13" fill="#0A0A0A" />
-    <text x="48" y="17" fill="#38BDF8" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="12" text-anchor="middle">1500m 🚀</text>
+  <!-- Altitude Meter Badge (Zero Emojis) -->
+  <g transform="translate(110, 116)">
+    <rect width="100" height="28" rx="8" fill="#FACC15" stroke="#0A0A0A" stroke-width="3" />
+    <text x="50" y="19" fill="#0A0A0A" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="13" text-anchor="middle">1500 متر</text>
   </g>
 </svg>

@@ -641,9 +641,9 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                     <button
                       type="button"
                       onClick={handleHostStartGame}
-                      className="w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] shabah-btn-black cursor-pointer shadow-[0_0_20px_rgba(74,222,128,0.35)]"
+                      className="w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] shabah-btn-black cursor-pointer"
                     >
-                      بدء اللعبة الآن 🚀
+                      بدء اللعبة الآن
                     </button>
                   )}
                 </div>
@@ -653,7 +653,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                   onClick={handleHostStartGame}
                   className="w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] shabah-btn-black cursor-pointer"
                 >
-                  بدء اللعبة الآن 🚀
+                  بدء اللعبة الآن
                 </button>
               )}
             </div>

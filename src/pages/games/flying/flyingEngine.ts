@@ -3,23 +3,36 @@ import { FlyingQuestion } from './flyingQuestions';
 import { FlyingSubmission, FlyingContestantResult, FlyingTier } from './types';
 
 /**
+ * Strips all emojis and pictographs from any text string
+ */
+export function stripEmojis(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(
+      /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F000}-\u{1F02F}\u{1F0A0}-\u{1F0FF}\u{1F100}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{FE00}-\u{FE0F}\u{200D}]/gu,
+      ''
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Normalizes Arabic text for strict equivalence and duplicate matching
  */
 export function normalizeArabic(text: string): string {
   if (!text) return '';
-  let clean = text
+  const clean = text
     .trim()
     .toLowerCase()
-    .replace(/[\u064B-\u065F\u0670]/g, '') // Remove tashkeel / harakat
+    .replace(/[\u064B-\u065F\u0670]/g, '')
     .replace(/[أإآٱ]/g, 'ا')
     .replace(/ة/g, 'ه')
     .replace(/ى/g, 'ي')
     .replace(/[\u0610-\u061A]/g, '')
-    .replace(/[^\u0600-\u06FFa-zA-Z0-9\s]/g, ' ') // Strip special punctuation
+    .replace(/[^\u0600-\u06FFa-zA-Z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
-  // Strip leading "ال" definition if remaining token is significant
   const words = clean.split(' ').map((w) => {
     if (w.startsWith('ال') && w.length >= 4) {
       return w.slice(2);
@@ -58,26 +71,25 @@ export function cleanAndParseJSON(rawText: string): any {
  * Offline Heuristic Fallback in case of network or API outage
  */
 function evaluateOfflineSubmissions(
-  question: FlyingQuestion,
+  _question: FlyingQuestion,
   submissions: FlyingSubmission[],
   exactDupeIds: Set<string>,
   previousMeters: Record<string, number>
 ): FlyingContestantResult[] {
   return submissions.map((sub) => {
     const prev = previousMeters[sub.contestantId] || 0;
-    const clean = (sub.answer || '').trim();
+    const clean = stripEmojis(sub.answer || '');
 
-    // Check exact duplication
     if (exactDupeIds.has(sub.contestantId)) {
       return {
         contestantId: sub.contestantId,
         contestantName: sub.contestantName,
-        answer: sub.answer,
+        answer: clean,
         isValid: true,
         isDuplicated: true,
         roundMeters: 0,
         tier: 'duplicated' as FlyingTier,
-        comment: 'احترقت الإجابة لأنكم كررتوها مع بعض! 💥',
+        comment: 'إجابة مكررة، صفر متر',
         previousTotalMeters: prev,
         newTotalMeters: prev,
       };
@@ -87,36 +99,35 @@ function evaluateOfflineSubmissions(
       return {
         contestantId: sub.contestantId,
         contestantName: sub.contestantName,
-        answer: sub.answer || '(فارغ)',
+        answer: clean || 'بدون إجابة',
         isValid: false,
         isDuplicated: false,
         roundMeters: 0,
         tier: 'failed' as FlyingTier,
-        comment: 'إجابة فاضية، ما تحركت من مكانك!',
+        comment: 'إجابة خاطئة، صفر متر',
         previousTotalMeters: prev,
         newTotalMeters: prev,
       };
     }
 
-    // Heuristic altitude based on uniqueness and specificity
-    let earned = 90;
+    let earned = 95;
     let tier: FlyingTier = 'uncommon';
-    let comment = 'إجابة جيدة طيرتك فوق الغيوم!';
+    let comment = 'إجابة صحيحة وغير شائعة';
 
-    if (clean.length > 8) {
-      earned = 175;
+    if (clean.length > 7) {
+      earned = 185;
       tier = 'rare';
-      comment = 'إجابة ذكية ونادرة رفعتك عالي!';
+      comment = 'إجابة نادرة ومميزة';
     } else if (clean.length <= 4) {
-      earned = 35;
+      earned = 40;
       tier = 'common';
-      comment = 'إجابة شائعة، طيرانك كان منخفض.';
+      comment = 'إجابة شائعة ومعروفة';
     }
 
     return {
       contestantId: sub.contestantId,
       contestantName: sub.contestantName,
-      answer: sub.answer,
+      answer: clean,
       isValid: true,
       isDuplicated: false,
       roundMeters: earned,
@@ -130,7 +141,7 @@ function evaluateOfflineSubmissions(
 
 /**
  * Main AI Evaluation Engine for "الشبح الطائر"
- * Evaluates all submissions in a single atomic batch, enforcing duplicate burn and rarity tiers.
+ * Evaluates all submissions in a single atomic batch, enforcing duplicate zeroing and rarity tiers without emojis.
  */
 export async function evaluateFlyingAnswers(
   question: FlyingQuestion,
@@ -140,7 +151,7 @@ export async function evaluateFlyingAnswers(
   if (!submissions || submissions.length === 0) return [];
 
   // Step 1: Pre-AI Strict Exact & Normalized Duplication Detection
-  const normMap = new Map<string, string[]>(); // norm -> [contestantId]
+  const normMap = new Map<string, string[]>();
   submissions.forEach((s) => {
     const norm = normalizeArabic(s.answer);
     if (norm) {
@@ -161,7 +172,7 @@ export async function evaluateFlyingAnswers(
   const payloadForAI = submissions.map((s) => ({
     contestantId: s.contestantId,
     contestantName: s.contestantName,
-    answer: s.answer.trim(),
+    answer: stripEmojis(s.answer.trim()),
     isExactDuplicate: exactDupeIds.has(s.contestantId),
   }));
 
@@ -172,123 +183,139 @@ export async function evaluateFlyingAnswers(
 إجابات المتسابقين المطلوب تقييمها:
 ${JSON.stringify(payloadForAI, null, 2)}
 
-القواعد الصارمة والواضحة للتقييم:
-1. الفحص المنطقي والصحة الواقعية (isValid):
+القواعد الصارمة للتقييم:
+1. منع الإيموجي نهائياً:
+   - يمنع منعاً باتاً استخدام أي إيموجي أو رموز تعبيرية في حقل comment أو أي حقل آخر. اكتب باللغة العربية الصافية فقط.
+
+2. الفحص المنطقي والصحة الواقعية (isValid):
    - هل الإجابة صحيحة واقعياً ومنطقياً وتنتمي فعلاً للمطلوب في السؤال؟
-   - إذا كانت الإجابة خاطئة تماماً، أو تأليفاً، أو استهبالاً لا علاقة له بالسؤال:
-     اجعل isValid = false، و isDuplicated = false، و roundMeters = 0، و tier = "failed"، والتعليق يوضح الخطأ بسخرية خفيفة.
+   - إذا كانت الإجابة خاطئة تماماً أو فارغة أو لا علاقة لها بالسؤال:
+     اجعل isValid = false، و isDuplicated = false، و roundMeters = 0، و tier = "failed"، والتعليق يوضح الخطأ باختصار شديد بدون إيموجي.
 
-2. فحص التكرار اللفظي والدلالي (isDuplicated):
-   - أي متسابق تم تعليمه كـ isExactDuplicate = true، أو كتب متسابقان نفس الإجابة بدلالات مختلفة (مثال: "فستق" و "بستاشيو" أو "بنز" و "مرسيدس" أو "ليمون" و "حامض"):
-     اجعل isDuplicated = true، و roundMeters = 0، و tier = "duplicated"، والتعليق: "احترقت الإجابة لأنكم كررتوها مع بعض! 💥".
+3. فحص التكرار اللفظي والدلالي (isDuplicated):
+   - إذا كان isExactDuplicate = true، أو كتب متسابقان نفس الإجابة بمعناها (مثال: فستق وبستاشيو، أو مرسيدس وبنز):
+     اجعل isDuplicated = true، و roundMeters = 0، و tier = "duplicated"، واجعل التعليق حرفياً: "إجابة مكررة، صفر متر".
 
-3. حساب الندرة والأمتار (roundMeters من 10 إلى 300 متر) للإجابات الصحيحة وغير المكررة:
-   - "common" (شائع): إجابة بديهية وسطحية أول ما يخطر ببال عامة الناس (مثل: فانيليا، شوكولاتة، تفاح، تويوتا، ملعقة).
-     الأمتار: بين 15 و 45 متراً.
-   - "uncommon" (غير شائع): إجابة صحيحة ومعروفة لكنها ليست الخيار الأول الأكثر شيوعاً.
-     الأمتار: بين 55 و 110 متراً.
-   - "rare" (نادر): إجابة ذكية ومميزة وجميلة وغير متوقعة من الأغلبية.
-     الأمتار: بين 125 و 210 متراً.
-   - "legendary" (أسطوري 🔥): إجابة عبقرية ونادرة جداً وصحيحة 100% قلّما تخطر على بال أحد وتنم عن ثقافة عالية.
-     الأمتار: بين 220 و 300 متراً.
+4. حساب الندرة والأمتار (roundMeters من 15 إلى 300 متر) للإجابات الصحيحة وغير المكررة:
+   - "common" (إجابة شائعة): إجابة بديهية ومعتادة أول ما يخطر ببال الناس. الأمتار: بين 15 و 55 متراً.
+   - "uncommon" (إجابة غير شائعة): إجابة صحيحة ومعروفة لكنها ليست الخيار الأول. الأمتار: بين 60 و 120 متراً.
+   - "rare" (إجابة نادرة): إجابة ذكية ومميزة وغير متوقعة من الأغلبية. الأمتار: بين 130 و 215 متراً.
+   - "legendary" (إجابة نادرة جداً): إجابة عبقرية ونادرة جداً وصحيحة تماماً. الأمتار: بين 220 و 300 متراً.
 
-4. التعليق الشبح (comment):
-   - تعليق شبحي حماسي وخفيف دم وسعودي/خليجي، مختصر جداً (أقل من 6 كلمات) يفسر طيران الشبح أو سقوطه.
+5. التعليق (comment):
+   - جملة عربية صافية قصيرة جداً (من 3 إلى 6 كلمات) بدون أي إيموجي إطلاقاً.
 
 المطلوب إرجاع JSON صالح وحصري بهذا الشكل:
 {
   "results": [
     {
-      "contestantId": "معرف المتسابق",
+      "contestantId": "string",
       "isValid": true,
       "isDuplicated": false,
-      "roundMeters": 185,
+      "roundMeters": 140,
       "tier": "rare",
-      "comment": "نكهة ذويقة ونادرة، طرت فوق الغيوم!"
+      "comment": "إجابة نادرة وذكية جداً"
     }
   ]
 }`;
 
   try {
-    const rawResponse = await generateWithGemini(
-      `قيّم هذه الإجابات لسؤال "${question.title}" وأرجع JSON فوراً.`,
-      {
-        systemPrompt,
-        temperature: 0.4,
-        maxOutputTokens: 2000,
-        jsonMode: true,
-      }
-    );
+    const rawResponse = await generateWithGemini(systemPrompt, true);
+    const parsed = cleanAndParseJSON(rawResponse);
 
-    if (rawResponse) {
-      const parsed = cleanAndParseJSON(rawResponse);
-      const resultsArray: any[] = Array.isArray(parsed?.results)
-        ? parsed.results
-        : Array.isArray(parsed)
-        ? parsed
-        : [];
-
-      if (resultsArray.length > 0) {
-        const resultMap = new Map<string, any>();
-        resultsArray.forEach((r) => {
-          if (r && r.contestantId) resultMap.set(r.contestantId, r);
-        });
-
-        return submissions.map((sub) => {
-          const prev = previousMeters[sub.contestantId] || 0;
-          const aiRes = resultMap.get(sub.contestantId);
-
-          if (!aiRes) {
-            // Fallback for this single contestant if missing from AI output
-            const isExact = exactDupeIds.has(sub.contestantId);
-            return {
-              contestantId: sub.contestantId,
-              contestantName: sub.contestantName,
-              answer: sub.answer,
-              isValid: !isExact,
-              isDuplicated: isExact,
-              roundMeters: isExact ? 0 : 70,
-              tier: (isExact ? 'duplicated' : 'uncommon') as FlyingTier,
-              comment: isExact ? 'احترقت الإجابة لتكرارها! 💥' : 'طيران موفق فوق المدينة!',
-              previousTotalMeters: prev,
-              newTotalMeters: prev + (isExact ? 0 : 70),
-            };
-          }
-
-          const isDupe = Boolean(aiRes.isDuplicated || exactDupeIds.has(sub.contestantId));
-          const isValid = Boolean(aiRes.isValid) && !isDupe;
-          const meters = isDupe || !isValid ? 0 : Math.max(0, Math.min(300, Number(aiRes.roundMeters) || 50));
-          const tier: FlyingTier = isDupe
-            ? 'duplicated'
-            : !isValid
-            ? 'failed'
-            : (aiRes.tier as FlyingTier) || 'uncommon';
-
-          const comment = isDupe
-            ? 'احترقت الإجابة لأنكم كررتوها مع بعض! 💥'
-            : !isValid
-            ? aiRes.comment || 'إجابة شاطحة غير صحيحة ❌'
-            : aiRes.comment || `حلقت بارتفاع +${meters}م!`;
-
-          return {
-            contestantId: sub.contestantId,
-            contestantName: sub.contestantName,
-            answer: sub.answer,
-            isValid,
-            isDuplicated: isDupe,
-            roundMeters: meters,
-            tier,
-            comment,
-            previousTotalMeters: prev,
-            newTotalMeters: prev + meters,
-          };
-        });
-      }
+    if (!parsed || !Array.isArray(parsed.results)) {
+      return evaluateOfflineSubmissions(question, submissions, exactDupeIds, previousMeters);
     }
-  } catch (err) {
-    console.warn('[FlyingEngine] Gemini evaluation failed, falling back to heuristic engine:', err);
-  }
 
-  // Fallback to local heuristic engine
-  return evaluateOfflineSubmissions(question, submissions, exactDupeIds, previousMeters);
+    const aiMap = new Map<string, any>();
+    parsed.results.forEach((item: any) => {
+      if (item && item.contestantId) {
+        aiMap.set(String(item.contestantId), item);
+      }
+    });
+
+    return submissions.map((sub) => {
+      const prev = previousMeters[sub.contestantId] || 0;
+      const aiItem = aiMap.get(sub.contestantId);
+      const cleanAnswer = stripEmojis(sub.answer || '');
+
+      // Enforce Pre-AI exact duplication override
+      if (exactDupeIds.has(sub.contestantId)) {
+        return {
+          contestantId: sub.contestantId,
+          contestantName: sub.contestantName,
+          answer: cleanAnswer,
+          isValid: true,
+          isDuplicated: true,
+          roundMeters: 0,
+          tier: 'duplicated' as FlyingTier,
+          comment: 'إجابة مكررة، صفر متر',
+          previousTotalMeters: prev,
+          newTotalMeters: prev,
+        };
+      }
+
+      if (!cleanAnswer.trim()) {
+        return {
+          contestantId: sub.contestantId,
+          contestantName: sub.contestantName,
+          answer: 'بدون إجابة',
+          isValid: false,
+          isDuplicated: false,
+          roundMeters: 0,
+          tier: 'failed' as FlyingTier,
+          comment: 'لم يكتب إجابة، صفر متر',
+          previousTotalMeters: prev,
+          newTotalMeters: prev,
+        };
+      }
+
+      if (!aiItem) {
+        return evaluateOfflineSubmissions(question, [sub], exactDupeIds, previousMeters)[0];
+      }
+
+      const isDuplicated = Boolean(aiItem.isDuplicated);
+      const isValid = Boolean(aiItem.isValid) && !isDuplicated;
+
+      let roundMeters = 0;
+      let tier: FlyingTier = 'failed';
+
+      if (isDuplicated) {
+        roundMeters = 0;
+        tier = 'duplicated';
+      } else if (!isValid) {
+        roundMeters = 0;
+        tier = 'failed';
+      } else {
+        const rawMeters = Number(aiItem.roundMeters) || 35;
+        roundMeters = Math.max(15, Math.min(300, Math.round(rawMeters)));
+
+        if (roundMeters >= 220) tier = 'legendary';
+        else if (roundMeters >= 130) tier = 'rare';
+        else if (roundMeters >= 60) tier = 'uncommon';
+        else tier = 'common';
+      }
+
+      const rawComment = stripEmojis(String(aiItem.comment || '')).trim();
+      const finalComment = isDuplicated
+        ? 'إجابة مكررة، صفر متر'
+        : rawComment || (roundMeters > 0 ? 'إجابة صحيحة وموفقة' : 'إجابة خاطئة، صفر متر');
+
+      return {
+        contestantId: sub.contestantId,
+        contestantName: sub.contestantName,
+        answer: cleanAnswer,
+        isValid,
+        isDuplicated,
+        roundMeters,
+        tier,
+        comment: finalComment,
+        previousTotalMeters: prev,
+        newTotalMeters: prev + roundMeters,
+      };
+    });
+  } catch (err) {
+    console.warn('[flyingEngine] Gemini evaluation failed, using fallback:', err);
+    return evaluateOfflineSubmissions(question, submissions, exactDupeIds, previousMeters);
+  }
 }
