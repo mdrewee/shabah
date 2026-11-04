@@ -110,16 +110,16 @@ function evaluateOfflineSubmissions(
       };
     }
 
-    let earned = 90;
+    let earned = 160;
     let tier: FlyingTier = 'uncommon';
     let comment = 'إجابة مسجلة، استمر بالتحليق';
 
     if (clean.length > 7) {
-      earned = 160;
+      earned = 320;
       tier = 'rare';
       comment = 'إجابة نادرة ومميزة';
     } else if (clean.length <= 3) {
-      earned = 45;
+      earned = 70;
       tier = 'common';
       comment = 'إجابة شائعة ومعروفة';
     }
@@ -201,11 +201,11 @@ ${JSON.stringify(payloadForAI, null, 2)}
    - إذا كان isExactDuplicate = true، أو كتب متسابقان نفس الإجابة بمعناها (مثال: فستق وبستاشيو، أو مرسيدس وبنز):
      اجعل isDuplicated = true، و roundMeters = 0، و tier = "duplicated"، والتعليق حرفياً: "إجابة مكررة، صفر متر".
 
-4. حساب الندرة والأمتار (roundMeters من 15 إلى 300 متر) للإجابات الصحيحة وغير المكررة:
-   - "common" (إجابة شائعة): إجابة بديهية ومعتادة أول ما يخطر ببال الناس. الأمتار: بين 20 و 55 متراً.
-   - "uncommon" (إجابة غير شائعة): إجابة صحيحة ومعروفة لكنها ليست الخيار الأول. الأمتار: بين 60 و 120 متراً.
-   - "rare" (إجابة نادرة): إجابة ذكية ومميزة وغير متوقعة من الأغلبية. الأمتار: بين 130 و 215 متراً.
-   - "legendary" (إجابة نادرة جداً): إجابة عبقرية ونادرة جداً وصحيحة تماماً. الأمتار: بين 220 و 300 متراً.
+4. حساب الندرة والأمتار (roundMeters من 30 إلى 600 متر) للإجابات الصحيحة وغير المكررة:
+   - "common" (إجابة شائعة): إجابة بديهية ومعتادة أول ما يخطر ببال الناس. الأمتار: بين 30 و 90 متراً.
+   - "uncommon" (إجابة متوسطة): إجابة صحيحة ومعروفة لكنها ليست الخيار الأول. الأمتار: بين 110 و 220 متراً.
+   - "rare" (إجابة نادرة ومميزة): إجابة ذكية ومميزة وغير متوقعة من الأغلبية. الأمتار: بين 250 و 420 متراً.
+   - "legendary" (إجابة أسطورية خارقة): إجابة عبقرية ونادرة جداً وصحيحة تماماً ومبهرة. الأمتار: بين 450 و 600 متر للجولة الواحدة.
 
 5. التعليق (comment):
    - جملة عربية صافية قصيرة جداً (من 3 إلى 6 كلمات) بدون أي إيموجي إطلاقاً.
@@ -287,7 +287,7 @@ ${JSON.stringify(payloadForAI, null, 2)}
 
       // If AI didn't include this contestant, award safe default
       if (!aiItem) {
-        const fallbackEarned = cleanAnswer.length > 6 ? 140 : 80;
+        const fallbackEarned = cleanAnswer.length > 6 ? 280 : 150;
         return {
           contestantId: sub.contestantId,
           contestantName: sub.contestantName,
@@ -317,19 +317,19 @@ ${JSON.stringify(payloadForAI, null, 2)}
         roundMeters = 0;
         tier = 'failed';
       } else {
-        // Safe extraction of meters (prevent dropping to 0 for valid answers)
+        // Safe extraction of meters with doubled scale (30 to 600m)
         const parsedMeters = Number(aiItem.roundMeters);
         const rawMeters = !isNaN(parsedMeters) && parsedMeters > 0
           ? parsedMeters
           : cleanAnswer.length > 6
-          ? 140
-          : 80;
+          ? 280
+          : 150;
 
-        roundMeters = Math.max(15, Math.min(300, Math.round(rawMeters)));
+        roundMeters = Math.max(30, Math.min(600, Math.round(rawMeters)));
 
-        if (roundMeters >= 220) tier = 'legendary';
-        else if (roundMeters >= 130) tier = 'rare';
-        else if (roundMeters >= 60) tier = 'uncommon';
+        if (roundMeters >= 450) tier = 'legendary';
+        else if (roundMeters >= 250) tier = 'rare';
+        else if (roundMeters >= 110) tier = 'uncommon';
         else tier = 'common';
       }
 
