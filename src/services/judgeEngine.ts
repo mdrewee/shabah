@@ -1,5 +1,6 @@
 import { JudgeCase } from '../data/judgePredicaments';
 import { PlayerVerdict, ContestantExcuse } from '../pages/games/judge/types';
+import { callGeminiWithFallback } from './geminiClient';
 
 // Strict zero-emoji cleaner
 function stripEmojis(text: string): string {
@@ -29,19 +30,6 @@ export function normalizeToArray(parsedData: any): any[] {
   return [];
 }
 
-/**
- * 2. قائمة الموديلات المعتمدة والمستقرة والنشطة (Active Production Models Cascade)
- */
-const CANDIDATE_MODELS = [
-  'gemini-flash-lite-latest',
-  'gemini-3.5-flash-lite',
-  'gemini-3.5-flash',
-  'gemini-3.6-flash',
-  'gemini-flash-latest',
-  'gemini-3.8-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
-];
 
 /**
  * تنظيف نص الـ JSON قبل التحويل (Robust JSON Sanitization)
@@ -149,31 +137,14 @@ ${JSON.stringify(
   const resultMap = new Map<string, PlayerVerdict>();
 
   if (apiKey) {
-    for (const model of CANDIDATE_MODELS) {
-      try {
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: systemPrompt }] }],
-            generationConfig: {
-              responseMimeType: 'application/json',
-              temperature: 0.7,
-              maxOutputTokens: 3000,
-            },
-          }),
-        });
+    try {
+      const rawText = await callGeminiWithFallback(systemPrompt, {
+        jsonMode: true,
+        temperature: 0.7,
+        maxOutputTokens: 3000,
+      });
 
-        if (!response.ok) {
-          console.warn(`[JudgeEngine] Model ${model} returned HTTP ${response.status}. Trying next candidate...`);
-          continue;
-        }
-
-        const data = await response.json();
-        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!rawText) continue;
-
+      if (rawText) {
         const parsed = cleanAndParseJSON(rawText);
         const list = normalizeToArray(parsed);
 
@@ -215,13 +186,10 @@ ${JSON.stringify(
               pointsAwarded: finalScore,
             });
           });
-
-          // Successfully processed verdicts
-          break;
         }
-      } catch (err) {
-        console.warn(`[JudgeEngine] Error on candidate model ${model}:`, err);
       }
+    } catch (err) {
+      console.warn('[JudgeEngine] Fallback cascade error:', err);
     }
   }
 

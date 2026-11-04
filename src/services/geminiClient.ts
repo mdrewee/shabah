@@ -1,14 +1,16 @@
 /**
  * Resilient Gemini Client with Multi-Model Fallback Cascade
- * Handles 503 (Service Unavailable), 429 (Rate Limit), 500, and 404 errors seamlessly
+ * Uses official stable v1beta models and sends API key via x-goog-api-key header
  */
 
-export const GEMINI_MODELS_CASCADE = [
-  'gemini-2.5-flash',
+// الموديلات الرسمية المستقرة في v1beta
+export const WORKING_MODELS = [
   'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
   'gemini-1.5-flash',
+  'gemini-1.5-pro',
 ];
+
+export const GEMINI_MODELS_CASCADE = WORKING_MODELS;
 
 export function getGeminiApiKey(): string {
   if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) {
@@ -29,6 +31,9 @@ export async function callGeminiWithFallback(
   optionsOrSystemInstruction?: string | CallGeminiOptions
 ): Promise<string> {
   const apiKey = getGeminiApiKey();
+  if (!apiKey) {
+    throw new Error('VITE_GEMINI_API_KEY is not configured');
+  }
 
   let systemInstruction: string | undefined;
   let temperature = 0.2;
@@ -46,12 +51,12 @@ export async function callGeminiWithFallback(
 
   let lastError: any = null;
 
-  for (const model of GEMINI_MODELS_CASCADE) {
+  for (const model of WORKING_MODELS) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
       const body: any = {
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature,
           maxOutputTokens,
@@ -68,44 +73,28 @@ export async function callGeminiWithFallback(
         };
       }
 
-      const response = await fetch(url, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
+          'x-goog-api-key': apiKey, // إرسال المفتاح عبر الـ Header لأمان أعلى وتفادي مشاكل الـ URL encoding
         },
         body: JSON.stringify(body),
       });
 
-      // Handle transient outages and rate limits by advancing to next model
-      if (
-        response.status === 503 ||
-        response.status === 429 ||
-        response.status === 500 ||
-        response.status === 404
-      ) {
-        console.warn(
-          `[GEMINI] Model ${model} returned ${response.status}. Falling back to next model in cascade...`
-        );
-        continue;
-      }
-
       if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        console.warn(`[GEMINI] Model ${model} HTTP ${response.status}: ${errorText}`);
-        continue;
+        console.warn(`[GEMINI] Model ${model} responded with status ${response.status}`);
+        continue; // التبديل للموديل التالي فوراً عند أي خطأ 404 أو 503 أو 429
       }
 
       const data = await response.json();
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text && typeof text === 'string') {
-        return text.trim();
-      }
+      if (text) return text;
     } catch (err) {
-      console.warn(`[GEMINI] Request failed on ${model}:`, err);
+      console.warn(`[GEMINI] Error with model ${model}:`, err);
       lastError = err;
     }
   }
 
-  throw lastError || new Error('All Gemini models in fallback cascade failed.');
+  throw lastError || new Error('All Gemini fallback models failed');
 }

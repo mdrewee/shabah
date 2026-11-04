@@ -406,17 +406,33 @@ class RoomBus {
     this.safeBroadcast(clean, 'GAME_STARTED', payload);
   }
 
+  private isBroadcastingLobbyReturn = false;
+
   public broadcastReturnToLobby(roomCode: string): void {
-    const clean = cleanRoomCode(roomCode);
-    const room = this.getRoom(clean);
-    if (room) {
-      room.players.forEach((p) => {
-        p.isReady = false;
-      });
-      this.saveRoom(room);
+    if (this.isBroadcastingLobbyReturn) return;
+    this.isBroadcastingLobbyReturn = true;
+
+    try {
+      const clean = cleanRoomCode(roomCode);
+      const room = this.getRoom(clean);
+      if (room) {
+        room.players.forEach((p) => {
+          p.isReady = false;
+        });
+        this.saveRoom(room);
+      }
+      const payload = {
+        roomCode: clean,
+        _senderId: this.localPlayerId || this.clientId,
+        _clientId: this.clientId,
+      };
+      this.emit('RETURN_TO_LOBBY', clean, payload);
+      this.safeBroadcast(clean, 'RETURN_TO_LOBBY', payload);
+    } finally {
+      setTimeout(() => {
+        this.isBroadcastingLobbyReturn = false;
+      }, 500);
     }
-    this.emit('RETURN_TO_LOBBY', clean, {});
-    this.safeBroadcast(clean, 'RETURN_TO_LOBBY', { roomCode: clean });
   }
 
   public broadcastCoachSync(roomCode: string, state: any): void {
@@ -1263,7 +1279,8 @@ class RoomBus {
       ch.on('broadcast', { event: 'RETURN_TO_LOBBY' }, ({ payload }) => {
         try {
           if (this.isSelfBroadcast(payload)) return;
-          this.emit('RETURN_TO_LOBBY', cleanCode, {});
+          if (payload?._senderId && this.localPlayerId && payload._senderId === this.localPlayerId) return;
+          this.emit('RETURN_TO_LOBBY', cleanCode, payload || {});
         } catch (err) {
           console.error('[roomBus] RETURN_TO_LOBBY broadcast error shielded:', err);
         }
@@ -1759,7 +1776,32 @@ class RoomBus {
     this.dispatchLocal(payload);
   }
 
+  private isDispatchingReturnToLobby = false;
+
   public dispatchLocal(payload: RoomEventPayload) {
+    if (payload.type === 'RETURN_TO_LOBBY') {
+      if (this.isDispatchingReturnToLobby) return;
+      this.isDispatchingReturnToLobby = true;
+      try {
+        const listeners = this.typedListeners.get(payload.type);
+        if (listeners && listeners.size > 0) {
+          const snapshot = Array.from(listeners);
+          for (const cb of snapshot) {
+            try {
+              cb(payload);
+            } catch (err) {
+              console.error(`[ROOM_BUS] Error in listener for "${payload.type}":`, err);
+            }
+          }
+        }
+      } finally {
+        setTimeout(() => {
+          this.isDispatchingReturnToLobby = false;
+        }, 150);
+      }
+      return;
+    }
+
     // 1. Dispatch to typed listeners for this specific type
     const listeners = this.typedListeners.get(payload.type);
     if (listeners && listeners.size > 0) {

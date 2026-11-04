@@ -134,12 +134,14 @@ export const FlyingMobileView: React.FC = () => {
       submissions: {},
       results: {},
     };
+    stateRef.current = lobbyState;
+    setFlyingState(lobbyState);
+    savePersistedFlyingState(roomCode, lobbyState);
     setHasSubmittedThisRound(false);
     setAnswerInput('');
     setSubmittedAnswer('');
-    syncState(lobbyState);
     roomBus.broadcastReturnToLobby(roomCode);
-  }, [roomCode, syncState]);
+  }, [roomCode]);
 
   // Execute AI Evaluation when acting as Player-Host
   const executeEvaluation = useCallback(

@@ -1,4 +1,5 @@
 import { wordStartsWithLetter, normalizeArabicLetter } from '../data/arabicCategories';
+import { callGeminiWithFallback } from './geminiClient';
 
 export interface PlayerCategoryResult {
   category: string;
@@ -76,19 +77,6 @@ export function normalizeToArray(parsedData: any): any[] {
   return [];
 }
 
-/**
- * 2. سلسلة الموديلات المعتمدة والمستقرة والنشطة (Active Production Models Cascade)
- */
-const CANDIDATE_MODELS = [
-  'gemini-flash-lite-latest',
-  'gemini-3.5-flash-lite',
-  'gemini-3.5-flash',
-  'gemini-3.6-flash',
-  'gemini-flash-latest',
-  'gemini-3.8-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
-];
 
 /**
  * تنظيف نص الـ JSON قبل التحويل (Robust JSON Sanitization)
@@ -120,47 +108,20 @@ export function cleanAndParseJSON(rawText: string): any {
 }
 
 export async function executeGeminiPrompt(prompt: string): Promise<any[]> {
-  const apiKey = (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
-  let lastError: any = null;
+  const rawText = await callGeminiWithFallback(prompt, {
+    jsonMode: true,
+    temperature: 0.1,
+    maxOutputTokens: 1000,
+  });
 
-  for (const model of CANDIDATE_MODELS) {
-    try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            temperature: 0.1, // أقصى درجات الثبات والسرعة
-            maxOutputTokens: 1000,
-          },
-        }),
-      });
+  const parsed = cleanAndParseJSON(rawText);
+  const normalized = normalizeToArray(parsed);
 
-      if (!response.ok) {
-        console.warn(`[Gemini Engine] Model ${model} returned HTTP ${response.status}. Trying next candidate...`);
-        continue;
-      }
-
-      const data = await response.json();
-      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!rawText) continue;
-
-      const parsed = cleanAndParseJSON(rawText);
-      const normalized = normalizeToArray(parsed);
-
-      if (normalized && normalized.length > 0) {
-        return normalized;
-      }
-    } catch (err) {
-      lastError = err;
-      console.warn(`[Gemini Engine] Exception on model ${model}:`, err);
-    }
+  if (normalized && normalized.length > 0) {
+    return normalized;
   }
 
-  throw new Error(`All candidate models failed. Last error: ${lastError?.message || 'Unknown'}`);
+  throw new Error('Could not parse valid array from Gemini response');
 }
 
 /**

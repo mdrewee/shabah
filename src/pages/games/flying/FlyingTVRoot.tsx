@@ -131,9 +131,11 @@ export const FlyingTVRoot: React.FC = () => {
       submissions: {},
       results: {},
     };
-    syncState(lobbyState);
+    stateRef.current = lobbyState;
+    setFlyingState(lobbyState);
+    savePersistedFlyingState(roomCode, lobbyState);
     roomBus.broadcastReturnToLobby(roomCode);
-  }, [roomCode, syncState]);
+  }, [roomCode]);
 
   // Execute AI Evaluation
   const executeEvaluation = useCallback(async () => {
@@ -396,11 +398,17 @@ export const FlyingTVRoot: React.FC = () => {
       roomBus.broadcast('FLYING_STATE_SYNC', updatedState);
     });
 
+    let isStartingGame = false;
     const unsubGameStarted = roomBus.on('GAME_STARTED', (evt: any) => {
       const incomingCode = evt?.roomCode;
       if (incomingCode && incomingCode !== roomCode) return;
+      if (isStartingGame) return;
       if (stateRef.current.phase === 'LOBBY') {
+        isStartingGame = true;
         handleStartGame();
+        setTimeout(() => {
+          isStartingGame = false;
+        }, 1500);
       }
     });
 
@@ -408,7 +416,9 @@ export const FlyingTVRoot: React.FC = () => {
       const incomingCode = evt?.roomCode;
       if (incomingCode && incomingCode !== roomCode) return;
       clearPersistedFlyingState(roomCode);
-      setFlyingState(createInitialFlyingState(roomCode));
+      const lobbyState = createInitialFlyingState(roomCode);
+      stateRef.current = lobbyState;
+      setFlyingState(lobbyState);
     });
 
     return () => {
