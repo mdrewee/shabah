@@ -29,25 +29,20 @@ function normalizeArabic(text: string): string {
 /**
  * Extract JSON safely from AI output even if wrapped in markdown
  */
-function cleanAndParseJSON(rawText: string): any {
-  if (!rawText) return null;
+export function cleanAndParseJSON<T = any>(rawText: string): T {
   let cleaned = rawText.trim();
+  // إزالة وسوم markdown للـ json إن وجدت
+  cleaned = cleaned.replace(/^```json\s*/i, '').replace(/```\s*$/, '');
 
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-  }
-
+  // استخراج المحتوى بين أول { وآخر }
   const firstBrace = cleaned.indexOf('{');
   const lastBrace = cleaned.lastIndexOf('}');
+
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
     cleaned = cleaned.substring(firstBrace, lastBrace + 1);
   }
 
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    return null;
-  }
+  return JSON.parse(cleaned) as T;
 }
 
 /**
@@ -72,7 +67,7 @@ function evaluateOfflineSubmissions(
         isDuplicated: true,
         roundMeters: 0,
         tier: 'duplicated' as FlyingTier,
-        comment: 'إجابة مكررة، صفر متر',
+        comment: 'احترقت الإجابة بالتكرار',
         previousTotalMeters: prev,
         newTotalMeters: prev,
       };
@@ -93,16 +88,16 @@ function evaluateOfflineSubmissions(
       };
     }
 
-    let earned = 260;
+    let earned = 240;
     let tier: FlyingTier = 'uncommon';
     let comment = 'إجابة مسجلة، استمر بالتحليق';
 
     if (clean.length > 7) {
-      earned = 550;
+      earned = 500;
       tier = 'rare';
       comment = 'إجابة نادرة ومميزة';
     } else if (clean.length <= 3) {
-      earned = 100;
+      earned = 90;
       tier = 'common';
       comment = 'إجابة شائعة ومعروفة';
     }
@@ -125,7 +120,7 @@ function evaluateOfflineSubmissions(
 /**
  * Main AI Evaluation Engine for "الشبح الطائر"
  * Evaluates all submissions via Multi-Model Gemini Fallback Cascade,
- * enforcing duplicate zeroing and doubled rarity tiers without emojis.
+ * enforcing strict semantic validation, zero emojis, and doubled altitude tiers.
  */
 export async function evaluateFlyingAnswers(
   question: FlyingQuestion,
@@ -155,69 +150,66 @@ export async function evaluateFlyingAnswers(
     }
   });
 
-  // Step 2: Prepare Gemini AI Prompt
-  const payloadForAI = submissions.map((s) => ({
-    contestantId: s.contestantId,
-    contestantName: s.contestantName,
-    answer: stripEmojis((s.answer || '').trim()),
-    isExactDuplicate: exactDupeIds.has(s.contestantId),
-  }));
+  const SYSTEM_INSTRUCTION = `أنت "حكم الشبح الطائر"؛ قاضٍ صارم جداً، دقيق لغوياً وواقعياً، ولا يقبل المجاملة أو الإجابات التقريبية.
+مهمتك تقييم إجابات المتسابقين على السؤال المطروح وتحديد الارتفاع بالأمتار وفق قواعد ندرة صارمة.
 
-  const systemPrompt = `أنت الحكم الذكي والصارم في لعبة "الشبح الطائر" (سباق الأجوبة النادرة والارتفاع).
-السؤال المطروح للمتسابقين: [ ${question.title} ]
+السؤال المطروح: [ ${question.title} ]
 تصنيف السؤال: ${question.category}
 
-إجابات المتسابقين المطلوب تقييمها:
-${JSON.stringify(payloadForAI, null, 2)}
+قواعد الفحص والصرامة (CRITICAL):
+1. التحقق من الصحة (isValid):
+   - الإجابة يجب أن تكون شيئاً حقيقياً، موجوداً وواقعياً، ومطابقاً لطلب السؤال بنسبة 100%.
+   - إذا كانت الإجابة استهبالاً، أو خيالية، أو عامة بشكل مبالغ فيه (مثل كتابة "فاكهة حمراء" بدل اسم فاكهة)، أو لا تنتمي للتصنيف:
+     اجعل isValid = false، و roundMeters = 0، و tier = "failed"، والتعليق يوضح الخطأ باقتضاب (أقل من 5 كلمات بدون إيموجي).
 
-القواعد الصارمة للتقييم:
-1. منع الإيموجي نهائياً:
-   - يمنع منعاً باتاً استخدام أي إيموجي أو رموز تعبيرية في حقل comment أو أي حقل آخر. اكتب باللغة العربية الصافية فقط.
+2. فحص التكرار (isDuplicated):
+   - إذا كتب أكثر من متسابق نفس الإجابة أو نفس المعنى (مثل "طماطم" و"طماط" أو "بطيخ" و"جح"):
+     اجعل isDuplicated = true و roundMeters = 0 لجميع من كررها مع تعليق "احترقت الإجابة بالتكرار".
 
-2. الفحص المنطقي والصحة الواقعية (isValid):
-   - هل الإجابة صحيحة واقعياً ومنطقياً وتنتمي فعلاً للمطلوب في السؤال؟
-   - إذا كتب اللاعب أي كلمة حقيقية وصحيحة تنتمي للسؤال، اعتبرها صحيحة فوراً isValid = true.
-   - إذا كانت الإجابة فارغة تماماً أو لا تمت للموضوع بصلة إطلاقاً:
-     اجعل isValid = false، و isDuplicated = false، و roundMeters = 0، و tier = "failed"، والتعليق: "إجابة خاطئة، صفر متر".
+3. سلم الأمتار الصارم (المقياس المضاعف: 0 إلى 1000 متر):
+   - إجابة شائعة جداً (أول ما يخطر ببال 80% من الناس، مثل فانيليا/شوكولاتة/تفاح):
+     tier = "common", roundMeters بين 60 و 120 متراً فقط.
+   - إجابة متوسطة (معروفة لكن ليست البديهية الأولى):
+     tier = "uncommon", roundMeters بين 180 و 320 متراً.
+   - إجابة نادرة ومميزة (صحيحة 100% ونادراً ما يتذكرها العامة):
+     tier = "rare", roundMeters بين 400 و 650 متراً.
+   - إجابة أسطورية استثنائية (صحيحة وعبقرية وغير متوقعة إطلاقاً):
+     tier = "legendary", roundMeters بين 750 و 1000 متراً.
 
-3. فحص التكرار اللفظي والدلالي (isDuplicated):
-   - إذا كان isExactDuplicate = true، أو كتب متسابقان نفس الإجابة بمعناها (مثال: فستق وبستاشيو، أو مرسيدس وبنز):
-     اجعل isDuplicated = true، و roundMeters = 0، و tier = "duplicated"، والتعليق حرفياً: "إجابة مكررة، صفر متر".
+4. صيغة الرد:
+   - أرجع JSON صالحاً فقط بدون أي مقدمات أو شروحات خارج الكائن.`;
 
-4. حساب الندرة والأمتار المضاعفة (roundMeters من 60 إلى 1000 متر) للإجابات الصحيحة وغير المكررة:
-   - "common" (إجابة شائعة وبديهية): إجابة متوقعة وأول ما يخطر ببال الناس. الأمتار: بين 60 و 140 متراً.
-   - "uncommon" (إجابة متوسطة): إجابة صحيحة ومعروفة لكنها ليست الخيار الأول. الأمتار: بين 180 و 350 متراً.
-   - "rare" (إجابة نادرة ومميزة): إجابة ذكية ومميزة وغير متوقعة من الأغلبية. الأمتار: بين 400 و 650 متراً.
-   - "legendary" (إجابة أسطورية خارقة): إجابة عبقرية ونادرة جداً وصحيحة تماماً ومبهرة. الأمتار: بين 700 و 1000 متر للجولة الواحدة.
+  const USER_PROMPT = `قيّم هذه الإجابات بدقة وصرامة تامة:
+${JSON.stringify(
+  submissions.map((s) => ({
+    contestantId: s.contestantId,
+    answer: stripEmojis(s.answer || ''),
+  }))
+)}
 
-5. التعليق (comment):
-   - جملة عربية صافية قصيرة جداً (من 3 إلى 6 كلمات) بدون أي إيموجي إطلاقاً.
-
-المطلوب إرجاع JSON صالح وحصري بهذا الشكل:
+الهيكل المطلوب حصراً:
 {
   "results": [
     {
       "contestantId": "string",
-      "isValid": true,
-      "isDuplicated": false,
-      "roundMeters": 520,
-      "tier": "rare",
-      "comment": "إجابة نادرة وذكية جدا"
+      "answer": "string",
+      "isValid": boolean,
+      "isDuplicated": boolean,
+      "roundMeters": number,
+      "tier": "common" | "uncommon" | "rare" | "legendary" | "failed" | "duplicated",
+      "comment": "تعليق صارم ومقتضب أقل من 5 كلمات بدون إيموجي"
     }
   ]
 }`;
 
   try {
-    const rawResponse = await callGeminiWithFallback(
-      `قيم إجابات المتسابقين للسؤال: "${question.title}" وأرجع الـ JSON المطلوب.`,
-      {
-        systemInstruction: systemPrompt,
-        temperature: 0.2,
-        jsonMode: true,
-      }
-    );
+    const rawResponse = await callGeminiWithFallback(USER_PROMPT, {
+      systemInstruction: SYSTEM_INSTRUCTION,
+      temperature: 0.1,
+      jsonMode: true,
+    });
 
-    const parsed = cleanAndParseJSON(rawResponse);
+    const parsed = cleanAndParseJSON<{ results: any[] }>(rawResponse);
 
     if (!parsed || !Array.isArray(parsed.results)) {
       console.warn('[flyingEngine] Invalid AI JSON response, applying safe offline fallback');
@@ -246,7 +238,7 @@ ${JSON.stringify(payloadForAI, null, 2)}
           isDuplicated: true,
           roundMeters: 0,
           tier: 'duplicated' as FlyingTier,
-          comment: 'إجابة مكررة، صفر متر',
+          comment: 'احترقت الإجابة بالتكرار',
           previousTotalMeters: prev,
           newTotalMeters: prev,
         };
@@ -268,9 +260,9 @@ ${JSON.stringify(payloadForAI, null, 2)}
         };
       }
 
-      // If AI didn't include this contestant, award safe default
+      // If AI didn't include this contestant, award safe fallback
       if (!aiItem) {
-        const fallbackEarned = cleanAnswer.length > 6 ? 500 : 250;
+        const fallbackEarned = cleanAnswer.length > 6 ? 420 : 200;
         return {
           contestantId: sub.contestantId,
           contestantName: sub.contestantName,
@@ -287,8 +279,7 @@ ${JSON.stringify(payloadForAI, null, 2)}
 
       const isDuplicated = Boolean(aiItem.isDuplicated);
       const isAIValid = Boolean(aiItem.isValid);
-      // Safety rule: if player typed a genuine non-empty answer and wasn't marked duplicated, default isValid to true
-      const isValid = !isDuplicated && (isAIValid || cleanAnswer.length >= 2);
+      const isValid = !isDuplicated && isAIValid;
 
       let roundMeters = 0;
       let tier: FlyingTier = 'failed';
@@ -300,18 +291,17 @@ ${JSON.stringify(payloadForAI, null, 2)}
         roundMeters = 0;
         tier = 'failed';
       } else {
-        // Safe extraction of meters with doubled scale (60 to 1000m)
         const parsedMeters = Number(aiItem.roundMeters);
         const rawMeters =
           !isNaN(parsedMeters) && parsedMeters > 0
             ? parsedMeters
             : cleanAnswer.length > 6
-            ? 500
-            : 250;
+            ? 450
+            : 200;
 
         roundMeters = Math.max(60, Math.min(1000, Math.round(rawMeters)));
 
-        if (roundMeters >= 700) tier = 'legendary';
+        if (roundMeters >= 750) tier = 'legendary';
         else if (roundMeters >= 400) tier = 'rare';
         else if (roundMeters >= 180) tier = 'uncommon';
         else tier = 'common';
@@ -319,7 +309,7 @@ ${JSON.stringify(payloadForAI, null, 2)}
 
       const rawComment = stripEmojis(String(aiItem.comment || '')).trim();
       const finalComment = isDuplicated
-        ? 'إجابة مكررة، صفر متر'
+        ? 'احترقت الإجابة بالتكرار'
         : rawComment || (roundMeters > 0 ? 'إجابة صحيحة وموفقة' : 'إجابة خاطئة، صفر متر');
 
       return {
@@ -337,7 +327,7 @@ ${JSON.stringify(payloadForAI, null, 2)}
     });
   } catch (err) {
     console.error(
-      '[FLYING_ENGINE] Gemini totally unavailable, applying safe heuristic fallback:',
+      '[FLYING_ENGINE] Gemini unavailable, applying safe heuristic fallback:',
       err
     );
     return evaluateOfflineSubmissions(submissions, exactDupeIds, previousMeters);

@@ -26,7 +26,6 @@ import {
   Volume2,
   VolumeX,
   CheckCircle2,
-  Sparkles,
 } from 'lucide-react';
 
 const ROUND_TIME = 35;
@@ -137,7 +136,7 @@ export const FlyingTVRoot: React.FC = () => {
     roomBus.broadcastReturnToLobby(roomCode);
   }, [roomCode]);
 
-  // Execute AI Evaluation
+  // Exclusive AI Evaluation (Runs solely on TV Host)
   const executeEvaluation = useCallback(async () => {
     const curr = stateRef.current;
     if (curr.phase === 'CALCULATING' || curr.phase === 'REVEALING') return;
@@ -233,6 +232,8 @@ export const FlyingTVRoot: React.FC = () => {
       roundNumber: curr.roundNumber,
       roomCode,
     };
+    roomBus.safeBroadcast(roomCode, 'FLYING_ROUND_RESULTS', resultsPayload);
+    roomBus.broadcast('FLYING_ROUND_RESULTS', resultsPayload);
     roomBus.safeBroadcast(roomCode, 'FLYING_RESULTS_READY', resultsPayload);
     roomBus.broadcast('FLYING_RESULTS_READY', resultsPayload);
   }, [mergedContestants, roomCode, syncState]);
@@ -453,7 +454,7 @@ export const FlyingTVRoot: React.FC = () => {
   // -------------------------------------------------------------
   if (flyingState.phase === 'LOBBY') {
     return (
-      <div dir="rtl" className="h-screen w-full bg-[#030712] select-none overflow-hidden">
+      <div dir="rtl" className="h-screen w-full bg-[#030712] select-none overflow-hidden pixel-art">
         <UnifiedShabahLobby
           gameId="flying"
           roomCode={roomCode}
@@ -466,7 +467,7 @@ export const FlyingTVRoot: React.FC = () => {
   }
 
   // -------------------------------------------------------------
-  // 2. Final Podium Phase
+  // 2. Final Podium Phase: 16-Bit Pixel Arcade Podium
   // -------------------------------------------------------------
   if (flyingState.phase === 'PODIUM') {
     const ranked = getRankedFlyingContestants(
@@ -479,22 +480,22 @@ export const FlyingTVRoot: React.FC = () => {
     return (
       <div
         dir="rtl"
-        className="h-screen w-full bg-[#030712] text-white flex flex-col justify-between items-center p-6 sm:p-10 select-none overflow-hidden"
+        className="h-screen w-full bg-[#030712] text-white flex flex-col justify-between items-center p-6 sm:p-10 select-none overflow-hidden pixel-art"
       >
         <header className="flex flex-col items-center text-center mt-4">
-          <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-400 text-black border-2 border-black font-sans font-black text-xs sm:text-sm">
+          <div className="flex items-center gap-2 px-4 py-1.5 bg-amber-400 text-black border-4 border-black font-mono font-black text-xs sm:text-sm shadow-[4px_4px_0px_#000]">
             <Trophy className="w-4 h-4 text-black" />
             <span>النتائج النهائية للارتفاع</span>
           </div>
-          <h1 className="font-sans font-black text-4xl sm:text-5xl text-white mt-2">
+          <h1 className="font-mono font-black text-4xl sm:text-5xl text-white mt-3 tracking-wide">
             أبطال الشبح الطائر
           </h1>
-          <p className="text-zinc-400 text-sm sm:text-base font-bold mt-1">
+          <p className="text-zinc-400 text-xs sm:text-sm font-mono mt-1">
             الترتيب النهائي بعد 5 جولات من الأجوبة النادرة
           </p>
         </header>
 
-        {/* Flat 3-Tier Podium */}
+        {/* 16-Bit Stepped Arcade Podium */}
         <div className="w-full max-w-4xl flex items-end justify-center gap-4 sm:gap-6 my-auto pt-10 pb-6">
           {second && (
             <div className="flex-1 flex flex-col items-center">
@@ -504,8 +505,9 @@ export const FlyingTVRoot: React.FC = () => {
                 totalMeters={second.totalMeters}
                 size="md"
               />
-              <div className="w-full h-36 sm:h-44 rounded-t-2xl bg-zinc-800 border-2 border-zinc-600 flex items-center justify-center text-white font-black text-4xl mt-3">
-                2
+              <div className="w-full h-36 sm:h-44 bg-zinc-800 border-4 border-black shadow-[4px_4px_0px_#000] flex flex-col items-center justify-center text-white font-mono font-black text-4xl mt-3">
+                <span>2</span>
+                <span className="text-xs text-zinc-400">{second.totalMeters} م</span>
               </div>
             </div>
           )}
@@ -518,8 +520,9 @@ export const FlyingTVRoot: React.FC = () => {
                 totalMeters={first.totalMeters}
                 size="lg"
               />
-              <div className="w-full h-48 sm:h-60 rounded-t-2xl bg-amber-400 border-2 border-black flex items-center justify-center text-black font-black text-5xl mt-3">
-                1
+              <div className="w-full h-48 sm:h-60 bg-amber-400 border-4 border-black shadow-[6px_6px_0px_#000] flex flex-col items-center justify-center text-black font-mono font-black text-5xl mt-3">
+                <span>1</span>
+                <span className="text-sm font-black">{first.totalMeters} م</span>
               </div>
             </div>
           )}
@@ -532,8 +535,9 @@ export const FlyingTVRoot: React.FC = () => {
                 totalMeters={third.totalMeters}
                 size="md"
               />
-              <div className="w-full h-28 sm:h-36 rounded-t-2xl bg-orange-600 border-2 border-black flex items-center justify-center text-white font-black text-4xl mt-3">
-                3
+              <div className="w-full h-28 sm:h-36 bg-orange-600 border-4 border-black shadow-[4px_4px_0px_#000] flex flex-col items-center justify-center text-white font-mono font-black text-4xl mt-3">
+                <span>3</span>
+                <span className="text-xs text-zinc-200">{third.totalMeters} م</span>
               </div>
             </div>
           )}
@@ -543,7 +547,7 @@ export const FlyingTVRoot: React.FC = () => {
           <button
             type="button"
             onClick={handleStartGame}
-            className="flex-1 py-4 px-6 rounded-xl font-black text-base text-black bg-white hover:bg-zinc-200 border-2 border-black active:scale-95 transition-transform flex items-center justify-center gap-2 cursor-pointer shadow-lg"
+            className="flex-1 py-4 px-6 font-mono font-black text-base text-black bg-white hover:bg-zinc-200 border-4 border-black shadow-[4px_4px_0px_#000] hover:translate-x-[-2px] hover:translate-y-[-2px] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-transform flex items-center justify-center gap-2 cursor-pointer"
           >
             <RotateCcw className="w-5 h-5" />
             <span>جولة جديدة</span>
@@ -551,7 +555,7 @@ export const FlyingTVRoot: React.FC = () => {
           <button
             type="button"
             onClick={handleReturnToLobby}
-            className="py-4 px-6 rounded-xl font-black text-base text-white bg-zinc-900 hover:bg-zinc-800 border-2 border-zinc-700 active:scale-95 transition-transform flex items-center justify-center gap-2 cursor-pointer"
+            className="py-4 px-6 font-mono font-black text-base text-white bg-zinc-900 hover:bg-zinc-800 border-4 border-black shadow-[4px_4px_0px_#000] hover:translate-x-[-2px] hover:translate-y-[-2px] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-transform flex items-center justify-center gap-2 cursor-pointer"
           >
             <ArrowRight className="w-5 h-5" />
             <span>العودة للوبي</span>
@@ -562,9 +566,7 @@ export const FlyingTVRoot: React.FC = () => {
   }
 
   // -------------------------------------------------------------
-  // 3. Question, Calculating & Revealing: Continuous Vertical Track Display
-  // The playing field and floating ghosts remain visible AT ALL TIMES!
-  // Zero TV input fields, zero emojis.
+  // 3. Question, Calculating & Revealing: Continuous Vertical Pixel World
   // -------------------------------------------------------------
   const isQuestionPhase = flyingState.phase === 'QUESTION';
   const isCalculatingPhase = flyingState.phase === 'CALCULATING';
@@ -573,12 +575,9 @@ export const FlyingTVRoot: React.FC = () => {
   return (
     <div
       dir="rtl"
-      className="h-screen max-h-screen w-full bg-[#030712] text-white flex flex-col justify-between overflow-hidden relative select-none"
+      className="h-screen max-h-screen w-full bg-[#030712] text-white flex flex-col justify-between overflow-hidden relative select-none pixel-art"
     >
-      {/* =========================================================
-          BACKGROUND: Vertical City-to-Sky Architectural World
-          Always alive, displaying all ghosts floating at their current meters!
-          ========================================================= */}
+      {/* Background Vertical Pixel-Art Skyline World */}
       <div className="absolute inset-0">
         <FlyingSkyWorld
           contestants={contestantsList}
@@ -592,17 +591,17 @@ export const FlyingTVRoot: React.FC = () => {
       </div>
 
       {/* =========================================================
-          TOP HEADER CARD: Always clear, never obstructing the track
+          TOP PIXEL-BOX HEADER CARD: Crisp 16-Bit Arcade Overlay
           ========================================================= */}
       <header className="relative z-30 w-full max-w-5xl mx-auto p-4 sm:p-6">
-        <div className="w-full bg-[#0B0F17]/95 border-2 border-zinc-700/80 rounded-2xl p-4 sm:p-5 shadow-2xl backdrop-blur-md flex flex-col gap-3">
+        <div className="w-full bg-[#0B0F17] border-4 border-black shadow-[6px_6px_0px_#000] p-4 sm:p-5 flex flex-col gap-3">
           {/* Top Bar: Round Badge, Category, Timer, Audio */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <span className="px-3 py-1 rounded-lg bg-white text-black border-2 border-black font-sans font-black text-xs sm:text-sm">
+              <span className="px-3 py-1 bg-white text-black border-2 border-black font-mono font-black text-xs sm:text-sm shadow-[2px_2px_0px_#000]">
                 السؤال {flyingState.roundNumber} من {flyingState.totalRounds}
               </span>
-              <span className="px-3 py-1 rounded-lg bg-zinc-800 text-zinc-300 border border-zinc-700 font-sans font-bold text-xs">
+              <span className="px-3 py-1 bg-zinc-800 text-amber-300 border-2 border-black font-mono font-black text-xs shadow-[2px_2px_0px_#000]">
                 {q.category}
               </span>
             </div>
@@ -610,10 +609,10 @@ export const FlyingTVRoot: React.FC = () => {
             <div className="flex items-center gap-3">
               {isQuestionPhase && (
                 <div
-                  className={`px-4 py-1.5 rounded-xl border-2 font-mono font-black text-lg sm:text-xl ${
+                  className={`px-4 py-1.5 border-4 border-black font-mono font-black text-lg sm:text-xl shadow-[4px_4px_0px_#000] ${
                     flyingState.timerSeconds <= 5
-                      ? 'bg-red-600 border-black text-white animate-pulse'
-                      : 'bg-zinc-900 border-zinc-700 text-white'
+                      ? 'bg-red-600 text-white animate-pulse'
+                      : 'bg-zinc-900 text-white'
                   }`}
                 >
                   <span>{flyingState.timerSeconds} ثانية</span>
@@ -621,14 +620,14 @@ export const FlyingTVRoot: React.FC = () => {
               )}
 
               {isCalculatingPhase && (
-                <div className="px-4 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 border-2 border-amber-500/50 font-sans font-black text-xs sm:text-sm flex items-center gap-2">
-                  <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                <div className="px-4 py-1.5 bg-amber-400 text-black border-4 border-black font-mono font-black text-xs sm:text-sm shadow-[4px_4px_0px_#000] flex items-center gap-2">
+                  <div className="w-3.5 h-3.5 border-2 border-black border-t-transparent animate-spin" />
                   <span>تقييم الإجابات</span>
                 </div>
               )}
 
               {isRevealingPhase && flyingState.cameraMode === 'global_overview' && (
-                <div className="px-4 py-1.5 rounded-xl bg-amber-400 text-black border-2 border-black font-sans font-black text-xs sm:text-sm">
+                <div className="px-4 py-1.5 bg-amber-400 text-black border-4 border-black font-mono font-black text-xs sm:text-sm shadow-[4px_4px_0px_#000]">
                   {flyingState.roundNumber >= flyingState.totalRounds
                     ? `منصة التتويج خلال ${autoAdvanceSeconds} ثوان`
                     : `السؤال التالي خلال ${autoAdvanceSeconds} ثوان`}
@@ -642,7 +641,7 @@ export const FlyingTVRoot: React.FC = () => {
                   sound.setMuted(next);
                   setIsMuted(next);
                 }}
-                className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-300 hover:text-white cursor-pointer"
+                className="p-2.5 bg-zinc-900 border-2 border-black shadow-[2px_2px_0px_#000] text-zinc-300 hover:text-white cursor-pointer active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
                 title="كتم أو تفعيل الصوت"
               >
                 {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -650,19 +649,19 @@ export const FlyingTVRoot: React.FC = () => {
             </div>
           </div>
 
-          {/* Question Text in Prominent, Clean Font */}
+          {/* Question Text in Prominent 16-Bit Font */}
           <div className="text-center py-1">
-            <h1 className="font-sans font-black text-xl sm:text-3xl text-white leading-snug">
+            <h1 className="font-mono font-black text-xl sm:text-3xl text-white leading-snug tracking-wide">
               {q.title}
             </h1>
           </div>
 
           {/* Submissions Status & Early Proceed Button during QUESTION phase */}
           {isQuestionPhase && (
-            <div className="flex items-center justify-between pt-2 border-t border-zinc-800 text-xs font-bold text-zinc-400">
+            <div className="flex items-center justify-between pt-2 border-t-2 border-zinc-800 text-xs font-mono text-zinc-400">
               <div className="flex items-center gap-2">
-                <span className="font-sans">المتسابقون الجاهزون:</span>
-                <span className="font-mono text-white font-black bg-zinc-800 px-2 py-0.5 rounded border border-zinc-700">
+                <span>المتسابقون الجاهزون:</span>
+                <span className="text-white font-black bg-zinc-800 px-2 py-0.5 border border-zinc-700 shadow-[1px_1px_0px_#000]">
                   {submittedCount} / {totalContestants}
                 </span>
               </div>
@@ -670,7 +669,7 @@ export const FlyingTVRoot: React.FC = () => {
               <button
                 type="button"
                 onClick={() => executeEvaluation()}
-                className="px-4 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-sans font-black text-xs border border-zinc-600 transition-colors cursor-pointer"
+                className="px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white font-mono font-black text-xs border-2 border-black shadow-[2px_2px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-transform cursor-pointer"
               >
                 إنهاء الوقت وبدء التحليق
               </button>
@@ -679,7 +678,7 @@ export const FlyingTVRoot: React.FC = () => {
 
           {/* Evaluation Progress Indicator during CALCULATING phase */}
           {isCalculatingPhase && (
-            <div className="text-center py-1 text-xs text-zinc-400 font-bold">
+            <div className="text-center py-1 text-xs text-zinc-400 font-mono font-bold">
               يتم الآن كشف الإجابات المكررة وتقييم ندرة الأجوبة الصحيحة...
             </div>
           )}
@@ -687,12 +686,12 @@ export const FlyingTVRoot: React.FC = () => {
       </header>
 
       {/* =========================================================
-          BOTTOM CONTESTANT STATUS OR GLOBAL LEADERBOARD
+          BOTTOM PIXEL-BOX LEADERBOARD OR CONTESTANT STATUS
           ========================================================= */}
       {isRevealingPhase && flyingState.cameraMode === 'global_overview' ? (
         <footer className="relative z-30 w-full max-w-5xl mx-auto p-4 mb-2 flex flex-col items-center">
-          <div className="w-full bg-[#0B0F17]/95 border-2 border-zinc-700 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-2xl backdrop-blur-md">
-            <div className="flex items-center gap-2 text-xs font-black text-amber-400 shrink-0">
+          <div className="w-full bg-[#0B0F17] border-4 border-black shadow-[6px_6px_0px_#000] p-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs font-mono font-black text-amber-400 shrink-0">
               <Trophy className="w-4 h-4 text-amber-400" />
               <span>ترتيب الارتفاع:</span>
             </div>
@@ -705,17 +704,17 @@ export const FlyingTVRoot: React.FC = () => {
               ).map((player, idx) => (
                 <div
                   key={player.id}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-700 text-xs shrink-0"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border-2 border-black text-xs shrink-0 shadow-[2px_2px_0px_#000]"
                 >
                   <span
-                    className="w-2.5 h-2.5 rounded-full border border-black"
+                    className="w-2.5 h-2.5 border border-black shrink-0"
                     style={{ backgroundColor: getGhostColor(idx) }}
                   />
                   <span className="font-mono font-black text-zinc-400">#{player.rank}</span>
-                  <span className="font-black text-white truncate max-w-[95px]">
+                  <span className="font-mono font-black text-white truncate max-w-[95px]">
                     {player.name}
                   </span>
-                  <span className="font-mono font-black text-black bg-amber-400 px-2 py-0.5 rounded">
+                  <span className="font-mono font-black text-black bg-amber-400 px-2 py-0.5 border border-black">
                     {player.totalMeters} م
                   </span>
                 </div>
@@ -731,7 +730,7 @@ export const FlyingTVRoot: React.FC = () => {
                   startQuestionRound(flyingState.roundNumber + 1, flyingState.usedQuestionIds);
                 }
               }}
-              className="px-4 py-2 rounded-xl bg-white text-black border-2 border-black font-black text-xs shrink-0 active:scale-95 transition-transform cursor-pointer hover:bg-zinc-200"
+              className="px-4 py-2 bg-white text-black border-4 border-black shadow-[4px_4px_0px_#000] font-mono font-black text-xs shrink-0 hover:translate-x-[-2px] hover:translate-y-[-2px] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-transform cursor-pointer"
             >
               {flyingState.roundNumber >= flyingState.totalRounds ? 'عرض التتويج' : 'السؤال التالي'}
             </button>
@@ -745,14 +744,14 @@ export const FlyingTVRoot: React.FC = () => {
             return (
               <div
                 key={c.id}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 text-xs font-black transition-colors ${
+                className={`flex items-center gap-2 px-3 py-1.5 border-2 border-black font-mono text-xs font-black shadow-[2px_2px_0px_#000] transition-colors ${
                   hasSub
-                    ? 'bg-emerald-600 border-black text-white'
-                    : 'bg-[#0B0F17]/90 border-zinc-700 text-zinc-300'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-[#0B0F17] text-zinc-300'
                 }`}
               >
                 <span
-                  className="w-2.5 h-2.5 rounded-full border border-black shrink-0"
+                  className="w-2.5 h-2.5 border border-black shrink-0"
                   style={{ backgroundColor: playerColor }}
                 />
                 <span className="truncate max-w-[120px]">{c.name}</span>

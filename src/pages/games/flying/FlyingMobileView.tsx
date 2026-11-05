@@ -21,8 +21,7 @@ import {
   clearPersistedFlyingState,
   getRankedFlyingContestants,
 } from './flyingSync';
-import { getRandomFlyingQuestion } from './flyingQuestions';
-import { evaluateFlyingAnswers, stripEmojis } from './flyingEngine';
+import { stripEmojis } from './flyingEngine';
 import { FlyingSkyWorld } from './FlyingSkyWorld';
 import { GhostAvatar, getTierDisplayLabel } from './GhostAvatar';
 import {
@@ -67,62 +66,18 @@ export const FlyingMobileView: React.FC = () => {
   const [hasSubmittedThisRound, setHasSubmittedThisRound] = useState<boolean>(false);
   const [submittedAnswer, setSubmittedAnswer] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState<number>(6);
 
   const mergedContestants =
     realtimeContestants.length > 0
       ? realtimeContestants
       : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv');
 
-  const syncState = useCallback(
-    (newState: FlyingRoomState) => {
-      stateRef.current = newState;
-      setFlyingState(newState);
-      savePersistedFlyingState(roomCode, newState);
-      roomBus.safeBroadcast(roomCode, 'FLYING_STATE_SYNC', newState);
-    },
-    [roomCode]
-  );
-
-  // Start a question round
-  const startQuestionRound = useCallback(
-    (roundNum: number, usedIds: string[]) => {
-      sound.playClick();
-      const question = getRandomFlyingQuestion(usedIds);
-      const nextUsed = [...usedIds, question.id];
-
-      const nextState: FlyingRoomState = {
-        ...stateRef.current,
-        phase: 'QUESTION',
-        roundNumber: roundNum,
-        currentQuestion: question,
-        usedQuestionIds: nextUsed,
-        timerSeconds: ROUND_TIME,
-        roundStartedAt: Date.now(),
-        submissions: {},
-        results: {},
-        activeSpotlightIndex: 0,
-        cameraMode: 'spotlight',
-        readyPlayersNextRound: [],
-      };
-
-      setHasSubmittedThisRound(false);
-      setAnswerInput('');
-      setSubmittedAnswer('');
-      syncState(nextState);
-    },
-    [syncState]
-  );
-
   const handleStartGame = useCallback(() => {
     sound.playVictory();
-    const freshState: FlyingRoomState = {
-      ...createInitialFlyingState(roomCode),
-      cumulativeMeters: {},
-    };
-    stateRef.current = freshState;
-    startQuestionRound(1, []);
-  }, [roomCode, startQuestionRound]);
+    // Signal TV host to start game
+    roomBus.safeBroadcast(roomCode, 'GAME_STARTED', { roomCode });
+    roomBus.broadcast('GAME_STARTED', { roomCode });
+  }, [roomCode]);
 
   const handleReturnToLobby = useCallback(() => {
     sound.playClick();
@@ -143,99 +98,9 @@ export const FlyingMobileView: React.FC = () => {
     roomBus.broadcastReturnToLobby(roomCode);
   }, [roomCode]);
 
-  // Execute AI Evaluation when acting as Player-Host
-  const executeEvaluation = useCallback(
-    async (overrideSubmissions?: Record<string, FlyingSubmission>) => {
-      const curr = stateRef.current;
-      if (curr.phase === 'CALCULATING' || curr.phase === 'REVEALING') return;
-
-      sound.playTick();
-      const subs = overrideSubmissions || curr.submissions || {};
-      const calcState: FlyingRoomState = {
-        ...curr,
-        phase: 'CALCULATING',
-        submissions: subs,
-      };
-      syncState(calcState);
-
-      const submissionsList: FlyingSubmission[] = [];
-      const processedIds = new Set<string>();
-
-      const allContestants =
-        mergedContestants.length > 0
-          ? mergedContestants
-          : [{ id: playerId, name: playerName }];
-
-      // 1. Gather all connected contestants with resilient lookup (by ID, playerId, or name)
-      allContestants.forEach((c) => {
-        processedIds.add(c.id);
-        const sub =
-          subs[c.id] ||
-          Object.values(subs).find(
-            (s: any) =>
-              s.contestantId === c.id ||
-              s.playerId === c.id ||
-              (s.contestantName &&
-                c.name &&
-                s.contestantName.trim().toLowerCase() === c.name.trim().toLowerCase())
-          );
-
-        submissionsList.push({
-          contestantId: c.id,
-          contestantName: c.name,
-          answer: stripEmojis(sub?.answer || ''),
-          submittedAt: sub?.submittedAt || Date.now(),
-        });
-      });
-
-      // 2. Include any other submissions in subs
-      Object.values(subs).forEach((s: any) => {
-        const sId = s.contestantId || s.playerId || s.id;
-        if (sId && !processedIds.has(sId)) {
-          processedIds.add(sId);
-          submissionsList.push({
-            contestantId: sId,
-            contestantName: s.contestantName || s.playerName || 'متسابق',
-            answer: stripEmojis(s.answer || ''),
-            submittedAt: s.submittedAt || Date.now(),
-          });
-        }
-      });
-
-      const evaluatedResults = await evaluateFlyingAnswers(
-        curr.currentQuestion,
-        submissionsList,
-        curr.cumulativeMeters
-      );
-
-      const nextCumulative = { ...(curr.cumulativeMeters || {}) };
-      const resultMap: Record<string, FlyingContestantResult> = {};
-
-      evaluatedResults.forEach((res) => {
-        resultMap[res.contestantId] = res;
-        nextCumulative[res.contestantId] = res.newTotalMeters;
-      });
-
-      const revealingState: FlyingRoomState = {
-        ...curr,
-        phase: 'REVEALING',
-        submissions: subs,
-        results: resultMap,
-        cumulativeMeters: nextCumulative,
-        activeSpotlightIndex: 0,
-        cameraMode: 'spotlight',
-      };
-
-      syncState(revealingState);
-      roomBus.safeBroadcast(roomCode, 'FLYING_RESULTS_READY', {
-        results: resultMap,
-        roundNumber: curr.roundNumber,
-      });
-    },
-    [mergedContestants, playerId, playerName, roomCode, syncState]
-  );
-
-  // Question Timer Countdown (ticks locally for smooth display, executes evaluation if solo host)
+  // -------------------------------------------------------------
+  // Question Timer Countdown (Visual display only, evaluation is exclusive to TV Host)
+  // -------------------------------------------------------------
   useEffect(() => {
     if (flyingState.phase !== 'QUESTION') return;
 
@@ -244,9 +109,6 @@ export const FlyingMobileView: React.FC = () => {
         if (prev.phase !== 'QUESTION') return prev;
         if (prev.timerSeconds <= 1) {
           clearInterval(timer);
-          if (isPlayerHost) {
-            executeEvaluation();
-          }
           return { ...prev, timerSeconds: 0 };
         }
         const updated = { ...prev, timerSeconds: prev.timerSeconds - 1 };
@@ -256,89 +118,11 @@ export const FlyingMobileView: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isPlayerHost, flyingState.phase, executeEvaluation]);
+  }, [flyingState.phase]);
 
-  // Spotlight Camera Progression (runs when isPlayerHost is true during REVEALING)
-  useEffect(() => {
-    if (flyingState.phase !== 'REVEALING') return;
-
-    const activeIndex = flyingState.activeSpotlightIndex;
-    const contestantsList =
-      mergedContestants.length > 0
-        ? mergedContestants
-        : Object.keys(flyingState.results).map((id) => ({
-            id,
-            name: flyingState.results[id]?.contestantName || 'متسابق',
-          }));
-    const totalContestants = Math.max(1, contestantsList.length);
-
-    if (flyingState.cameraMode === 'spotlight') {
-      const activeContestant = contestantsList[activeIndex];
-      const res = activeContestant ? flyingState.results[activeContestant.id] : null;
-
-      if (res && res.roundMeters > 0) {
-        sound.playSuccess();
-      } else {
-        sound.playBuzz?.();
-      }
-
-      if (!isPlayerHost) return;
-
-      const advanceTimer = setTimeout(() => {
-        if (activeIndex + 1 < totalContestants) {
-          syncState({
-            ...stateRef.current,
-            activeSpotlightIndex: activeIndex + 1,
-            cameraMode: 'spotlight',
-          });
-        } else {
-          sound.playVictory();
-          syncState({
-            ...stateRef.current,
-            cameraMode: 'global_overview',
-          });
-          setAutoAdvanceSeconds(6);
-        }
-      }, 3600);
-
-      return () => clearTimeout(advanceTimer);
-    } else if (flyingState.cameraMode === 'global_overview' && isPlayerHost) {
-      const overviewTimer = setInterval(() => {
-        setAutoAdvanceSeconds((sec) => {
-          if (sec <= 1) {
-            clearInterval(overviewTimer);
-            if (flyingState.roundNumber >= flyingState.totalRounds) {
-              syncState({
-                ...stateRef.current,
-                phase: 'PODIUM',
-              });
-              sound.playVictory();
-            } else {
-              startQuestionRound(flyingState.roundNumber + 1, flyingState.usedQuestionIds);
-            }
-            return 0;
-          }
-          return sec - 1;
-        });
-      }, 1000);
-
-      return () => clearInterval(overviewTimer);
-    }
-  }, [
-    isPlayerHost,
-    flyingState.phase,
-    flyingState.activeSpotlightIndex,
-    flyingState.cameraMode,
-    flyingState.roundNumber,
-    flyingState.totalRounds,
-    flyingState.usedQuestionIds,
-    flyingState.results,
-    mergedContestants,
-    startQuestionRound,
-    syncState,
-  ]);
-
-  // Synchronize with TV host / other contestants
+  // -------------------------------------------------------------
+  // Realtime Socket Event Synchronizer
+  // -------------------------------------------------------------
   useEffect(() => {
     // 1. Direct New Round Event (Single Source of Truth from TV Host)
     const unsubNewRound = roomBus.on('FLYING_NEW_ROUND', (evt: any) => {
@@ -375,7 +159,45 @@ export const FlyingMobileView: React.FC = () => {
       setIsSubmitting(false);
     });
 
-    // 2. Full State Sync
+    // 2. AI Evaluation Notification from TV
+    const unsubEvaluating = roomBus.on('FLYING_EVALUATING', (evt: any) => {
+      const incomingCode = evt?.roomCode;
+      if (incomingCode && incomingCode !== roomCode) return;
+      setFlyingState((prev) => ({
+        ...prev,
+        phase: 'CALCULATING',
+      }));
+    });
+
+    // 3. Results Ready from TV Host
+    const handleResultsEvent = (evt: any) => {
+      const incomingCode = evt?.roomCode;
+      const payload = evt?.data ?? evt;
+      if (incomingCode && incomingCode !== roomCode) return;
+      if (!payload?.results) return;
+
+      sound.playSuccess?.();
+      const nextCumulative =
+        payload.cumulativeMeters || stateRef.current.cumulativeMeters || {};
+
+      const nextState: FlyingRoomState = {
+        ...stateRef.current,
+        phase: 'REVEALING',
+        results: payload.results,
+        cumulativeMeters: nextCumulative,
+        activeSpotlightIndex: payload.activeSpotlightIndex ?? 0,
+        cameraMode: payload.cameraMode ?? 'spotlight',
+      };
+
+      stateRef.current = nextState;
+      setFlyingState(nextState);
+      savePersistedFlyingState(roomCode, nextState);
+    };
+
+    const unsubRoundResults = roomBus.on('FLYING_ROUND_RESULTS', handleResultsEvent);
+    const unsubResultsReady = roomBus.on('FLYING_RESULTS_READY', handleResultsEvent);
+
+    // 4. Full State Sync from TV Host
     const unsubSync = roomBus.on('FLYING_STATE_SYNC', (evt: any) => {
       const incomingCode = evt?.roomCode;
       const payload: FlyingRoomState = evt?.data ?? evt;
@@ -411,7 +233,7 @@ export const FlyingMobileView: React.FC = () => {
       }
     });
 
-    // 3. Game Over / Podium Event
+    // 5. Game Over / Final Podium Event
     const unsubGameOver = roomBus.on('FLYING_GAME_OVER', (evt: any) => {
       const incomingCode = evt?.roomCode;
       const payload = evt?.data ?? evt;
@@ -424,114 +246,38 @@ export const FlyingMobileView: React.FC = () => {
       }));
     });
 
-    const unsubGameStarted = roomBus.on('GAME_STARTED', (evt: any) => {
-      const incomingCode = evt?.roomCode;
-      if (incomingCode && incomingCode !== roomCode) return;
-      // Only solo host without TV starts game locally
-      if (isPlayerHost && stateRef.current.phase === 'LOBBY') {
-        const hasTv = (activeRoom?.players || []).some(
-          (p) => p.id === 'host_tv' || (p as any).role === 'tv'
-        );
-        if (!hasTv) {
-          handleStartGame();
-        }
-      }
-    });
-
-    const unsubAnswer = roomBus.on('FLYING_SUBMIT_ANSWER', (evt: any) => {
-      if (!isPlayerHost) return;
-      const incomingCode = evt?.roomCode;
-      const payload = evt?.data ?? evt;
-      if (incomingCode && incomingCode !== roomCode) return;
-      if (!payload) return;
-
-      const contestantId = String(payload.contestantId || payload.playerId || payload.id || '');
-      if (!contestantId) return;
-
-      const contestantName = String(payload.contestantName || payload.playerName || payload.name || 'متسابق');
-      const rawAnswer = payload.answer !== undefined ? payload.answer : payload.text !== undefined ? payload.text : payload.rawAnswer;
-      const answer = stripEmojis(String(rawAnswer || '').trim());
-
-      const curr = stateRef.current;
-      if (curr.phase !== 'QUESTION') return;
-
-      const newSub: FlyingSubmission = {
-        contestantId,
-        contestantName,
-        answer,
-        submittedAt: payload.submittedAt || Date.now(),
-      };
-
-      const updatedSubmissions = {
-        ...curr.submissions,
-        [contestantId]: newSub,
-      };
-
-      const updatedState: FlyingRoomState = {
-        ...curr,
-        submissions: updatedSubmissions,
-      };
-
-      stateRef.current = updatedState;
-      setFlyingState(updatedState);
-      savePersistedFlyingState(roomCode, updatedState);
-
-      const connectedCount = Math.max(1, mergedContestants.length);
-      const submittedCount = Object.keys(updatedSubmissions).length;
-      if (submittedCount >= connectedCount) {
-        executeEvaluation(updatedSubmissions);
-      } else {
-        syncState(updatedState);
-      }
-    });
-
-    const unsubResults = roomBus.on('FLYING_RESULTS_READY', (evt: any) => {
-      const incomingCode = evt?.roomCode;
-      const payload = evt?.data ?? evt;
-      if (incomingCode && incomingCode !== roomCode) return;
-      if (payload?.results) {
-        setFlyingState((prev) => ({
-          ...prev,
-          phase: 'REVEALING',
-          results: payload.results,
-        }));
-      }
-    });
-
+    // 6. Return to Lobby Event
     const unsubReturn = roomBus.on('RETURN_TO_LOBBY', (evt: any) => {
       const incomingCode = evt?.roomCode;
       if (incomingCode && incomingCode !== roomCode) return;
-      setFlyingState((prev) => ({
-        ...prev,
+      const lobbyState: FlyingRoomState = {
+        ...createInitialFlyingState(roomCode),
         phase: 'LOBBY',
+        cumulativeMeters: {},
         submissions: {},
         results: {},
-      }));
+      };
+      stateRef.current = lobbyState;
+      setFlyingState(lobbyState);
       setHasSubmittedThisRound(false);
       setAnswerInput('');
+      setSubmittedAnswer('');
     });
 
     return () => {
       unsubNewRound?.();
+      unsubEvaluating?.();
+      unsubRoundResults?.();
+      unsubResultsReady?.();
       unsubSync?.();
       unsubGameOver?.();
-      unsubGameStarted?.();
-      unsubAnswer?.();
-      unsubResults?.();
       unsubReturn?.();
     };
-  }, [
-    roomCode,
-    playerId,
-    isPlayerHost,
-    activeRoom?.players,
-    mergedContestants.length,
-    executeEvaluation,
-    handleStartGame,
-    syncState,
-  ]);
+  }, [roomCode, playerId]);
 
-  // Submit Answer
+  // -------------------------------------------------------------
+  // Submit Answer (Pure socket broadcast, no local AI evaluation)
+  // -------------------------------------------------------------
   const handleSubmitAnswer = (e: React.FormEvent) => {
     e.preventDefault();
     const clean = stripEmojis(answerInput.trim());
@@ -557,7 +303,7 @@ export const FlyingMobileView: React.FC = () => {
       roomCode,
     };
 
-    // Broadcast across all socket channels for guaranteed arrival
+    // Broadcast across socket channels for arrival at TV Host
     roomBus.broadcast('FLYING_SUBMIT_ANSWER', submitPayload);
     roomBus.safeBroadcast(roomCode, 'FLYING_SUBMIT_ANSWER', submitPayload);
     roomBus.emit('FLYING_SUBMIT_ANSWER', roomCode, submitPayload);
@@ -565,67 +311,48 @@ export const FlyingMobileView: React.FC = () => {
       (roomBus as any).broadcastFlyingAnswer(roomCode, submitPayload);
     }
 
-    if (isPlayerHost) {
-      const curr = stateRef.current;
-      const updatedSubmissions = {
-        ...curr.submissions,
+    setFlyingState((prev) => ({
+      ...prev,
+      submissions: {
+        ...prev.submissions,
         [playerId]: mySubmission,
-      };
-      const updatedState: FlyingRoomState = {
-        ...curr,
-        submissions: updatedSubmissions,
-      };
-      stateRef.current = updatedState;
-      setFlyingState(updatedState);
-      savePersistedFlyingState(roomCode, updatedState);
-
-      const connectedCount = Math.max(1, mergedContestants.length);
-      const submittedCount = Object.keys(updatedSubmissions).length;
-      if (submittedCount >= connectedCount) {
-        setTimeout(() => {
-          executeEvaluation(updatedSubmissions);
-        }, 300);
-      } else {
-        syncState(updatedState);
-      }
-    }
+      },
+    }));
 
     setTimeout(() => {
       setIsSubmitting(false);
-    }, 400);
+    }, 300);
   };
 
   const myResult: FlyingContestantResult | undefined = flyingState.results[playerId];
   const myTotalMeters = flyingState.cumulativeMeters[playerId] || 0;
   const q = flyingState.currentQuestion;
-  const myColorIndex = Math.max(
-    0,
-    mergedContestants.findIndex((c) => c.id === playerId)
-  );
 
   // -------------------------------------------------------------
   // 1. Lobby Phase
   // -------------------------------------------------------------
   if (flyingState.phase === 'LOBBY') {
     return (
-      <UnifiedShabahLobby
-        roomCode={roomCode}
-        gameId="ai-flying"
-        gameTitle="الشبح الطائر"
-        role="contestant"
-        isPlayerHost={isPlayerHost}
-        currentPlayerId={playerId}
-        onStartGame={handleStartGame}
-        onExit={() => {
-          roomBus.leavePlayer(roomCode, playerId);
-          navigate('/');
-        }}
-      />
+      <div dir="rtl" className="min-h-screen w-full bg-[#030712] select-none overflow-hidden pixel-art">
+        <UnifiedShabahLobby
+          roomCode={roomCode}
+          gameId="ai-flying"
+          gameTitle="الشبح الطائر"
+          role="contestant"
+          isPlayerHost={isPlayerHost}
+          currentPlayerId={playerId}
+          onStartGame={handleStartGame}
+          onExit={() => {
+            roomBus.leavePlayer(roomCode, playerId);
+            navigate('/');
+          }}
+        />
+      </div>
     );
   }
 
   // -------------------------------------------------------------
-  // 2. Podium Phase (Clean Flat Design, Zero Emojis)
+  // 2. Podium Phase (16-Bit Retro Pixel Arcade)
   // -------------------------------------------------------------
   if (flyingState.phase === 'PODIUM') {
     const ranked = getRankedFlyingContestants(
@@ -640,23 +367,23 @@ export const FlyingMobileView: React.FC = () => {
     return (
       <div
         dir="rtl"
-        className="min-h-screen min-h-[100dvh] w-full bg-[#090D16] text-white flex flex-col justify-between p-6 select-none overflow-hidden"
+        className="min-h-screen min-h-[100dvh] w-full bg-[#070B14] text-white flex flex-col justify-between p-5 select-none overflow-hidden pixel-art font-sans"
       >
         <header className="flex flex-col items-center text-center gap-2 pt-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-amber-400 text-black border-2 border-black font-sans text-xs font-black">
+          <div className="pixel-box bg-amber-400 text-black border-2 border-black px-3.5 py-1 font-mono text-xs font-black tracking-wider flex items-center gap-2">
             <Trophy className="w-4 h-4 text-black" />
             <span>النتائج النهائية</span>
           </div>
-          <h1 className="font-sans font-black text-2xl sm:text-3xl text-white">
+          <h1 className="font-mono font-black text-2xl sm:text-3xl text-white tracking-wide">
             أبطال الشبح الطائر
           </h1>
-          <p className="text-zinc-400 text-xs sm:text-sm font-bold">
-            الترتيب النهائي بعد 5 جولات
+          <p className="text-zinc-400 text-xs font-mono">
+            الترتيب النهائي بعد {flyingState.totalRounds} جولات
           </p>
         </header>
 
-        {/* Podium Display */}
-        <div className="w-full max-w-lg mx-auto flex items-end justify-center gap-3 my-auto pt-6 pb-4">
+        {/* 16-Bit Stepped Pixel Podium */}
+        <div className="w-full max-w-sm mx-auto flex items-end justify-center gap-3 my-auto pt-6 pb-4">
           {second && (
             <div className="flex-1 flex flex-col items-center">
               <GhostAvatar
@@ -665,8 +392,9 @@ export const FlyingMobileView: React.FC = () => {
                 totalMeters={second.totalMeters}
                 size="sm"
               />
-              <div className="w-full h-24 rounded-t-xl bg-zinc-800 border-2 border-black flex items-center justify-center text-white font-black text-2xl mt-2">
-                2
+              <div className="w-full h-24 bg-zinc-700 border-4 border-black flex flex-col items-center justify-center text-white font-mono font-black mt-2 shadow-[4px_4px_0px_#000]">
+                <span className="text-2xl">2</span>
+                <span className="text-[10px] text-zinc-300">{second.totalMeters}م</span>
               </div>
             </div>
           )}
@@ -679,8 +407,9 @@ export const FlyingMobileView: React.FC = () => {
                 totalMeters={first.totalMeters}
                 size="md"
               />
-              <div className="w-full h-36 rounded-t-xl bg-amber-400 border-2 border-black flex items-center justify-center text-black font-black text-3xl mt-2">
-                1
+              <div className="w-full h-36 bg-amber-400 border-4 border-black flex flex-col items-center justify-center text-black font-mono font-black mt-2 shadow-[4px_4px_0px_#000]">
+                <span className="text-3xl">1</span>
+                <span className="text-xs text-black font-bold">{first.totalMeters}م</span>
               </div>
             </div>
           )}
@@ -693,19 +422,20 @@ export const FlyingMobileView: React.FC = () => {
                 totalMeters={third.totalMeters}
                 size="sm"
               />
-              <div className="w-full h-18 rounded-t-xl bg-orange-600 border-2 border-black flex items-center justify-center text-white font-black text-2xl mt-2">
-                3
+              <div className="w-full h-18 bg-amber-700 border-4 border-black flex flex-col items-center justify-center text-white font-mono font-black mt-2 shadow-[4px_4px_0px_#000]">
+                <span className="text-2xl">3</span>
+                <span className="text-[10px] text-amber-200">{third.totalMeters}م</span>
               </div>
             </div>
           )}
         </div>
 
-        <footer className="flex items-center justify-center gap-3 w-full max-w-md mx-auto">
+        <footer className="flex items-center justify-center gap-3 w-full max-w-sm mx-auto">
           {isPlayerHost && (
             <button
               type="button"
               onClick={handleStartGame}
-              className="flex-1 py-3.5 px-4 rounded-xl font-black text-sm text-black bg-white border-2 border-black active:scale-95 transition-transform flex items-center justify-center gap-2 cursor-pointer"
+              className="flex-1 py-3 px-4 font-mono font-black text-xs uppercase tracking-wider text-black bg-amber-400 border-4 border-black shadow-[4px_4px_0px_#000] active:translate-x-1 active:translate-y-1 active:shadow-none transition-none flex items-center justify-center gap-2 cursor-pointer"
             >
               <RotateCcw className="w-4 h-4" />
               <span>جولة جديدة</span>
@@ -714,7 +444,7 @@ export const FlyingMobileView: React.FC = () => {
           <button
             type="button"
             onClick={isPlayerHost ? handleReturnToLobby : () => navigate('/')}
-            className="flex-1 py-3.5 px-4 rounded-xl bg-zinc-900 border-2 border-zinc-700 font-black text-sm text-white active:scale-95 transition-transform flex items-center justify-center gap-2 cursor-pointer"
+            className="flex-1 py-3 px-4 bg-[#111827] border-4 border-black shadow-[4px_4px_0px_#000] active:translate-x-1 active:translate-y-1 active:shadow-none transition-none font-mono font-black text-xs uppercase tracking-wider text-white flex items-center justify-center gap-2 cursor-pointer"
           >
             <ArrowRight className="w-4 h-4" />
             <span>{isPlayerHost ? 'العودة للوبي' : 'خروج للرئيسية'}</span>
@@ -725,44 +455,47 @@ export const FlyingMobileView: React.FC = () => {
   }
 
   // -------------------------------------------------------------
-  // 3. Question Answering Phase (No Hints, Zero Emojis, Flat Style)
+  // 3. Question Answering Phase (16-Bit Pixel Aesthetic)
   // -------------------------------------------------------------
   if (flyingState.phase === 'QUESTION' || flyingState.phase === 'CALCULATING') {
     return (
       <div
         dir="rtl"
-        className="min-h-screen min-h-[100dvh] w-full bg-[#090D16] text-white flex flex-col justify-between p-5 select-none overflow-hidden"
+        className="min-h-screen min-h-[100dvh] w-full bg-[#070B14] text-white flex flex-col justify-between p-4 select-none overflow-hidden pixel-art font-sans"
       >
         {/* Top Header */}
-        <header className="w-full max-w-xl mx-auto flex items-center justify-between">
-          <span className="px-3.5 py-1.5 rounded-xl bg-white text-black border-2 border-black font-sans text-xs font-black">
-            السؤال {flyingState.roundNumber} من {flyingState.totalRounds}
-          </span>
+        <header className="w-full max-w-md mx-auto flex items-center justify-between">
+          <div className="pixel-box bg-[#151D2A] text-amber-400 px-3.5 py-1.5 font-mono text-xs font-black tracking-wider border-2 border-black">
+            الجولة {flyingState.roundNumber} / {flyingState.totalRounds}
+          </div>
 
-          <div className="px-3.5 py-1.5 rounded-xl bg-zinc-900 border-2 border-zinc-700 text-white font-mono text-xs font-black">
-            الارتفاع التراكمي: {myTotalMeters} متر
+          <div className="pixel-box bg-black text-emerald-400 px-3.5 py-1.5 font-mono text-xs font-black tracking-wider border-2 border-black">
+            الارتفاع: {myTotalMeters}م
           </div>
         </header>
 
-        {/* Main Content Card (Question Only, No Hints) */}
-        <main className="w-full max-w-xl mx-auto flex flex-col my-auto py-4">
+        {/* Main Content Card */}
+        <main className="w-full max-w-md mx-auto flex flex-col my-auto py-2">
           {flyingState.phase === 'CALCULATING' ? (
-            <div className="bg-white text-black border-4 border-black rounded-3xl p-8 flex flex-col items-center text-center">
-              <div className="w-14 h-14 rounded-full border-4 border-zinc-300 border-t-black animate-spin mb-5" />
-              <h2 className="font-sans font-black text-xl sm:text-2xl text-black mb-2">
-                جاري تقييم ندرة الإجابات وحساب الأمتار
+            <div className="pixel-box bg-[#111827] text-white border-4 border-black p-6 sm:p-8 flex flex-col items-center text-center">
+              <div className="w-12 h-12 border-4 border-amber-400 border-t-black animate-spin mb-5" />
+              <div className="inline-block px-3 py-1 bg-amber-400 text-black font-mono font-black text-xs tracking-wider mb-3 border-2 border-black">
+                جاري التحكيم الذكي
+              </div>
+              <h2 className="font-mono font-black text-lg sm:text-xl text-white mb-2">
+                فحص ندرة الإجابات بالأمتار
               </h2>
-              <p className="text-zinc-600 font-bold text-xs sm:text-sm">
-                يتم الآن فحص الإجابات المتكررة وتجهيز الطيران
+              <p className="text-zinc-400 font-mono text-xs leading-relaxed">
+                يتم الآن رصد الإجابات المتطابقة وتحديد ارتفاع الأشباح في سماء الرياض
               </p>
             </div>
           ) : (
-            <div className="bg-white text-black border-4 border-black rounded-3xl p-6 flex flex-col items-center text-center">
-              <span className="px-3.5 py-1 rounded-lg bg-zinc-900 text-white text-xs font-black mb-4">
+            <div className="pixel-box bg-[#111827] text-white border-4 border-black p-5 sm:p-6 flex flex-col items-center text-center">
+              <span className="px-3 py-1 bg-amber-400 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider mb-4">
                 {q.category}
               </span>
 
-              <h2 className="font-sans font-black text-xl sm:text-2xl text-black leading-snug mb-6">
+              <h2 className="font-mono font-black text-lg sm:text-xl text-white leading-relaxed mb-6">
                 {q.title}
               </h2>
 
@@ -774,50 +507,40 @@ export const FlyingMobileView: React.FC = () => {
                     onChange={(e) => setAnswerInput(e.target.value)}
                     placeholder="اكتب إجابتك هنا..."
                     maxLength={60}
-                    className="w-full py-4 px-5 rounded-xl bg-zinc-100 border-2 border-black text-black font-sans font-black text-center text-base placeholder:text-zinc-500 focus:outline-none focus:bg-white"
+                    className="w-full py-3.5 px-4 bg-[#070B14] border-4 border-black text-amber-300 font-mono font-black text-center text-base placeholder:text-zinc-600 focus:outline-none focus:border-amber-400"
                     autoFocus
                   />
 
                   <button
                     type="submit"
                     disabled={!answerInput.trim() || isSubmitting}
-                    className={`w-full py-4 rounded-xl font-black text-base transition-transform active:scale-95 border-2 border-black flex items-center justify-center cursor-pointer ${
+                    className={`w-full py-3.5 font-mono font-black text-sm uppercase tracking-wider border-4 border-black transition-none cursor-pointer ${
                       answerInput.trim() && !isSubmitting
-                        ? 'bg-[#10B981] text-black'
-                        : 'bg-zinc-300 text-zinc-600 cursor-not-allowed'
+                        ? 'bg-amber-400 text-black shadow-[4px_4px_0px_#000] active:translate-x-1 active:translate-y-1 active:shadow-none'
+                        : 'bg-zinc-800 text-zinc-600 border-zinc-950 cursor-not-allowed shadow-none'
                     }`}
                   >
-                    تأكيد الإجابة
+                    إرسال الإجابة
                   </button>
                 </form>
               ) : (
-                <div className="w-full py-5 flex flex-col items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-[#10B981] border-2 border-black flex items-center justify-center text-black">
+                <div className="w-full py-4 flex flex-col items-center gap-3">
+                  <div className="w-12 h-12 bg-emerald-400 border-4 border-black flex items-center justify-center text-black">
                     <CheckCircle2 className="w-7 h-7" />
                   </div>
 
                   <div>
-                    <h3 className="font-sans font-black text-lg text-black mb-1">
-                      تم تثبيت إجابتك بنجاح
+                    <h3 className="font-mono font-black text-base text-emerald-400 mb-1">
+                      تم اعتماد إجابتك
                     </h3>
-                    <p className="text-xs text-zinc-600 font-bold">
-                      بانتظار انتهاء الوقت أو إجابة بقية المتسابقين
+                    <p className="text-xs font-mono text-zinc-400">
+                      بانتظار انتهاء الوقت وحساب النتيجة من شاشة التلفزيون
                     </p>
                   </div>
 
-                  <div className="px-5 py-2.5 rounded-xl bg-zinc-100 border-2 border-black text-black font-sans font-black text-base mt-1">
+                  <div className="px-4 py-2 bg-[#070B14] border-2 border-black text-white font-mono font-bold text-sm mt-1 max-w-full truncate">
                     "{submittedAnswer}"
                   </div>
-
-                  {isPlayerHost && (
-                    <button
-                      type="button"
-                      onClick={() => executeEvaluation()}
-                      className="mt-2 px-4 py-2 rounded-xl bg-black text-white border-2 border-black text-xs font-black cursor-pointer"
-                    >
-                      إنهاء الوقت وبدء الطيران
-                    </button>
-                  )}
                 </div>
               )}
             </div>
@@ -825,9 +548,9 @@ export const FlyingMobileView: React.FC = () => {
         </main>
 
         {/* Footer Countdown */}
-        <footer className="w-full flex items-center justify-center">
-          <div className="flex items-center gap-2 text-xs font-mono font-black text-white bg-zinc-900 px-4 py-2 rounded-xl border-2 border-zinc-700">
-            <Clock className="w-4 h-4 text-white" />
+        <footer className="w-full flex items-center justify-center pb-2">
+          <div className="pixel-box bg-[#111827] text-white px-4 py-2 border-2 border-black flex items-center gap-2 font-mono text-xs font-black">
+            <Clock className="w-4 h-4 text-amber-400" />
             <span>الوقت المتبقي: {flyingState.timerSeconds} ثانية</span>
           </div>
         </footer>
@@ -836,7 +559,7 @@ export const FlyingMobileView: React.FC = () => {
   }
 
   // -------------------------------------------------------------
-  // 4. Revealing Phase: Vertical City-to-Sky World + Personal Summary
+  // 4. Revealing Phase: 16-Bit Pixel Sky World + Summary Card
   // -------------------------------------------------------------
   const contestantsList =
     mergedContestants.length > 0
@@ -851,9 +574,9 @@ export const FlyingMobileView: React.FC = () => {
   return (
     <div
       dir="rtl"
-      className="h-screen max-h-screen w-full bg-[#0F172A] text-white flex flex-col justify-between overflow-hidden relative select-none"
+      className="h-screen max-h-screen w-full bg-[#070B14] text-white flex flex-col justify-between overflow-hidden relative select-none pixel-art"
     >
-      {/* Vertical World & Camera Choreography */}
+      {/* 16-Bit Vertical Skyline World & Ghost Sprites */}
       <div className="absolute inset-0">
         <FlyingSkyWorld
           contestants={contestantsList}
@@ -865,23 +588,23 @@ export const FlyingMobileView: React.FC = () => {
       </div>
 
       {/* Top Header */}
-      <header className="relative z-30 w-full max-w-xl mx-auto p-3 flex items-center justify-between">
-        <span className="px-3 py-1.5 rounded-xl bg-white text-black border-2 border-black font-sans text-xs font-black">
-          الجولة {flyingState.roundNumber} من {flyingState.totalRounds}
-        </span>
-        <span className="font-mono text-xs font-black text-white bg-black px-3 py-1.5 rounded-xl border-2 border-white">
-          الارتفاع الكلي: {myTotalMeters} متر
-        </span>
+      <header className="relative z-30 w-full max-w-md mx-auto p-3 flex items-center justify-between">
+        <div className="pixel-box bg-[#111827] text-amber-400 px-3 py-1.5 border-2 border-black font-mono text-xs font-black">
+          الجولة {flyingState.roundNumber} / {flyingState.totalRounds}
+        </div>
+        <div className="pixel-box bg-black text-emerald-400 px-3 py-1.5 border-2 border-black font-mono text-xs font-black">
+          الارتفاع الكلي: {myTotalMeters}م
+        </div>
       </header>
 
-      {/* Bottom Personal Summary & Host Advance Control */}
-      <footer className="relative z-30 w-full max-w-xl mx-auto p-3 flex flex-col gap-2">
+      {/* Bottom Personal Summary Card */}
+      <footer className="relative z-30 w-full max-w-md mx-auto p-3">
         {myResult && (
-          <div className="w-full bg-white text-black border-2 border-black rounded-2xl p-3 flex items-center justify-between gap-3">
+          <div className="pixel-box bg-[#111827] text-white border-4 border-black p-3.5 flex items-center justify-between gap-3 shadow-[4px_4px_0px_#000]">
             <div className="flex items-center gap-2.5 overflow-hidden">
               <div className="shrink-0">
                 <span
-                  className="px-2.5 py-1 rounded-lg border-2 border-black font-sans font-black text-xs inline-block"
+                  className="px-2.5 py-1 border-2 border-black font-mono font-black text-xs inline-block"
                   style={{
                     backgroundColor: myTierInfo.bgColor,
                     color: myTierInfo.textColor,
@@ -892,41 +615,18 @@ export const FlyingMobileView: React.FC = () => {
               </div>
               <div className="truncate">
                 <div className="flex items-center gap-2">
-                  <span className="font-sans font-black text-sm text-black truncate">
+                  <span className="font-mono font-black text-sm text-white truncate">
                     "{myResult.answer || 'بدون إجابة'}"
                   </span>
-                  <span className="font-mono text-xs font-black text-white bg-black px-2 py-0.5 rounded">
-                    +{myResult.roundMeters} متر
+                  <span className="font-mono text-xs font-black text-black bg-amber-400 px-2 py-0.5 border border-black shrink-0">
+                    +{myResult.roundMeters}م
                   </span>
                 </div>
-                <p className="text-[11px] font-bold text-zinc-700 truncate">
+                <p className="text-[11px] font-mono text-zinc-400 truncate">
                   {myResult.comment}
                 </p>
               </div>
             </div>
-
-            {isPlayerHost && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (flyingState.roundNumber >= flyingState.totalRounds) {
-                    syncState({ ...stateRef.current, phase: 'PODIUM' });
-                  } else {
-                    startQuestionRound(
-                      flyingState.roundNumber + 1,
-                      flyingState.usedQuestionIds
-                    );
-                  }
-                }}
-                className="px-4 py-2 rounded-xl bg-black text-white border-2 border-black font-black text-xs shrink-0 active:scale-95 transition-transform cursor-pointer"
-              >
-                {flyingState.roundNumber >= flyingState.totalRounds
-                  ? 'التتويج'
-                  : flyingState.cameraMode === 'global_overview'
-                  ? `التالي (${autoAdvanceSeconds}ث)`
-                  : 'تخطي'}
-              </button>
-            )}
           </div>
         )}
       </footer>
