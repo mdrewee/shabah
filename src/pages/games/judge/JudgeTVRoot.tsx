@@ -1,3 +1,4 @@
+import { useGameState } from '../../../hooks/useGameState';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useRoom, roomBus } from '../../../lib/roomBus';
@@ -24,7 +25,7 @@ import { JudgeFinalPodium } from './components/JudgeFinalPodium';
 import { Gavel, Clock, Scale } from 'lucide-react';
 import { toArabicNumber } from '../../../utils/numberFormat';
 
-export const JudgeTVRoot: React.FC = () => {
+export const JudgeTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; name: string }> }> = ({ mobileContestants }) => {
   const { code: rawCode } = useParams<{ code?: string }>();
   const navigate = useNavigate();
   const roomCode = (rawCode || 'SHBH').trim().toUpperCase();
@@ -33,41 +34,42 @@ export const JudgeTVRoot: React.FC = () => {
   const activeRoom = room || roomBus.getRoom(roomCode);
 
   // Realtime presence connection for Host TV
-  const { connectedPlayers: realtimeContestants } = useRoomSync({
-    roomCode,
+  const { connectedPlayers: realtimeContestants, hasPresenceSnapshot } = useRoomSync({
+    roomCode: mobileContestants ? '' : roomCode,
     role: 'host',
   });
 
-  const [judgeState, setJudgeState] = useState<JudgeRoomState>(() =>
+  const [judgeState, setJudgeState, stateRef] = useGameState<JudgeRoomState>(() =>
     createInitialJudgeState(roomCode)
   );
 
   // Batch Excuse Collection Map & Evaluation Guard
-  const [excusesMap, setExcusesMap] = useState<Record<string, { playerName: string; excuse: string }>>({});
-  const excusesMapRef = useRef(excusesMap);
+  const excusesMapRef = useRef<Record<string, { playerName: string; excuse: string }>>({});
   const isJudgingRef = useRef<boolean>(false);
 
-  useEffect(() => {
-    excusesMapRef.current = excusesMap;
-  }, [excusesMap]);
+  const analysisGeneration = useRef(0);
 
-  const stateRef = useRef(judgeState);
+  useEffect(() => roomBus.on('REQUEST_ROOM_STATE', () => {
+    roomBus.broadcastJudgeSync(roomCode, stateRef.current);
+  }, roomCode), [roomCode]);
   useEffect(() => {
     stateRef.current = judgeState;
     savePersistedJudgeState(roomCode, judgeState);
   }, [judgeState, roomCode]);
 
   // Merged connected contestants
-  const mergedContestants =
-    realtimeContestants.length > 0
+  const mergedContestants = mobileContestants ?? (
+    hasPresenceSnapshot || realtimeContestants.length > 0
       ? realtimeContestants
-      : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv');
+      : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv'));
 
   const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null);
 
   // Synchronize state to mobile contestants
   const syncState = useCallback(
     (newState: JudgeRoomState) => {
+      stateRef.current = newState;
+      stateRef.current = newState;
       setJudgeState(newState);
       roomBus.broadcastJudgeSync(roomCode, newState);
     },
@@ -79,7 +81,6 @@ export const JudgeTVRoot: React.FC = () => {
   // -------------------------------------------------------------
 
   const startRoundInput = useCallback(async () => {
-    setExcusesMap({});
     excusesMapRef.current = {};
     isJudgingRef.current = false;
 
@@ -93,6 +94,7 @@ export const JudgeTVRoot: React.FC = () => {
     const nextState: JudgeRoomState = {
       ...curr,
       phase: 'case_briefing',
+      briefingEndsAt: mobileContestants ? Date.now() + 4500 : undefined,
       roundNumber: 1,
       currentPredicament: activeCase,
       usedPredicamentIds: [activeCase.id],
@@ -110,6 +112,7 @@ export const JudgeTVRoot: React.FC = () => {
       currentCase: activeCase,
       roundNumber: 1,
       phase: 'case_briefing',
+      briefingEndsAt: mobileContestants ? Date.now() + 4500 : undefined,
       timestamp: Date.now(),
     });
   }, [syncState, roomCode]);
@@ -133,8 +136,9 @@ export const JudgeTVRoot: React.FC = () => {
   const executeJudging = useCallback(async () => {
     if (isJudgingRef.current) return;
     const curr = stateRef.current;
-    if (curr.phase === 'JUDGING' || curr.phase === 'COURTROOM_VERDICT') return;
+    if (!['defending', 'EXCUSE_INPUT', 'JUDGING'].includes(curr.phase)) return;
 
+    const generation = ++analysisGeneration.current;
     isJudgingRef.current = true;
     sound.playTick();
     const judgingState: JudgeRoomState = {
@@ -180,6 +184,7 @@ export const JudgeTVRoot: React.FC = () => {
       excuseArray
     );
 
+    if (generation !== analysisGeneration.current) return;
     const verdictsMap: Record<string, PlayerVerdict> = {};
     const updatedCumulative = { ...(curr.cumulativeScores || {}) };
     const updatedWorst = { ...(curr.worstExcuses || {}) };
@@ -224,6 +229,7 @@ export const JudgeTVRoot: React.FC = () => {
     syncState(anonymousState);
 
     setTimeout(() => {
+      if (generation !== analysisGeneration.current) return;
       const revealedState: JudgeRoomState = {
         ...stateRef.current,
         revealState: 'revealed',
@@ -233,9 +239,17 @@ export const JudgeTVRoot: React.FC = () => {
     }, 2500);
   }, [syncState, roomCode, mergedContestants]);
 
+  // A reload preserves the answers, but loses the in-flight request.
+  useEffect(() => {
+    if (judgeState.phase !== 'JUDGING') return;
+    const timer = window.setTimeout(() => { void executeJudging(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [judgeState.phase, executeJudging]);
+
+  useEffect(() => () => { ++analysisGeneration.current; isJudgingRef.current = false; }, []);
+
   const handleNextRound = useCallback(async () => {
     setAutoAdvanceCountdown(null);
-    setExcusesMap({});
     excusesMapRef.current = {};
     isJudgingRef.current = false;
 
@@ -259,6 +273,7 @@ export const JudgeTVRoot: React.FC = () => {
     const nextRoundState: JudgeRoomState = {
       ...curr,
       phase: 'case_briefing',
+      briefingEndsAt: mobileContestants ? Date.now() + 4500 : undefined,
       roundNumber: nextRoundNumber,
       currentPredicament: nextCase,
       usedPredicamentIds: [...(curr.usedPredicamentIds || []), nextCase.id],
@@ -276,15 +291,15 @@ export const JudgeTVRoot: React.FC = () => {
       currentCase: nextCase,
       roundNumber: nextRoundNumber,
       phase: 'case_briefing',
+      briefingEndsAt: mobileContestants ? Date.now() + 4500 : undefined,
       timestamp: Date.now(),
     });
   }, [syncState, roomCode]);
 
   const handleEndGame = useCallback(async () => {
-    try {
-      await roomBus.terminateRoom(roomCode, 'تم إنهاء الغرفة بواسطة المضيف');
-    } catch (err) {
-      console.warn('[JudgeTVRoot] terminateRoom error:', err);
+    if (!await roomBus.terminateRoom(roomCode)) {
+      alert('تعذر إنهاء الغرفة، حاول مرة أخرى');
+      return;
     }
     sessionStorage.clear();
     localStorage.removeItem('current_room_code');
@@ -293,7 +308,7 @@ export const JudgeTVRoot: React.FC = () => {
 
   const handleReturnToLobby = useCallback(() => {
     const nextState: JudgeRoomState = {
-      ...createInitialJudgeState(roomCode),
+      ...createInitialJudgeState(roomCode, true),
       phase: 'LOBBY',
     };
     roomBus.broadcastReturnToLobby(roomCode);
@@ -322,7 +337,7 @@ export const JudgeTVRoot: React.FC = () => {
 
             // 1-second grace period for auto-submitted network packets to arrive before Gemini batch request
             setTimeout(() => {
-              executeJudging();
+              if (stateRef.current.roundNumber === prev.roundNumber) executeJudging();
             }, 1000);
           }
           return { ...prev, timerSeconds: 0 };
@@ -345,41 +360,23 @@ export const JudgeTVRoot: React.FC = () => {
   // Realtime Broadcast Listeners
   // -------------------------------------------------------------
   useEffect(() => {
-    // Handler for incoming excuses (SUBMIT_EXCUSE & JUDGE_SUBMIT_EXCUSE)
+    // A delayed or repeated submission must not change the current round.
     const handleIncomingExcuse = (evt: any) => {
       const incomingCode = evt?.roomCode;
       const payload = evt?.data ?? evt;
       if (incomingCode && incomingCode !== roomCode) return;
-      if (!payload || !payload.playerId) return;
+      if (typeof payload?.playerId !== 'string' || typeof payload.excuse !== 'string') return;
 
       const curr = stateRef.current;
-      if (curr.phase !== 'defending' && curr.phase !== 'EXCUSE_INPUT') return;
+      if ((curr.phase !== 'defending' && curr.phase !== 'EXCUSE_INPUT') || payload.roundNumber !== curr.roundNumber) return;
 
       const playerId = payload.playerId;
+      if (Object.hasOwn(excusesMapRef.current, playerId) || Object.hasOwn(curr.excuses, playerId)) return;
       const playerName = payload.playerName || 'متهم';
       const excuse = (payload.excuse || '').trim();
 
-      setExcusesMap((prev) => {
-        const next = {
-          ...prev,
-          [playerId]: { playerName, excuse },
-        };
-        excusesMapRef.current = next;
-
-        // Trigger condition: All connected contestants submitted
-        const connectedPlayers = mergedContestants.filter((p) => p.id !== 'host_tv');
-        const targetCount = Math.max(1, connectedPlayers.length);
-        const submittedCount = Object.keys(next).length;
-
-        if (submittedCount >= targetCount && !isJudgingRef.current) {
-          // Delay briefly to allow any final state to settle, then execute batch
-          setTimeout(() => {
-            executeJudging();
-          }, 80);
-        }
-
-        return next;
-      });
+      const next = { ...excusesMapRef.current, [playerId]: { playerName, excuse } };
+      excusesMapRef.current = next;
 
       // Also keep judgeState.excuses synchronized for live UI indicators
       setJudgeState((prev) => ({
@@ -397,7 +394,6 @@ export const JudgeTVRoot: React.FC = () => {
     };
 
     const unsubJudgeExcuse = roomBus.on('JUDGE_SUBMIT_EXCUSE', handleIncomingExcuse);
-    const unsubSubmitExcuse = roomBus.on('SUBMIT_EXCUSE', handleIncomingExcuse);
 
     // 2. Inter-round Ready update
     const unsubReady = roomBus.on('PLAYER_READY_UPDATE', (evt: any) => {
@@ -426,7 +422,6 @@ export const JudgeTVRoot: React.FC = () => {
 
     return () => {
       unsubJudgeExcuse?.();
-      unsubSubmitExcuse?.();
       unsubReady?.();
     };
   }, [roomCode, mergedContestants, syncState, executeJudging]);
@@ -443,15 +438,13 @@ export const JudgeTVRoot: React.FC = () => {
     const connectedPlayers = mergedContestants.filter((p) => p.id !== 'host_tv');
     if (connectedPlayers.length === 0) return;
 
-    const submittedKeys = Object.keys(excusesMapRef.current);
-    const allSubmitted = connectedPlayers.every((c) => submittedKeys.includes(c.id));
-
-    if (allSubmitted && submittedKeys.length > 0) {
-      setTimeout(() => {
+    if (connectedPlayers.every((c) => Object.hasOwn(judgeState.excuses, c.id))) {
+      const timer = setTimeout(() => {
         executeJudging();
       }, 80);
+      return () => clearTimeout(timer);
     }
-  }, [mergedContestants, judgeState.phase, executeJudging]);
+  }, [mergedContestants, judgeState.phase, judgeState.excuses, executeJudging]);
 
   // -------------------------------------------------------------
   // 3-Second Auto-Advance Countdown when readyCount >= 2
@@ -495,6 +488,27 @@ export const JudgeTVRoot: React.FC = () => {
   // -------------------------------------------------------------
 
   // 1. Lobby View
+  useEffect(() => roomBus.on('GAME_STARTED', () => {
+    if (stateRef.current.phase === 'LOBBY') void startRoundInput();
+  }, roomCode), [roomCode, startRoundInput]);
+
+  useEffect(() => {
+    if (!mobileContestants || judgeState.phase !== 'case_briefing') return;
+    const timer = setTimeout(() => { void handleStartDefenseTimer(); }, Math.max(0, (judgeState.briefingEndsAt || Date.now() + 4500) - Date.now()));
+    return () => clearTimeout(timer);
+  }, [mobileContestants, judgeState.phase, handleStartDefenseTimer]);
+
+  useEffect(() => roomBus.on('RETURN_TO_LOBBY', () => {
+    ++analysisGeneration.current;
+    excusesMapRef.current = {};
+    isJudgingRef.current = false;
+    setAutoAdvanceCountdown(null);
+    const fresh = createInitialJudgeState(roomCode, true);
+    syncState(fresh);
+  }, roomCode), [roomCode, syncState]);
+
+  if (mobileContestants) return null;
+
   if (judgeState.phase === 'LOBBY') {
     return (
       <UnifiedShabahLobby
@@ -502,7 +516,6 @@ export const JudgeTVRoot: React.FC = () => {
         gameId="ai-judge"
         gameTitle="الشبح القاضي"
         role="host"
-        onStartGame={startRoundInput}
       />
     );
   }

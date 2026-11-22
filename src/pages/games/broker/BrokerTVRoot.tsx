@@ -1,3 +1,4 @@
+import { useGameState } from '../../../hooks/useGameState';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useRoom, roomBus } from '../../../lib/roomBus';
@@ -20,7 +21,7 @@ import { BrokerRoundWinner } from './components/BrokerRoundWinner';
 import { BrokerFinalPodium } from './components/BrokerFinalPodium';
 import { ShabahMood } from '../../../components/mascot/ShabahGhost';
 
-export const BrokerTVRoot: React.FC = () => {
+export const BrokerTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; name: string }> }> = ({ mobileContestants }) => {
   const { code: rawCode } = useParams<{ code?: string }>();
   const navigate = useNavigate();
   const roomCode = (rawCode || 'SHBH').trim().toUpperCase();
@@ -29,16 +30,19 @@ export const BrokerTVRoot: React.FC = () => {
   const activeRoom = room || roomBus.getRoom(roomCode);
 
   // Stable Supabase Realtime presence connection for TV Host
-  const { connectedPlayers: realtimeContestants } = useRoomSync({
-    roomCode,
+  const { connectedPlayers: realtimeContestants, hasPresenceSnapshot } = useRoomSync({
+    roomCode: mobileContestants ? '' : roomCode,
     role: 'host',
   });
 
-  const [brokerState, setBrokerState] = useState<BrokerRoomState>(() =>
+  const [brokerState, setBrokerState, brokerStateRef] = useGameState<BrokerRoomState>(() =>
     createInitialBrokerState(roomCode)
   );
 
-  const brokerStateRef = useRef(brokerState);
+
+  useEffect(() => roomBus.on('REQUEST_ROOM_STATE', () => {
+    roomBus.broadcastBrokerSync(roomCode, brokerStateRef.current);
+  }, roomCode), [roomCode]);
   useEffect(() => {
     brokerStateRef.current = brokerState;
     savePersistedBrokerState(roomCode, brokerState);
@@ -49,10 +53,10 @@ export const BrokerTVRoot: React.FC = () => {
   const [mascotMood, setMascotMood] = useState<ShabahMood>('judging');
 
   // Merged connected contestants
-  const mergedContestants =
-    realtimeContestants.length > 0
+  const mergedContestants = mobileContestants ?? (
+    hasPresenceSnapshot || realtimeContestants.length > 0
       ? realtimeContestants
-      : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv');
+      : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv'));
 
   const mergedContestantsRef = useRef(mergedContestants);
   useEffect(() => {
@@ -212,7 +216,7 @@ export const BrokerTVRoot: React.FC = () => {
     });
 
     // Listen for mobile host starting the game
-    const unsubHostStart = roomBus.on('HOST_START_GAME', () => {
+    const unsubHostStart = roomBus.on('GAME_STARTED', () => {
       if (brokerStateRef.current.phase === 'LOBBY') {
         handleStartGame();
       }
@@ -229,21 +233,20 @@ export const BrokerTVRoot: React.FC = () => {
   useEffect(() => {
     if (brokerState.phase !== 'NEGOTIATION') return;
 
-    setTimerSeconds(180);
-
-    const interval = window.setInterval(() => {
-      setTimerSeconds((prev) => {
-        if (prev <= 1) {
-          window.clearInterval(interval);
-          handleRoundTimeout();
-          return 0;
-        }
-        if (prev === 11) {
-          sound.playTimerWarning?.();
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    const endsAt = brokerState.roundEndsAt || Date.now() + Math.max(0, brokerState.timerSeconds) * 1000;
+    const tick = () => {
+      const current = brokerStateRef.current;
+      if (current.phase !== 'NEGOTIATION') return;
+      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+      setTimerSeconds(remaining);
+      const next = { ...current, timerSeconds: remaining, roundEndsAt: endsAt };
+      setBrokerState(next);
+      roomBus.broadcastBrokerSync(roomCode, next);
+      if (remaining === 10) sound.playTimerWarning?.();
+      if (remaining === 0) handleRoundTimeout();
+    };
+    const interval = window.setInterval(tick, 1000);
+    tick();
 
     return () => window.clearInterval(interval);
   }, [brokerState.phase, brokerState.roundNumber]);
@@ -251,6 +254,7 @@ export const BrokerTVRoot: React.FC = () => {
   // Round Negotiation Timeout -> Evaluate Winner & Advance to ROUND_WINNER
   const handleRoundTimeout = () => {
     const cur = brokerStateRef.current;
+    if (cur.phase !== 'NEGOTIATION') return;
     const ranked = sortAndRankContestants(cur.contestantBids);
 
     if (ranked.length > 0) {
@@ -353,6 +357,8 @@ export const BrokerTVRoot: React.FC = () => {
     const nextState: BrokerRoomState = {
       ...cur,
       phase: 'NEGOTIATION',
+      roundEndsAt: Date.now() + 180000,
+      timerSeconds: 180,
       announcements: [
         ...cur.announcements,
         {
@@ -429,28 +435,39 @@ export const BrokerTVRoot: React.FC = () => {
 
   const handleReturnToLobby = () => {
     sound.playClick();
-    const nextState: BrokerRoomState = {
-      ...brokerState,
-      phase: 'LOBBY',
-      roundNumber: 1,
-      winnerId: null,
-      winnerName: null,
-      winningBid: null,
-      winningQuote: null,
-    };
+    const nextState = createInitialBrokerState(roomCode, true);
     setBrokerState(nextState);
     roomBus.broadcastReturnToLobby(roomCode);
     roomBus.broadcastBrokerSync(roomCode, nextState);
   };
 
-  const handleExit = () => {
+  const handleExit = async () => {
     sound.playClick();
-    roomBus.emit('ROOM_CLOSED', roomCode, { reason: 'HOST_CLOSED' });
-    roomBus.emit('ROOM_TERMINATED', roomCode, { reason: 'HOST_CLOSED' });
-    navigate('/');
+    if (await roomBus.terminateRoom(roomCode)) navigate('/');
+    else alert('تعذر إنهاء الغرفة، حاول مرة أخرى');
   };
 
   // Phase 1: Lobby View
+  useEffect(() => roomBus.on('BROKER_STATE_SYNC', (event) => {
+    brokerStateRef.current = event.data;
+    setBrokerState(event.data);
+  }, roomCode), [roomCode]);
+
+  useEffect(() => roomBus.on('RETURN_TO_LOBBY', () => {
+    const fresh = createInitialBrokerState(roomCode, true);
+    brokerStateRef.current = fresh;
+    setBrokerState(fresh);
+    roomBus.broadcastBrokerSync(roomCode, fresh);
+  }, roomCode), [roomCode]);
+
+  useEffect(() => {
+    if (!mobileContestants || brokerState.phase !== 'SHOWCASE') return;
+    const timer = setTimeout(handleShowcaseComplete, 10000);
+    return () => clearTimeout(timer);
+  }, [mobileContestants, brokerState.phase]);
+
+  if (mobileContestants) return null;
+
   if (brokerState.phase === 'LOBBY') {
     return (
       <UnifiedShabahLobby
@@ -458,7 +475,6 @@ export const BrokerTVRoot: React.FC = () => {
         gameId="ai-broker"
         gameTitle="الشبح الشريطي"
         role="host"
-        onStartGame={handleStartGame}
         onExit={handleExit}
       />
     );

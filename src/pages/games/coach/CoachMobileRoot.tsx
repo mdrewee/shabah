@@ -1,5 +1,8 @@
+import { useConfirmation } from '../../../components/common/ConfirmationProvider';
+import { ShabahThinkingScreen } from '../../../components/common/ShabahThinkingScreen';
+import { isRoomHost } from '../../../services/roomService';
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useRoom, roomBus } from '../../../lib/roomBus';
 import {
   CoachGameMode,
@@ -15,7 +18,6 @@ import {
   generateBingoCard,
 } from './coachSync';
 import { normalizeFootballSearch } from './footballDataService';
-import { getRandomMatchCriteria } from '../../../data/coachCriteria';
 import { CoachLobby } from './CoachLobby';
 import { CoachTopBar } from './components/CoachTopBar';
 import { CoachDraftMobileView } from './components/CoachDraftMobileView';
@@ -30,10 +32,10 @@ import { useRoomSync } from '../../../hooks/useRoomSync';
 
 export const CoachMobileRoot: React.FC = () => {
   const { code: rawCode } = useParams<{ code?: string }>();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const roomCode = (rawCode || 'SHBH').trim().toUpperCase();
-  const isPlayerHost = searchParams.get('host') === '1';
+  const confirm = useConfirmation();
+  const isPlayerHost = isRoomHost(roomCode);
 
   const [playerId] = useState(() => getOrCreatePlayerId());
   const [playerName] = useState(() => getPersistedPlayerName() || getOrCreatePlayerName('متسابق'));
@@ -58,7 +60,7 @@ export const CoachMobileRoot: React.FC = () => {
         setCoachState(payload);
         savePersistedCoachState(roomCode, payload);
       }
-    });
+    }, roomCode);
 
     const unsubClaimSuccess = roomBus.on('PLAYER_CLAIM_SUCCESS', (evt: any) => {
       const payload = evt?.data || evt;
@@ -144,16 +146,6 @@ export const CoachMobileRoot: React.FC = () => {
       }
     });
 
-    const unsubTerminated = roomBus.on('ROOM_TERMINATED', () => {
-      sound.playTick();
-      navigate('/');
-    });
-
-    const unsubClosed = roomBus.on('ROOM_CLOSED', () => {
-      sound.playTick();
-      navigate('/');
-    });
-
     const unsubReturn = roomBus.on('RETURN_TO_LOBBY', () => {
       sound.playClick();
       setCoachState((prev) => {
@@ -183,108 +175,32 @@ export const CoachMobileRoot: React.FC = () => {
       unsubClaimed();
       unsubMode();
       unsubBingoPlayer();
-      unsubTerminated();
-      unsubClosed();
       unsubReturn();
     };
   }, [roomCode, navigate]);
 
+  useEffect(() => {
+    roomBus.emit('REQUEST_ROOM_STATE', roomCode, {});
+  }, [roomCode]);
+
   const handleSelectMode = (mode: CoachGameMode) => {
     sound.playClick();
-    setCoachState((prev) => {
-      const next = { ...prev, mode };
-      savePersistedCoachState(roomCode, next);
-      roomBus.emit('COACH_MODE_SELECTED', roomCode, { mode });
-      roomBus.broadcastCoachSync(roomCode, next);
-      return next;
-    });
+    const next = { ...coachState, mode };
+    setCoachState(next);
+    savePersistedCoachState(roomCode, next);
+    roomBus.emit('COACH_MODE_SELECTED', roomCode, { mode });
+    roomBus.broadcastCoachSync(roomCode, next);
   };
 
-  const handleStartGame = () => {
-    sound.playSuccess();
-    if (coachState.mode === 'draft') {
-      const matchCriteria = getRandomMatchCriteria(5);
-      const firstCrit = matchCriteria[0];
-      const nextState: CoachRoomState = {
-        ...coachState,
-        phase: 'DRAFTING',
-        roundNumber: 1,
-        totalRounds: 5,
-        slotIndex: 0,
-        matchCriteria,
-        activeConditionId: firstCrit.id,
-        activeConditionTitle: firstCrit.title,
-        activeConditionDescription: firstCrit.description,
-        claimedPlayers: {},
-        currentRoundSelections: {},
-        usedPlayersAcrossMatch: [],
-        readyPlayersNextRound: [],
-        cumulativeScores: {},
-        squads: {},
-        verdict: null,
-      };
-      setCoachState(nextState);
-      savePersistedCoachState(roomCode, nextState);
-      roomBus.broadcastCoachSync(roomCode, nextState);
-    } else {
-      const cards: Record<string, any> = {
-        [playerId]: generateBingoCard(playerId),
-      };
-      const nextState: CoachRoomState = {
-        ...coachState,
-        phase: 'BINGO_PLAYING',
-        rouletteHistory: [],
-        rouletteSkipVotes: [],
-        bingoCards: cards,
-        readyPlayersNextRound: [],
-        bingoWinnerId: null,
-        bingoWinnerName: null,
-      };
-      setCoachState(nextState);
-      savePersistedCoachState(roomCode, nextState);
-      roomBus.broadcastCoachSync(roomCode, nextState);
+  const handleExit = async () => {
+    if (isPlayerHost) {
+      if (!await confirm('تنهي الغرفة وتخرج جميع اللاعبين؟')) return;
+      if (await roomBus.terminateRoom(roomCode)) navigate('/');
+      return;
     }
-  };
-
-  const handleExit = () => {
     sound.playClick();
     roomBus.leavePlayer(roomCode, playerId);
     navigate('/');
-  };
-
-  const handleConfirmPick = (slotKey: CoachSlotKey, pick: CoachPlayerPick) => {
-    roomBus.broadcastCoachPick(roomCode, {
-      playerId,
-      playerName,
-      slotKey,
-      pick,
-      roomCode,
-    });
-
-    setCoachState((prev) => {
-      const existingSquad = prev.squads[playerId] || {
-        playerId,
-        playerName,
-        slots: {},
-      };
-
-      const updated = {
-        ...prev,
-        squads: {
-          ...prev.squads,
-          [playerId]: {
-            ...existingSquad,
-            slots: {
-              ...existingSquad.slots,
-              [slotKey]: pick,
-            },
-          },
-        },
-      };
-
-      savePersistedCoachState(roomCode, updated);
-      return updated;
-    });
   };
 
   const handleToggleBingoCell = (cellIndex: number, playerPhoto?: string, playerNameParam?: string) => {
@@ -293,38 +209,16 @@ export const CoachMobileRoot: React.FC = () => {
       playerName: playerNameParam || playerName,
       cellIndex,
       playerPhoto,
-    });
-
-    setCoachState((prev) => {
-      const card = prev.bingoCards[playerId];
-      if (!card) return prev;
-
-      const cells = [...card.cells];
-      if (cells[cellIndex]) {
-        cells[cellIndex] = {
-          ...cells[cellIndex],
-          isMarked: true,
-          markedPlayerPhoto: playerPhoto,
-          markedPlayerName: playerNameParam || playerName,
-        };
-      }
-
-      return {
-        ...prev,
-        bingoCards: {
-          ...prev.bingoCards,
-          [playerId]: {
-            ...card,
-            cells,
-          },
-        },
-      };
+      roulettePlayerId: coachState.currentRoulettePlayer?.id,
+      rouletteTurn: coachState.rouletteHistory.length,
     });
   };
 
   const handleSkipBingoPlayer = () => {
     roomBus.emit('BINGO_PLAYER_SKIPPED', roomCode, {
       playerId,
+      roulettePlayerId: coachState.currentRoulettePlayer?.id,
+      rouletteTurn: coachState.rouletteHistory.length,
     });
   };
 
@@ -353,6 +247,10 @@ export const CoachMobileRoot: React.FC = () => {
   const myEvaluation = coachState.verdict?.evaluations.find((e) => e.playerId === playerId);
   const isMeReadyForNext = Boolean(coachState.readyPlayersNextRound?.includes(playerId));
 
+  if (coachState.phase === 'EVALUATING') return <ShabahThinkingScreen title="الشبح يراجع التشكيلات"
+    onRetry={isPlayerHost ? () => window.location.reload() : undefined}
+    onReturnToLobby={isPlayerHost ? () => roomBus.broadcastReturnToLobby(roomCode) : undefined} />;
+
   if (coachState.phase === 'LOBBY') {
     return (
       <CoachLobby
@@ -361,7 +259,6 @@ export const CoachMobileRoot: React.FC = () => {
         isPlayerHost={isPlayerHost}
         selectedMode={coachState.mode}
         onSelectMode={handleSelectMode}
-        onStartGame={handleStartGame}
         currentPlayerId={playerId}
         onExit={handleExit}
       />
@@ -408,7 +305,6 @@ export const CoachMobileRoot: React.FC = () => {
             usedPlayersAcrossMatch={coachState.usedPlayersAcrossMatch || []}
             isReadyForNextRound={isMeReadyForNext}
             onReadyForNextRound={handleToggleReadyForNextRound}
-            onConfirmPick={handleConfirmPick}
             evaluationResult={myEvaluation}
             isMyTurn={true}
             turnSecondsRemaining={coachState.turnSecondsRemaining}
@@ -417,6 +313,9 @@ export const CoachMobileRoot: React.FC = () => {
           <CoachBingoMobileView
             card={myBingoCard}
             currentRoulettePlayer={coachState.currentRoulettePlayer || null}
+            hasAttempted={coachState.rouletteSkipVotes.includes(playerId)}
+            turnKey={`${coachState.rouletteHistory.length}:${coachState.currentRoulettePlayer?.id}`}
+            endsAt={coachState.rouletteEndsAt}
             onToggleCell={handleToggleBingoCell}
             onSkipPlayer={handleSkipBingoPlayer}
             onClaimBingo={handleClaimBingo}

@@ -51,7 +51,6 @@ interface CoachDraftMobileViewProps {
   usedPlayersAcrossMatch?: string[];
   isReadyForNextRound?: boolean;
   onReadyForNextRound?: () => void;
-  onConfirmPick?: (slotKey: CoachSlotKey, pick: CoachPlayerPick) => void;
   evaluationResult?: SquadEvaluationResult | null;
   isMyTurn?: boolean;
   currentTurnPlayerName?: string;
@@ -73,7 +72,6 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
   usedPlayersAcrossMatch = [],
   isReadyForNextRound = false,
   onReadyForNextRound,
-  onConfirmPick,
   evaluationResult,
   turnSecondsRemaining,
 }) => {
@@ -155,12 +153,16 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
 
   // Check if selected slot is already filled
   const myPickForSelectedSlot = squad.slots[selectedSlotKey];
+  const hasPickedThisRound = Boolean(currentRoundSelections[contestantId]);
+  const confirmedSlot = hasPickedThisRound ? COACH_SLOTS_ORDER.find((slot) =>
+    squad.slots[slot]?.playerName === currentRoundSelections[contestantId]?.playerName) : undefined;
   const isSelectedSlotFilled = Boolean(
     myPickForSelectedSlot?.playerName && !myPickForSelectedSlot.playerName.includes('خانة فارغة')
   );
 
   // Request Claim for player (Simultaneous race with first-come first-served)
   const handleSelectSuggestedPlayer = (player: FootballSearchResult) => {
+    if (hasPickedThisRound || isSelectedSlotFilled) return;
     sound.playClick();
     setErrorMessage(null);
 
@@ -179,21 +181,6 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
       sound.playBuzz?.();
       setErrorMessage('هذا اللاعب تم استخدامه في جولة سابقة! اختر لاعباً آخر');
       return;
-    }
-
-    const pickData: CoachPlayerPick = {
-      playerName: player.name,
-      matchedDbId: player.id,
-      playerPhoto: player.photoUrl,
-      isCustom: !player.isLocalDb,
-      conditionId,
-      conditionTitle,
-      confirmedAt: Date.now(),
-    };
-
-    // Optimistic local update
-    if (typeof onConfirmPick === 'function') {
-      onConfirmPick(selectedSlotKey, pickData);
     }
 
     // Send Real-Time Claim Request to TV host (authoritative lock)
@@ -217,6 +204,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
   };
 
   const handleConfirmCustomName = () => {
+    if (hasPickedThisRound || isSelectedSlotFilled) return;
     sound.playClick();
     setErrorMessage(null);
 
@@ -236,20 +224,6 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
       sound.playBuzz?.();
       setErrorMessage('هذا اللاعب تم استخدامه في جولة سابقة! اختر لاعباً آخر');
       return;
-    }
-
-    const pickData: CoachPlayerPick = {
-      playerName: clean,
-      id: `custom_${Date.now()}`,
-      isCustom: true,
-      conditionId,
-      conditionTitle,
-      confirmedAt: Date.now(),
-    } as any;
-
-    // Optimistic local update
-    if (typeof onConfirmPick === 'function') {
-      onConfirmPick(selectedSlotKey, pickData);
     }
 
     roomBus.broadcastClaimPlayerRequest(roomCode, {
@@ -427,7 +401,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                 type="button"
                 onClick={() => {
                   sound.playClick();
-                  setSelectedSlotKey(slotKey);
+                  if (!hasPickedThisRound) setSelectedSlotKey(slotKey);
                 }}
                 className={`p-2 rounded-xl border flex flex-col items-center justify-center text-center transition-all cursor-pointer active:scale-95 ${
                   isSelected
@@ -443,7 +417,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                       {slotLabel}
                     </span>
                     <span className="font-black text-[10px] truncate max-w-full mt-1">
-                      {pick.playerName}
+                      {pick?.playerName}
                     </span>
                   </>
                 ) : (
@@ -458,7 +432,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
       </div>
 
       {/* 3. Steps 2 & 3: Search & Confirm Exclusive Player Lock */}
-      {isSelectedSlotFilled ? (
+      {hasPickedThisRound || isSelectedSlotFilled ? (
         /* Slot Already Filled by contestant */
         <div className="w-full p-5 rounded-2xl bg-zinc-900 border-2 border-emerald-500/80 flex flex-col items-center text-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
           <div className="w-12 h-12 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center text-emerald-400">
@@ -467,15 +441,15 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
 
           <div className="flex flex-col gap-0.5">
             <span className="text-xs font-bold text-emerald-400">
-              تم حجز مركز {activeSlotConfig.label}:
+              تم حجز مركز {COACH_SLOT_CONFIG[confirmedSlot || selectedSlotKey].label}:
             </span>
             <span className="text-xl sm:text-2xl font-black text-white">
-              {myPickForSelectedSlot?.playerName}
+              {currentRoundSelections[contestantId]?.playerName || myPickForSelectedSlot?.playerName}
             </span>
           </div>
 
           <p className="text-xs font-bold text-zinc-400 mt-1">
-            لاختيار لاعب لمركز آخر، اضغط على أحد المراكز أعلاه أو في الملعب.
+            تم اعتماد اختيارك. انتظر الجولة التالية لاختيار لاعب جديد.
           </p>
         </div>
       ) : (
@@ -590,14 +564,14 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
       <div className="w-full flex flex-col gap-1.5">
         <div className="flex items-center justify-between text-xs font-black px-1 text-zinc-400">
           <span>تشكيلتك الحالية:</span>
-          <span className="text-[11px] text-zinc-500">اضغط على أي مركز لتحديده</span>
+          <span className="text-[11px] text-zinc-500">{hasPickedThisRound ? 'اختيارك مقفل حتى الجولة التالية' : 'اضغط على أي مركز لتحديده'}</span>
         </div>
         <ShabahTacticalPitch
           squad={squad}
           activeSlot={selectedSlotKey}
           onSlotClick={(slot) => {
             sound.playClick();
-            setSelectedSlotKey(slot);
+            if (!hasPickedThisRound) setSelectedSlotKey(slot);
           }}
           isCompact
         />

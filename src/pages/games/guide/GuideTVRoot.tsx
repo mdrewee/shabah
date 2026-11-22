@@ -29,7 +29,7 @@ import { GuideTVView } from './components/GuideTVView';
 import { GuideResultsStage } from './components/GuideResultsStage';
 import { GuideFinalPodium } from './components/GuideFinalPodium';
 
-export const GuideTVRoot: React.FC = () => {
+export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; name: string }> }> = ({ mobileContestants }) => {
   const { code: rawCode } = useParams<{ code?: string }>();
   const navigate = useNavigate();
   const roomCode = (rawCode || 'SHBH').trim().toUpperCase();
@@ -38,8 +38,8 @@ export const GuideTVRoot: React.FC = () => {
   const activeRoom = room || roomBus.getRoom(roomCode);
 
   // Maintain stable realtime presence connection for Host TV
-  const { connectedPlayers: realtimeContestants } = useRoomSync({
-    roomCode,
+  const { connectedPlayers: realtimeContestants, hasPresenceSnapshot } = useRoomSync({
+    roomCode: mobileContestants ? '' : roomCode,
     role: 'host',
   });
 
@@ -48,29 +48,29 @@ export const GuideTVRoot: React.FC = () => {
   );
 
   const stateRef = useRef(guideState);
+
+  useEffect(() => roomBus.on('REQUEST_ROOM_STATE', () => {
+    roomBus.broadcastGuideSync(roomCode, stateRef.current);
+  }, roomCode), [roomCode]);
   useEffect(() => {
     stateRef.current = guideState;
     savePersistedGuideState(roomCode, guideState);
   }, [guideState, roomCode]);
 
   // Merged connected contestants list
-  const mergedContestants =
-    realtimeContestants.length > 0
+  const mergedContestants = mobileContestants ?? (
+    hasPresenceSnapshot || realtimeContestants.length > 0
       ? realtimeContestants
-      : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv');
+      : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv'));
 
   const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null);
-  const lastBroadcastRef = useRef<string>('');
 
-  // Synchronize state across network with deduplication guard
+  // The room bus coalesces outgoing snapshots.
   const syncState = useCallback(
     (newState: GuideRoomState) => {
+      stateRef.current = newState;
       setGuideState(newState);
-      const syncKey = `${newState.phase}_${newState.roundNumber}_${newState.activeClueIndex}_${newState.currentLandmark?.id}_${Object.keys(newState.results || {}).length}`;
-      if (lastBroadcastRef.current !== syncKey) {
-        lastBroadcastRef.current = syncKey;
-        roomBus.broadcastGuideSync(roomCode, newState);
-      }
+      roomBus.broadcastGuideSync(roomCode, newState);
     },
     [roomCode]
   );
@@ -274,10 +274,9 @@ export const GuideTVRoot: React.FC = () => {
 
   const handleEndGame = useCallback(async () => {
     sound.stopAllAudio();
-    try {
-      await roomBus.terminateRoom(roomCode, 'تم إنهاء الغرفة بواسطة المضيف');
-    } catch (err) {
-      console.warn('[GuideTVRoot] terminateRoom error:', err);
+    if (!await roomBus.terminateRoom(roomCode)) {
+      alert('تعذر إنهاء الغرفة، حاول مرة أخرى');
+      return;
     }
     sessionStorage.clear();
     localStorage.removeItem('current_room_code');
@@ -347,14 +346,10 @@ export const GuideTVRoot: React.FC = () => {
       stateRef.current = updated;
       setGuideState(updated);
 
-      // ONLY broadcast when a new clue unlocks, deduplicated through lastBroadcastRef
+      // Broadcast when a new clue unlocks.
       if (nextClueIdx !== prev.activeClueIndex) {
         sound.playBeep();
-        const clueSyncKey = `${prev.phase}_${prev.roundNumber}_${nextClueIdx}_${prev.currentLandmark?.id}_clue`;
-        if (lastBroadcastRef.current !== clueSyncKey) {
-          lastBroadcastRef.current = clueSyncKey;
-          roomBus.broadcastGuideSync(roomCode, updated);
-        }
+        roomBus.broadcastGuideSync(roomCode, updated);
       }
     }, 1000);
 
@@ -479,6 +474,24 @@ export const GuideTVRoot: React.FC = () => {
   // -------------------------------------------------------------
 
   // 1. Lobby Phase
+  useEffect(() => roomBus.on('GAME_STARTED', () => {
+    if (stateRef.current.phase === 'LOBBY') void handleStartGame();
+  }, roomCode), [roomCode, handleStartGame]);
+
+  useEffect(() => {
+    if (!mobileContestants || guideState.phase !== 'INTRO') return;
+    const timer = setTimeout(() => { void startGuessingRound(); }, 4500);
+    return () => clearTimeout(timer);
+  }, [mobileContestants, guideState.phase, startGuessingRound]);
+
+  useEffect(() => roomBus.on('RETURN_TO_LOBBY', () => {
+    setAutoAdvanceCountdown(null);
+    const fresh = createInitialGuideState(roomCode);
+    syncState(fresh);
+  }, roomCode), [roomCode, syncState]);
+
+  if (mobileContestants) return null;
+
   if (guideState.phase === 'LOBBY') {
     return (
       <UnifiedShabahLobby
@@ -486,7 +499,6 @@ export const GuideTVRoot: React.FC = () => {
         gameId="ai-guide"
         gameTitle="الشبح المرشد"
         role="host"
-        onStartGame={handleStartGame}
       />
     );
   }

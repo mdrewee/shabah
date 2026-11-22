@@ -160,7 +160,7 @@ export const JudgeFinalPodium: React.FC<JudgeFinalPodiumProps> = ({
           className="w-full py-3.5 px-4 rounded-2xl bg-white hover:bg-zinc-200 text-black font-sans font-black text-base flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-98 transition-all"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>العودة للوبي</span>
+          <span>إعادة اللعب بنفس المجموعة</span>
         </button>
       </div>
     </div>

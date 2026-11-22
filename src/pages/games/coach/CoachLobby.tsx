@@ -10,7 +10,7 @@ interface CoachLobbyProps {
   isPlayerHost?: boolean;
   selectedMode: CoachGameMode;
   onSelectMode: (mode: CoachGameMode) => void;
-  onStartGame: () => void;
+  onStartGame?: () => void;
   currentPlayerId?: string;
   onExit?: () => void;
 }
@@ -35,6 +35,7 @@ export const CoachLobby: React.FC<CoachLobbyProps> = ({
   }, [propSelectedMode]);
 
   const handleModeChange = (mode: CoachGameMode) => {
+    if (role !== 'host' && !isPlayerHost) return;
     sound.playClick();
     if (mode === 'bingo') {
       import('./coachSync').then(({ generatePreloadedBingoPool }) => {
@@ -93,6 +94,9 @@ export const CoachLobby: React.FC<CoachLobbyProps> = ({
       roomCode={roomCode}
       gameId="ai-coach"
       gameTitle="الشبح المدرب"
+      rulesSummary={currentMode === 'bingo'
+        ? 'طابق اللاعب الظاهر مع خانة واحدة في بطاقتك خلال ٨ ثوانٍ. كل اختيار أو تخطٍ يستهلك فرصتك. أكمل صفاً أو عموداً أو قطراً أو الزوايا الأربع ثم أعلن بينقو!'
+        : 'كوّن تشكيلتك من ٥ لاعبين، باختيار لاعب واحد في كل جولة حسب الشرط. الاختيار المعتمد يقفل حتى الجولة التالية.'}
       role={role}
       isPlayerHost={isPlayerHost}
       currentPlayerId={currentPlayerId}

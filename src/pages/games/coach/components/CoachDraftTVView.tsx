@@ -1,3 +1,4 @@
+import { ShabahRoundReveal } from '../../../../components/common/ShabahRoundReveal';
 import React from 'react';
 import { CoachSquad, CoachVerdict, CoachPlayerPick, ClaimedPlayerInfo } from '../types';
 import { ShabahTacticalPitch } from './ShabahTacticalPitch';
@@ -64,7 +65,7 @@ export const CoachDraftTVView: React.FC<CoachDraftTVViewProps> = ({
   const isFinalRound = roundNumber >= totalRounds;
 
   return (
-    <div className="w-full flex flex-col items-center gap-4 py-2 px-3 sm:px-6 select-none">
+    <ShabahRoundReveal entries={verdict ? contestants.map((item) => ({ id: item.id, name: item.name, answer: Object.values(squads[item.id]?.slots || {}).map((pick) => pick?.playerName).filter(Boolean).join(' · ') })) : []}><div className="w-full flex flex-col items-center gap-4 py-2 px-3 sm:px-6 select-none">
       {/* 1. Simultaneous Race Top Live Status Indicator */}
       {!verdict && (
         <div className="w-full max-w-4xl shabah-border-wrap animate-in fade-in duration-300">
@@ -227,6 +228,6 @@ export const CoachDraftTVView: React.FC<CoachDraftTVViewProps> = ({
           );
         })}
       </div>
-    </div>
+    </div></ShabahRoundReveal>
   );
 };

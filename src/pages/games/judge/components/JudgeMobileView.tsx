@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Predicament } from '../../../../data/judgePredicaments';
-import { JudgeVerdictResult } from '../types';
+import { JudgeVerdictResult, PlayerVerdict } from '../types';
 import { toArabicNumber, formatPoints } from '../../../../utils/numberFormat';
 import { sound } from '../../../../lib/audio';
 import { roomBus } from '../../../../lib/roomBus';
@@ -20,10 +20,11 @@ interface JudgeMobileViewProps {
   roundNumber: number;
   totalRounds: number;
   phase?: string;
+  briefingEndsAt?: number;
   timerSeconds: number;
   hasSubmitted: boolean;
   onSubmitExcuse: (excuse: string, wasAutoSubmitted?: boolean) => void;
-  myVerdict?: JudgeVerdictResult;
+  myVerdict?: JudgeVerdictResult | PlayerVerdict;
   isCourtroomVerdict: boolean;
   isReadyForNextRound: boolean;
   onToggleReady: () => void;
@@ -36,6 +37,7 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
   roundNumber,
   totalRounds,
   phase,
+  briefingEndsAt,
   timerSeconds,
   hasSubmitted,
   onSubmitExcuse,
@@ -47,6 +49,14 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
   totalConnectedCount,
 }) => {
   const isBriefing = phase === 'case_briefing';
+  const [briefingSeconds, setBriefingSeconds] = useState(5);
+  useEffect(() => {
+    if (!isBriefing) return;
+    const tick = () => setBriefingSeconds(briefingEndsAt ? Math.max(0, Math.ceil((briefingEndsAt - Date.now()) / 1000)) : 0);
+    tick();
+    const timer = window.setInterval(tick, 250);
+    return () => window.clearInterval(timer);
+  }, [isBriefing, roundNumber, briefingEndsAt]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [excuseText, setExcuseText] = useState<string>('');
   const excuseRef = useRef<string>('');
@@ -133,13 +143,11 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
       verdictType === 'guilty' ||
       myVerdict.verdictLabel?.includes('سجن');
 
-    const displayLabel =
-      myVerdict.verdict ||
-      myVerdict.verdictLabel ||
+    const displayLabel = myVerdict.verdictLabel ||
       (isInnocent ? 'بريء' : isGuilty ? 'مذنب' : 'مع وقف التنفيذ');
 
     const score = myVerdict.score ?? myVerdict.pointsAwarded ?? (isInnocent ? 10 : isGuilty ? 0 : 5);
-    const roast = myVerdict.roast || myVerdict.judgeRoast || '';
+    const roast = ('roast' in myVerdict ? myVerdict.roast : myVerdict.judgeRoast) || '';
 
     return (
       <div
@@ -334,12 +342,12 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
               فترة تأمل وقراءة القضية
             </h3>
             <p className="font-sans text-sm font-bold text-amber-300/95 leading-relaxed bg-amber-950/40 border border-amber-600/50 p-4 rounded-2xl shadow-inner">
-              اقرأ القضية جيداً وجهز عذرك.. الجلسة ستبدأ عندما يضغط المضيف [بدء الجلسة]
+              اقرأ القضية جيداً وجهز عذرك. على الجوال تبدأ الجلسة تلقائياً بعد القراءة، وفي وضع الشاشة يبدأها المضيف.
             </p>
           </div>
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-sans text-zinc-400">
             <Clock className="w-4 h-4 text-amber-400" />
-            <span>العداد متوقف حالياً لقراءة الأدلة</span>
+            <span>{briefingSeconds > 0 ? `استعد… ${toArabicNumber(briefingSeconds)}` : 'بانتظار بدء الجلسة'}</span>
           </div>
         </div>
       ) : hasSubmitted ? (

@@ -25,8 +25,8 @@ export function clearPersistedArabicState(roomCode: string): void {
   } catch {}
 }
 
-export function createInitialArabicState(roomCode: string): ArabicRoomState {
-  const existing = getPersistedArabicState(roomCode);
+export function createInitialArabicState(roomCode: string, fresh = false): ArabicRoomState {
+  const existing = fresh ? null : getPersistedArabicState(roomCode);
   if (existing) {
     return existing;
   }

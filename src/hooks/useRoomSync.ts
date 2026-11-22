@@ -63,6 +63,9 @@ export function useRoomSync(
   useEffect(() => {
     if (!cleanCode) return;
 
+    const onRoomEvent = (event: string, callback: (event: any) => void) =>
+      roomBus.on(event, callback, cleanCode);
+
     // Initialize or join the room channel via the authoritative roomBus
     roomBus.initRoom(cleanCode, {
       id: isHost ? 'host_tv' : (playerId || 'guest'),
@@ -71,7 +74,7 @@ export function useRoomSync(
       isReady,
     });
 
-    const unsubPresence = roomBus.on('presence_sync', (evt: any) => {
+    const unsubPresence = onRoomEvent('presence_sync', (evt: any) => {
       try {
         const rawPlayers = evt?.data ?? evt;
         const players: any[] = Array.isArray(rawPlayers) ? rawPlayers : [];
@@ -83,19 +86,13 @@ export function useRoomSync(
             isReady: Boolean(p.isReady),
           }));
 
-        setConnectedPlayers((prev) => {
-          // Sync stability: do not clear player list on temporary transient empty arrays
-          if (contestants.length === 0 && prev.length > 0) {
-            return prev;
-          }
-          return contestants;
-        });
+        setConnectedPlayers(contestants);
       } catch (err) {
         console.error('[useRoomSync] presence_sync error shielded:', err);
       }
     });
 
-    const unsubReady = roomBus.on('PLAYER_READY_UPDATE', (evt: any) => {
+    const unsubReady = onRoomEvent('PLAYER_READY_UPDATE', (evt: any) => {
       try {
         const payload = evt?.data || evt;
         const pId = payload?.playerId;
@@ -116,22 +113,29 @@ export function useRoomSync(
         // Reset readiness in local component state and update roomBus
         setConnectedPlayers((prev) => prev.map((p) => ({ ...p, isReady: false })));
         const curPlayerId = playerIdRef.current;
-        if (curPlayerId) {
+        if (curPlayerId && !isHostRef.current) {
           roomBus.setPlayerReady(cleanCode, curPlayerId, false);
+          void roomBus.trackPlayer(cleanCode, {
+            id: curPlayerId,
+            name: playerNameRef.current || 'متسابق',
+            isReady: false,
+            isHost: false,
+          });
         }
       } catch (err) {
         console.error('[useRoomSync] resetReadiness error shielded:', err);
       }
     };
 
-    const unsubReturnToLobby = roomBus.on('RETURN_TO_LOBBY', resetReadiness);
-    const unsubGameEnded = roomBus.on('GAME_ENDED', resetReadiness);
-    const unsubGameStarted = roomBus.on('GAME_STARTED', resetReadiness);
+    const unsubReturnToLobby = onRoomEvent('RETURN_TO_LOBBY', resetReadiness);
+    const unsubGameEnded = onRoomEvent('GAME_ENDED', resetReadiness);
+    const unsubGameStarted = onRoomEvent('GAME_STARTED', resetReadiness);
 
     const handleKickReceived = (evt: any) => {
       const kickedId = evt?.data?.targetPlayerId || evt?.data?.playerId || evt?.targetPlayerId || evt?.playerId || evt?.data;
       const curPlayerId = playerIdRef.current;
       if (!isHostRef.current && curPlayerId && kickedId === curPlayerId) {
+        if (!roomBus.getSupabaseChannel(cleanCode)) return;
         roomBus.leaveRoom(cleanCode, curPlayerId);
         sessionStorage.clear();
         alert('تم استبعادك من الغرفة بواسطة المضيف.');
@@ -143,11 +147,9 @@ export function useRoomSync(
 
     const handleTerminate = (evt: any) => {
       const payload = evt?.data ?? evt;
-      if (!isHostRef.current) {
+      if (!isHostRef.current && roomBus.getSupabaseChannel(cleanCode)) {
         const curPlayerId = playerIdRef.current;
-        if (curPlayerId) {
-          roomBus.leaveRoom(cleanCode, curPlayerId);
-        }
+        roomBus.leaveRoom(cleanCode, curPlayerId || undefined);
         sessionStorage.clear();
         localStorage.removeItem('current_room_code');
         alert(payload?.reason || 'تم إنهاء اللعبة والعودة للرئيسية.');
@@ -155,18 +157,16 @@ export function useRoomSync(
       }
     };
 
-    const unsubForceKick = roomBus.on('FORCE_PLAYER_KICK', handleKickReceived);
-    const unsubKick = roomBus.on('PLAYER_KICKED', handleKickReceived);
-    const unsubKickAlt = roomBus.on('KICK_PLAYER', handleKickReceived);
-    const unsubTerminate = roomBus.on('TERMINATE_ROOM', handleTerminate);
-    const unsubRoomTerminated = roomBus.on('ROOM_TERMINATED', handleTerminate);
+    const unsubForceKick = onRoomEvent('FORCE_PLAYER_KICK', handleKickReceived);
+    const unsubKick = onRoomEvent('PLAYER_KICKED', handleKickReceived);
+    const unsubKickAlt = onRoomEvent('KICK_PLAYER', handleKickReceived);
+    const unsubTerminate = onRoomEvent('TERMINATE_ROOM', handleTerminate);
+    const unsubRoomTerminated = onRoomEvent('ROOM_TERMINATED', handleTerminate);
 
     // Seed initial players if already present
     try {
       const initial = roomBus.getFormattedPlayers(cleanCode).filter((p) => !p.isHost && p.id !== 'host_tv');
-      if (initial.length > 0) {
-        setConnectedPlayers(initial);
-      }
+      setConnectedPlayers(initial);
     } catch (err) {
       console.error('[useRoomSync] initial players error shielded:', err);
     }
@@ -204,6 +204,7 @@ export function useRoomSync(
 
   return {
     connectedPlayers,
+    hasPresenceSnapshot: roomBus.hasPresenceSnapshot(cleanCode),
     allPlayers: connectedPlayers,
     channel: roomBus.getSupabaseChannel(cleanCode),
     isSocketReady: roomBus.isChannelSubscribed(cleanCode),

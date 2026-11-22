@@ -94,7 +94,6 @@ export async function evaluateAllExcuses(
 ): Promise<PlayerVerdict[]> {
   if (!excuses || excuses.length === 0) return [];
 
-  const apiKey = (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
   const keyEvidence = currentCase.keyEvidence || 'الأدلة المادية المسجلة في وقائع القضية';
 
   const systemPrompt = `أنت "الشبح القاضي"؛ قاضٍ جنائي عبقري، حاد الذكاء، صارم جداً، ولسانك سليط بلهجة خليجية/سعودية ساخرة.
@@ -136,7 +135,7 @@ ${JSON.stringify(
 
   const resultMap = new Map<string, PlayerVerdict>();
 
-  if (apiKey) {
+  {
     try {
       const rawText = await callGeminiWithFallback(systemPrompt, {
         jsonMode: true,

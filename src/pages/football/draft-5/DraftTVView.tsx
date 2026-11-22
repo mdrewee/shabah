@@ -740,7 +740,6 @@ export const DraftTVView: FC = () => {
     }, 1800);
 
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, verdictResult, roomCode]);
 
   const joinUrl = `${window.location.origin}/room/${roomCode}/football/draft-5`;

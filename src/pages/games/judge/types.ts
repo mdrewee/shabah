@@ -56,6 +56,7 @@ export interface WorstExcuseRecord {
 }
 
 export interface JudgeRoomState {
+  briefingEndsAt?: number;
   roomCode: string;
   phase: JudgePhase;
   roundNumber: number;

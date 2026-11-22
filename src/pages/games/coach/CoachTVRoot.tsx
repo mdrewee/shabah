@@ -1,3 +1,7 @@
+import { applyBingoAttempt, canClaimDraftSlot } from './coachRules';
+import { useGameState } from '../../../hooks/useGameState';
+import { ShabahThinkingScreen } from '../../../components/common/ShabahThinkingScreen';
+import { toArabicNumber } from '../../../utils/numberFormat';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useRoom, roomBus } from '../../../lib/roomBus';
@@ -20,6 +24,8 @@ import {
   generateBingoCard,
   getRandomRoulettePlayer,
   generatePreloadedBingoPool,
+  checkBingoWin,
+  doesPlayerMatchBingoCell,
 } from './coachSync';
 import { evaluateAllSquads, evaluateAllSquadsWithAI } from './coachEvaluationEngine';
 import { normalizeFootballSearch } from './footballDataService';
@@ -38,7 +44,7 @@ import {
 
 const roundTimeLimit = 30; // 30 ثانية لكل جولة مباشرة
 
-export const CoachTVRoot: React.FC = () => {
+export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; name: string }> }> = ({ mobileContestants }) => {
   const { code: rawCode } = useParams<{ code?: string }>();
   const navigate = useNavigate();
   const roomCode = (rawCode || 'SHBH').trim().toUpperCase();
@@ -47,21 +53,46 @@ export const CoachTVRoot: React.FC = () => {
   const activeRoom = room || roomBus.getRoom(roomCode);
 
   // Stable Supabase Realtime presence connection for TV Host
-  const { connectedPlayers: realtimeContestants } = useRoomSync({
-    roomCode,
+  const { connectedPlayers: realtimeContestants, hasPresenceSnapshot } = useRoomSync({
+    roomCode: mobileContestants ? '' : roomCode,
     role: 'host',
   });
 
   // Synchronized Coach State
-  const [coachState, setCoachState] = useState<CoachRoomState>(() =>
+  const [coachState, setCoachState, coachStateRef] = useGameState<CoachRoomState>(() =>
     createInitialCoachState(roomCode, 'draft')
   );
 
-  const coachStateRef = useRef<CoachRoomState>(coachState);
+
+  useEffect(() => roomBus.on('REQUEST_ROOM_STATE', () => {
+    roomBus.broadcastCoachSync(roomCode, coachStateRef.current);
+  }, roomCode), [roomCode]);
   useEffect(() => {
     coachStateRef.current = coachState;
     savePersistedCoachState(roomCode, coachState);
   }, [coachState, roomCode]);
+
+  useEffect(() => {
+    if (coachState.phase !== 'EVALUATING') return;
+    let active = true;
+    const fallback = coachState.verdict || evaluateAllSquads(coachState.squads);
+    evaluateAllSquadsWithAI(coachState.squads).catch(() => fallback).then((result) => {
+      if (!active) return;
+      const verdict = result?.evaluations.length ? result : fallback;
+      setCoachState((previous) => {
+        if (previous.phase !== 'EVALUATING') return previous;
+        const cumulativeScores = { ...previous.cumulativeScores };
+        verdict.evaluations.forEach((evaluation) => {
+          const old = fallback.evaluations.find((item) => item.playerId === evaluation.playerId);
+          cumulativeScores[evaluation.playerId] = (cumulativeScores[evaluation.playerId] || 0) - (old?.totalPercentage || 0) + evaluation.totalPercentage;
+        });
+        const next: CoachRoomState = { ...previous, phase: 'VERDICT', verdict, cumulativeScores };
+        roomBus.broadcastCoachSync(roomCode, next);
+        return next;
+      });
+    });
+    return () => { active = false; };
+  }, [coachState.phase, roomCode]);
 
   // Round Timers
   const [timerSeconds, setTimerSeconds] = useState(roundTimeLimit);
@@ -69,10 +100,10 @@ export const CoachTVRoot: React.FC = () => {
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
 
   // Connected contestants (max 10) with TV Sync stability:
-  const mergedContestants =
-    realtimeContestants.length > 0
+  const mergedContestants = mobileContestants ?? (
+    hasPresenceSnapshot || realtimeContestants.length > 0
       ? realtimeContestants
-      : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv');
+      : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv'));
 
   const contestants = mergedContestants
     .slice(0, 10)
@@ -116,6 +147,7 @@ export const CoachTVRoot: React.FC = () => {
       const { player, roundIndex, slotKey } = payload;
       const curState = coachStateRef.current;
       if (curState.phase !== 'DRAFTING') return;
+      if (!canClaimDraftSlot(curState, contestantId, slotKey, roundIndex)) return;
 
       const normName = normalizeFootballSearch(player.name || player.playerName);
       const existingClaim = curState.claimedPlayers[normName];
@@ -186,7 +218,7 @@ export const CoachTVRoot: React.FC = () => {
         },
       };
 
-      const updatedSelections = {
+      const updatedSelections: NonNullable<CoachRoomState['currentRoundSelections']> = {
         ...(curState.currentRoundSelections || {}),
         [contestantId]: pickData,
       };
@@ -199,6 +231,7 @@ export const CoachTVRoot: React.FC = () => {
       };
 
       setCoachState(nextState);
+      coachStateRef.current = nextState;
       savePersistedCoachState(roomCode, nextState);
 
       // Broadcast success & locked IDs to all contestants
@@ -223,7 +256,7 @@ export const CoachTVRoot: React.FC = () => {
 
       if (allSelected) {
         window.setTimeout(() => {
-          advanceSimultaneousRound();
+          advanceSimultaneousRound(nextState.roundNumber);
         }, 1200);
       }
     });
@@ -271,6 +304,9 @@ export const CoachTVRoot: React.FC = () => {
             handleAdvanceToNextRound();
           }, 600);
         }
+        if (allReady && prev.phase === 'BINGO_WON') {
+          window.setTimeout(() => handleRestartBingoRound(), 600);
+        }
 
         return nextState;
       });
@@ -282,39 +318,15 @@ export const CoachTVRoot: React.FC = () => {
       if (!payload || !payload.playerId) return;
 
       setCoachState((prev) => {
-        const card = prev.bingoCards[payload.playerId];
-        if (!card) return prev;
-
-        const updatedCells = [...card.cells];
-        if (updatedCells[payload.cellIndex]) {
-          updatedCells[payload.cellIndex] = {
-            ...updatedCells[payload.cellIndex],
-            isMarked: true,
-            markedPlayerPhoto: payload.playerPhoto,
-            markedPlayerName: payload.playerName,
-          };
-        }
-
-        const skipVotes = Array.from(new Set([...prev.rouletteSkipVotes, payload.playerId]));
-
-        const nextState: CoachRoomState = {
-          ...prev,
-          rouletteSkipVotes: skipVotes,
-          bingoCards: {
-            ...prev.bingoCards,
-            [payload.playerId]: {
-              ...card,
-              cells: updatedCells,
-            },
-          },
-        };
-
+        const nextState = applyBingoAttempt(prev, payload);
+        if (nextState === prev) return prev;
+        const skipVotes = nextState.rouletteSkipVotes;
         roomBus.broadcastCoachSync(roomCode, nextState);
 
         // Early advance if all contestants have marked or skipped
         const liveContestants = contestantsRef.current;
         if (liveContestants.length > 0 && liveContestants.every((c) => skipVotes.includes(c.id))) {
-          window.setTimeout(() => advanceBingoRoulette(), 400);
+          window.setTimeout(() => advanceBingoRoulette(nextState.rouletteHistory.length), 400);
         }
 
         return nextState;
@@ -327,14 +339,15 @@ export const CoachTVRoot: React.FC = () => {
       if (!payload || !payload.playerId) return;
 
       setCoachState((prev) => {
-        const skipVotes = Array.from(new Set([...prev.rouletteSkipVotes, payload.playerId]));
-        const nextState = { ...prev, rouletteSkipVotes: skipVotes };
+        const nextState = applyBingoAttempt(prev, { ...payload, cellIndex: undefined });
+        if (nextState === prev) return prev;
+        const skipVotes = nextState.rouletteSkipVotes;
         roomBus.broadcastCoachSync(roomCode, nextState);
 
         // Early advance if all contestants have skipped or marked
         const liveContestants = contestantsRef.current;
         if (liveContestants.length > 0 && liveContestants.every((c) => skipVotes.includes(c.id))) {
-          window.setTimeout(() => advanceBingoRoulette(), 400);
+          window.setTimeout(() => advanceBingoRoulette(nextState.rouletteHistory.length), 400);
         }
         return nextState;
       });
@@ -347,11 +360,13 @@ export const CoachTVRoot: React.FC = () => {
 
       sound.playSuccess();
       setCoachState((prev) => {
+        const card = prev.bingoCards[payload.playerId];
+        if (prev.phase !== 'BINGO_PLAYING' || !card || !checkBingoWin(card.cells).isBingo) return prev;
         const nextState: CoachRoomState = {
           ...prev,
           phase: 'BINGO_WON',
           bingoWinnerId: payload.playerId,
-          bingoWinnerName: payload.playerName,
+          bingoWinnerName: contestantsRef.current.find((player) => player.id === payload.playerId)?.name || 'متسابق',
           readyPlayersNextRound: [],
         };
         roomBus.broadcastCoachSync(roomCode, nextState);
@@ -370,7 +385,7 @@ export const CoachTVRoot: React.FC = () => {
       }
     });
 
-    const unsubHostStart = roomBus.on('HOST_START_GAME', () => {
+    const unsubHostStart = roomBus.on('GAME_STARTED', () => {
       if (coachStateRef.current.phase === 'LOBBY') {
         handleStartGame();
       }
@@ -392,29 +407,28 @@ export const CoachTVRoot: React.FC = () => {
   useEffect(() => {
     if (coachState.phase !== 'DRAFTING') return;
 
-    setTimerSeconds(DRAFT_ROUND_TIME);
-
-    const interval = window.setInterval(() => {
-      setTimerSeconds((prev) => {
-        if (prev <= 1) {
-          window.clearInterval(interval);
-          advanceSimultaneousRound();
-          return 0;
-        }
-        if (prev <= 6) {
-          sound.playTick?.();
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    const endsAt = coachState.roundEndsAt || Date.now() + DRAFT_ROUND_TIME * 1000;
+    const tick = () => {
+      const current = coachStateRef.current;
+      if (current.phase !== 'DRAFTING') return;
+      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+      setTimerSeconds(remaining);
+      const next = { ...current, roundEndsAt: endsAt, turnSecondsRemaining: remaining };
+      setCoachState(next);
+      roomBus.broadcastCoachSync(roomCode, next);
+      if (remaining > 0 && remaining <= 5) sound.playTick?.();
+      if (remaining === 0) advanceSimultaneousRound(current.roundNumber);
+    };
+    const interval = window.setInterval(tick, 1000);
+    tick();
 
     return () => window.clearInterval(interval);
   }, [coachState.phase, coachState.roundNumber]);
 
   // Advance to Next Round (Simultaneous Real-Time Race)
-  const advanceSimultaneousRound = () => {
+  const advanceSimultaneousRound = (expectedRound?: number) => {
     const cur = coachStateRef.current;
-    if (cur.phase !== 'DRAFTING') return;
+    if (cur.phase !== 'DRAFTING' || (expectedRound !== undefined && cur.roundNumber !== expectedRound)) return;
 
     sound.playSuccess?.();
     const curRound = cur.roundNumber || 1;
@@ -456,7 +470,7 @@ export const CoachTVRoot: React.FC = () => {
 
       const nextState: CoachRoomState = {
         ...cur,
-        phase: 'VERDICT',
+        phase: 'EVALUATING',
         squads: updatedSquads,
         verdict,
         cumulativeScores: nextCumulative,
@@ -467,21 +481,6 @@ export const CoachTVRoot: React.FC = () => {
       savePersistedCoachState(roomCode, nextState);
       roomBus.broadcastCoachSync(roomCode, nextState);
 
-      // Async AI Roast & Verification with Gemini
-      evaluateAllSquadsWithAI(updatedSquads)
-        .then((aiVerdict) => {
-          if (aiVerdict && aiVerdict.evaluations.length > 0) {
-            setCoachState((prev) => {
-              const withAi = { ...prev, verdict: aiVerdict };
-              savePersistedCoachState(roomCode, withAi);
-              roomBus.broadcastCoachSync(roomCode, withAi);
-              return withAi;
-            });
-          }
-        })
-        .catch((err) => {
-          console.warn('[Coach AI Evaluation] keeping deterministic score:', err);
-        });
 
       return;
     }
@@ -500,6 +499,7 @@ export const CoachTVRoot: React.FC = () => {
     const nextState: CoachRoomState = {
       ...cur,
       phase: 'DRAFTING',
+      roundEndsAt: Date.now() + DRAFT_ROUND_TIME * 1000,
       roundNumber: nextRound,
       slotIndex: nextSlotIdx,
       activeConditionId: nextCrit.id,
@@ -521,30 +521,32 @@ export const CoachTVRoot: React.FC = () => {
   useEffect(() => {
     if (coachState.phase !== 'BINGO_PLAYING') return;
 
-    setBingoTimerSeconds(BINGO_ROULETTE_TIME);
-
-    const interval = window.setInterval(() => {
-      setBingoTimerSeconds((prev) => {
-        if (prev <= 1) {
-          advanceBingoRoulette();
-          return BINGO_ROULETTE_TIME;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    const endsAt = coachState.rouletteEndsAt || Date.now() + BINGO_ROULETTE_TIME * 1000;
+    if (!coachState.rouletteEndsAt) {
+      setCoachState((prev) => ({ ...prev, rouletteEndsAt: endsAt }));
+    }
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+      setBingoTimerSeconds(remaining);
+      if (remaining === 0) advanceBingoRoulette(coachState.rouletteHistory.length);
+    };
+    tick();
+    const interval = window.setInterval(tick, 250);
 
     return () => window.clearInterval(interval);
-  }, [coachState.phase, coachState.currentRoulettePlayer?.id]);
+  }, [coachState.phase, coachState.currentRoulettePlayer?.id, coachState.rouletteEndsAt]);
 
-  const advanceBingoRoulette = () => {
+  const advanceBingoRoulette = (expectedTurn?: number) => {
     sound.playRouletteTick();
     setCoachState((prev) => {
+      if (prev.phase !== 'BINGO_PLAYING' || (expectedTurn !== undefined && prev.rouletteHistory.length !== expectedTurn)) return prev;
       const nextPlayer = getRandomRoulettePlayer(prev.rouletteHistory.slice(-12));
       const nextState: CoachRoomState = {
         ...prev,
         currentRoulettePlayer: nextPlayer,
         rouletteHistory: [...prev.rouletteHistory, nextPlayer.id],
         rouletteSkipVotes: [],
+        rouletteEndsAt: Date.now() + BINGO_ROULETTE_TIME * 1000,
       };
       roomBus.broadcastBingoPlayerSelected(roomCode, nextPlayer);
       roomBus.broadcastCoachSync(roomCode, nextState);
@@ -582,7 +584,7 @@ export const CoachTVRoot: React.FC = () => {
 
     // Rule 1.a: Any contestant who missed their pick gets an empty slot (0 points)
     const updatedSquads = { ...currentState.squads };
-    contestants.forEach((c) => {
+    contestantsRef.current.forEach((c) => {
       const s = updatedSquads[c.id] || { playerId: c.id, playerName: c.name, slots: {} };
       if (!s.slots[currentSlotKey] || !s.slots[currentSlotKey]?.playerName) {
         s.slots[currentSlotKey] = {
@@ -608,7 +610,7 @@ export const CoachTVRoot: React.FC = () => {
       const nextState: CoachRoomState = {
         ...currentState,
         squads: updatedSquads,
-        phase: 'VERDICT',
+        phase: 'EVALUATING',
         verdict,
         cumulativeScores: nextCumulative,
         readyPlayersNextRound: [],
@@ -616,21 +618,6 @@ export const CoachTVRoot: React.FC = () => {
         currentTurnPlayerName: null,
       };
 
-      // Async AI roast refinement
-      evaluateAllSquadsWithAI(updatedSquads)
-        .then((aiVerdict) => {
-          if (aiVerdict && aiVerdict.evaluations.length > 0) {
-            setCoachState((prev) => {
-              const withAi = { ...prev, verdict: aiVerdict };
-              savePersistedCoachState(roomCode, withAi);
-              roomBus.broadcastCoachSync(roomCode, withAi);
-              return withAi;
-            });
-          }
-        })
-        .catch((err) => {
-          console.warn('AI evaluation error, keeping deterministic verdict:', err);
-        });
 
       return nextState;
     }
@@ -638,9 +625,7 @@ export const CoachTVRoot: React.FC = () => {
     // 4. Advance to Next Condition with Snake Draft Alternating Order
     sound.playSuccess();
     const nextRound = curRound + 1;
-    const nextCond = currentState.matchConditions
-      ? currentState.matchConditions[nextRound - 1]
-      : { id: `cond_${nextRound}`, title: `شرط تكتيكي ${toArabicNumber(nextRound)}`, rulePrompt: '' };
+    const nextCond = currentState.matchConditions?.[nextRound - 1] ?? { id: `cond_${nextRound}`, title: `شرط تكتيكي ${toArabicNumber(nextRound)}`, rulePrompt: '' };
 
     // Snake Draft Alternating Order:
     // Round 1 (1->2->3), Round 2 (3->2->1), Round 3 (1->2->3), Round 4 (3->2->1), Round 5 (1->2->3)
@@ -704,6 +689,7 @@ export const CoachTVRoot: React.FC = () => {
     const nextState: CoachRoomState = {
       ...cur,
       phase: 'DRAFTING',
+      roundEndsAt: Date.now() + DRAFT_ROUND_TIME * 1000,
       roundNumber: nextRound,
       slotIndex: nextSlotIdx,
       activeConditionId: nextCond?.id,
@@ -740,6 +726,7 @@ export const CoachTVRoot: React.FC = () => {
       const nextState: CoachRoomState = {
         ...cur,
         phase: 'DRAFTING',
+      roundEndsAt: Date.now() + DRAFT_ROUND_TIME * 1000,
         roundNumber: 1,
         totalRounds: 5,
         slotIndex: 0,
@@ -775,6 +762,7 @@ export const CoachTVRoot: React.FC = () => {
         currentRoulettePlayer: firstPlayer,
         rouletteHistory: [firstPlayer.id],
         rouletteSkipVotes: [],
+        rouletteEndsAt: Date.now() + BINGO_ROULETTE_TIME * 1000,
         bingoCards: cards,
         readyPlayersNextRound: [],
         bingoWinnerId: null,
@@ -793,16 +781,17 @@ export const CoachTVRoot: React.FC = () => {
     generatePreloadedBingoPool();
     const firstPlayer = getRandomRoulettePlayer();
     const cards: Record<string, BingoCard> = {};
-    contestants.forEach((c) => {
+    contestantsRef.current.forEach((c) => {
       cards[c.id] = generateBingoCard(c.id);
     });
 
     const nextState: CoachRoomState = {
-      ...coachState,
+      ...coachStateRef.current,
       phase: 'BINGO_PLAYING',
       currentRoulettePlayer: firstPlayer,
       rouletteHistory: [firstPlayer.id],
       rouletteSkipVotes: [],
+      rouletteEndsAt: Date.now() + BINGO_ROULETTE_TIME * 1000,
       bingoCards: cards,
       readyPlayersNextRound: [],
       bingoWinnerId: null,
@@ -817,38 +806,38 @@ export const CoachTVRoot: React.FC = () => {
 
   const handleReturnToLobby = () => {
     sound.playClick();
-    const nextState: CoachRoomState = {
-      ...coachState,
-      phase: 'LOBBY',
-      roundNumber: 1,
-      totalRounds: 5,
-      slotIndex: 0,
-      claimedPlayers: {},
-      usedPlayersAcrossMatch: [],
-      readyPlayersNextRound: [],
-      cumulativeScores: {},
-      squads: {},
-      verdict: null,
-      bingoWinnerId: null,
-      bingoWinnerName: null,
-      currentRoulettePlayer: null,
-      rouletteHistory: [],
-      rouletteSkipVotes: [],
-    };
+    const nextState = createInitialCoachState(roomCode, coachState.mode, true);
     setCoachState(nextState);
     savePersistedCoachState(roomCode, nextState);
     roomBus.broadcastReturnToLobby(roomCode);
     roomBus.broadcastCoachSync(roomCode, nextState);
   };
 
-  const handleExit = () => {
+  const handleExit = async () => {
     sound.playClick();
-    roomBus.emit('ROOM_CLOSED', roomCode, { reason: 'HOST_CLOSED' });
-    roomBus.emit('ROOM_TERMINATED', roomCode, { reason: 'HOST_CLOSED' });
-    navigate('/');
+    if (await roomBus.terminateRoom(roomCode)) navigate('/');
+    else alert('تعذر إنهاء الغرفة، حاول مرة أخرى');
   };
 
   // Render based on current phase
+  useEffect(() => roomBus.on('COACH_STATE_SYNC', (event) => {
+    coachStateRef.current = event.data;
+    setCoachState(event.data);
+  }, roomCode), [roomCode]);
+
+  useEffect(() => roomBus.on('RETURN_TO_LOBBY', () => {
+    const fresh = createInitialCoachState(roomCode, coachStateRef.current.mode, true);
+    coachStateRef.current = fresh;
+    setCoachState(fresh);
+    roomBus.broadcastCoachSync(roomCode, fresh);
+  }, roomCode), [roomCode]);
+
+  if (mobileContestants) return null;
+
+  if (coachState.phase === 'EVALUATING') return <ShabahThinkingScreen title="الشبح يراجع التشكيلات" />;
+
+
+
   if (coachState.phase === 'LOBBY') {
     return (
       <CoachLobby
@@ -867,7 +856,6 @@ export const CoachTVRoot: React.FC = () => {
             return next;
           });
         }}
-        onStartGame={handleStartGame}
         onExit={handleExit}
       />
     );
@@ -913,7 +901,7 @@ export const CoachTVRoot: React.FC = () => {
             claimedPlayers={coachState.claimedPlayers}
             currentRoundSelections={coachState.currentRoundSelections || {}}
             turnSecondsRemaining={timerSeconds}
-            activeConditionDescription={currentCondition.description}
+            activeConditionDescription={'description' in currentCondition ? currentCondition.description : undefined}
             onNextRound={advanceSimultaneousRound}
             onReturnToLobby={handleReturnToLobby}
           />

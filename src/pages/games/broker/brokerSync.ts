@@ -43,8 +43,8 @@ export function sortAndRankContestants(
   }));
 }
 
-export function createInitialBrokerState(roomCode: string): BrokerRoomState {
-  const existing = getPersistedBrokerState(roomCode);
+export function createInitialBrokerState(roomCode: string, fresh = false): BrokerRoomState {
+  const existing = fresh ? null : getPersistedBrokerState(roomCode);
   if (existing) {
     return existing;
   }

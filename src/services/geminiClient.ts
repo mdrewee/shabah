@@ -1,23 +1,4 @@
-/**
- * Resilient Gemini Client with Multi-Model Fallback Cascade
- * Uses official stable v1beta models with query param key and header authentication
- */
-
-// الموديلات الرسمية المستقرة في v1beta
-export const WORKING_MODELS = [
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
-  'gemini-2.0-flash-lite',
-];
-
-export const GEMINI_MODELS_CASCADE = WORKING_MODELS;
-
-export function getGeminiApiKey(): string {
-  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) {
-    return import.meta.env.VITE_GEMINI_API_KEY;
-  }
-  return '';
-}
+import { supabase } from '../lib/supabaseClient';
 
 export interface CallGeminiOptions {
   systemInstruction?: string;
@@ -26,76 +7,50 @@ export interface CallGeminiOptions {
   jsonMode?: boolean;
 }
 
+export async function requestRoomAI(roomCode: string, prompt: string, options: CallGeminiOptions): Promise<string> {
+  const secret = localStorage.getItem('shabah_host_' + roomCode);
+  if (!secret) throw new Error('تحتاج اتصالًا بالمضيف لتحليل الإجابة');
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 40000);
+  try {
+    const { data, error } = await supabase.functions.invoke('shabah-ai', {
+      body: { roomCode, secret, prompt, options },
+      signal: controller.signal,
+    });
+    if (error || typeof data?.text !== 'string') throw new Error('تعذّر التحليل، حاول مرة أخرى');
+    return data.text;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export async function callGeminiWithFallback(
   prompt: string,
-  optionsOrSystemInstruction?: string | CallGeminiOptions
+  optionsOrSystemInstruction: string | CallGeminiOptions = {}
 ): Promise<string> {
-  const apiKey = getGeminiApiKey();
-  if (!apiKey) {
-    throw new Error('VITE_GEMINI_API_KEY is not defined in environment variables');
-  }
+  const options = typeof optionsOrSystemInstruction === 'string'
+    ? { systemInstruction: optionsOrSystemInstruction } : optionsOrSystemInstruction;
+  const parts = window.location.pathname.split('/');
+  const roomCode = (parts[1] === 'room' ? parts[2] : parts[3] || '').toUpperCase();
+  if (!/^[A-HJ-NP-Z2-9]{4}$/.test(roomCode)) throw new Error('افتح غرفة قبل طلب التحليل');
+  if (localStorage.getItem('shabah_host_' + roomCode)) return requestRoomAI(roomCode, prompt, options);
 
-  let systemInstruction: string | undefined;
-  let temperature = 0.2;
-  let maxOutputTokens = 1500;
-  let jsonMode = true;
-
-  if (typeof optionsOrSystemInstruction === 'string') {
-    systemInstruction = optionsOrSystemInstruction;
-  } else if (optionsOrSystemInstruction && typeof optionsOrSystemInstruction === 'object') {
-    systemInstruction = optionsOrSystemInstruction.systemInstruction;
-    temperature = optionsOrSystemInstruction.temperature ?? 0.2;
-    maxOutputTokens = optionsOrSystemInstruction.maxOutputTokens ?? 1500;
-    jsonMode = optionsOrSystemInstruction.jsonMode ?? true;
-  }
-
-  let lastError: any = null;
-
-  for (const model of WORKING_MODELS) {
-    try {
-      // تضمين key في الرابط إجباري في v1beta للمتصفحات لمنع الـ 404
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}`;
-
-      const body: any = {
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature,
-          maxOutputTokens,
-        },
-      };
-
-      if (jsonMode) {
-        body.generationConfig.responseMimeType = 'application/json';
-      }
-
-      if (systemInstruction) {
-        body.systemInstruction = {
-          parts: [{ text: systemInstruction }],
-        };
-      }
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey.trim(),
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        console.warn(`[GEMINI] Model ${model} failed with HTTP ${response.status}: ${response.statusText}`);
-        continue; // التبديل للموديل التالي فوراً
-      }
-
-      const data = await response.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text) return text;
-    } catch (err) {
-      console.warn(`[GEMINI] Fetch error with model ${model}:`, err);
-      lastError = err;
-    }
-  }
-
-  throw lastError || new Error('All Gemini fallback models failed');
+  const { roomBus } = await import('../lib/roomBus');
+  const requestId = crypto.randomUUID();
+  const playerId = localStorage.getItem('shabah_player_id') || localStorage.getItem('taghesi_playerId');
+  return new Promise((resolve, reject) => {
+    const off = roomBus.on('AI_RESPONSE', (event) => {
+      const result = event.data;
+      if (result?.requestId !== requestId) return;
+      off();
+      window.clearTimeout(timer);
+      if (typeof result.text === 'string') resolve(result.text);
+      else reject(new Error('تعذّر التحليل، حاول مرة أخرى'));
+    }, roomCode);
+    const timer = window.setTimeout(() => {
+      off();
+      reject(new Error('المضيف لم يرد خلال الوقت المحدد'));
+    }, 45000);
+    roomBus.emit('AI_REQUEST', roomCode, { requestId, playerId, prompt, options });
+  });
 }

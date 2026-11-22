@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { BingoRoulettePlayer, BingoCard } from '../types';
-import { SILHOUETTE_SVG } from '../footballDataService';
 import { toArabicNumber } from '../../../../utils/numberFormat';
-import { Trophy, Award, Users, RotateCcw, ArrowRight } from 'lucide-react';
+import { Trophy, Users, RotateCcw, ArrowRight } from 'lucide-react';
 import { sound } from '../../../../lib/audio';
 
 interface ContestantItem {
@@ -31,12 +30,6 @@ export const CoachBingoTVView: React.FC<CoachBingoTVViewProps> = ({
   onReturnToLobby,
   secondsRemaining,
 }) => {
-  const [imgError, setImgError] = useState(false);
-
-  useEffect(() => {
-    setImgError(false);
-  }, [currentRoulettePlayer?.id]);
-
   // If there is a winner, celebrate with Shabah Winner card
   if (winnerName) {
     return (
@@ -52,7 +45,7 @@ export const CoachBingoTVView: React.FC<CoachBingoTVViewProps> = ({
                 بينقو كروي ٤×٤ مكتمل!
               </span>
 
-              <h2 className="text-3xl sm:text-5xl font-black text-[#0A0A0A]">
+              <h2 className="text-4xl sm:text-6xl font-black text-[#0A0A0A]">
                 الفائز: {winnerName}
               </h2>
 
@@ -117,57 +110,11 @@ export const CoachBingoTVView: React.FC<CoachBingoTVViewProps> = ({
               )}
             </div>
 
-            {/* Modern Football Star Card (High-Res Player Photo or Fallback Badge) */}
-            {p?.photoUrl ? (
-              <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-3xl bg-zinc-950 border-2 border-zinc-800 p-2 my-3 shadow-xl flex items-center justify-center overflow-hidden relative">
-                <img
-                  src={p.photoUrl}
-                  alt={p.name}
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                  className="w-full h-full object-contain drop-shadow-lg"
-                />
-                {p?.position && (
-                  <span className="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded-lg bg-emerald-500/90 text-white font-mono font-black text-[10px] shadow">
-                    {p.position}
-                  </span>
-                )}
-              </div>
-            ) : (
-              <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-3xl bg-zinc-950 border-2 border-zinc-800 flex flex-col items-center justify-center text-white my-3 shadow-xl">
-                <div className="w-12 h-12 rounded-2xl bg-neutral-900 border border-neutral-700 flex items-center justify-center text-emerald-400 font-mono font-black text-sm mb-1 shadow-inner">
-                  {p?.position || 'STAR'}
-                </div>
-                <span className="font-mono text-xs font-bold text-zinc-400">
-                  {p?.nationality || 'لاعب دولي'}
-                </span>
-              </div>
-            )}
-
             {/* Full Arabic Name */}
-            <h3 className="font-sans font-black text-3xl sm:text-5xl text-[#0A0A0A] mb-1">
+            <h3 className="font-sans font-black text-4xl sm:text-6xl leading-tight text-[#0A0A0A] mb-1">
               {p?.name || 'جاري سحب اللاعب...'}
             </h3>
 
-            {/* Club & Country Badges */}
-            <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
-              {p?.position && (
-                <span className="px-3 py-1 rounded-xl bg-zinc-900 text-emerald-400 font-mono text-xs font-black">
-                  {p.position}
-                </span>
-              )}
-              {p?.currentClub && (
-                <span className="px-3 py-1 rounded-xl bg-neutral-100 border border-neutral-300 text-xs font-black text-[#0A0A0A]">
-                  النادي: {p.currentClub}
-                </span>
-              )}
-              {p?.nationality && (
-                <span className="px-3 py-1 rounded-xl bg-neutral-100 border border-neutral-300 text-xs font-black text-[#0A0A0A]">
-                  المنتخب: {p.nationality}
-                </span>
-              )}
-            </div>
           </div>
         </div>
       </div>

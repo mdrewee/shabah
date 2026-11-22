@@ -1,18 +1,29 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { useRoom, roomBus } from '../lib/roomBus';
 import { supabase } from '../lib/supabase';
 import { UnifiedShabahLobby } from '../components/lobby/UnifiedShabahLobby';
-import { CoachTVRoot } from './games/coach/CoachTVRoot';
-import { BrokerTVRoot } from './games/broker/BrokerTVRoot';
-import { ArabicTVRoot } from './games/arabic/ArabicTVRoot';
-import { JudgeTVRoot } from './games/judge/JudgeTVRoot';
-import { GuideTVRoot } from './games/guide/GuideTVRoot';
-import { FlyingTVRoot } from './games/flying/FlyingTVRoot';
+import { isRoomHost } from '../services/roomService';
 import { SHABAH_GAMES } from '../data/shabahGames';
 import { normalizeGameId, ShabahGameCanonicalId } from '../utils/gameIds';
 
+const CoachTVRoot = React.lazy(() => import('./games/coach/CoachTVRoot').then(({ CoachTVRoot }) => ({ default: CoachTVRoot })));
+const BrokerTVRoot = React.lazy(() => import('./games/broker/BrokerTVRoot').then(({ BrokerTVRoot }) => ({ default: BrokerTVRoot })));
+const ArabicTVRoot = React.lazy(() => import('./games/arabic/ArabicTVRoot').then(({ ArabicTVRoot }) => ({ default: ArabicTVRoot })));
+const JudgeTVRoot = React.lazy(() => import('./games/judge/JudgeTVRoot').then(({ JudgeTVRoot }) => ({ default: JudgeTVRoot })));
+const GuideTVRoot = React.lazy(() => import('./games/guide/GuideTVRoot').then(({ GuideTVRoot }) => ({ default: GuideTVRoot })));
+const FlyingTVRoot = React.lazy(() => import('./games/flying/FlyingTVRoot').then(({ FlyingTVRoot }) => ({ default: FlyingTVRoot })));
+
 export const TVScreenView: React.FC = () => {
+  const { code } = useParams<{ code?: string }>();
+  const [searchParams] = useSearchParams();
+  const roomCode = code || searchParams.get('room') || '';
+  return roomCode && isRoomHost(roomCode)
+    ? <HostTVScreen key={roomCode} />
+    : <Navigate to="/" replace />;
+};
+
+const HostTVScreen: React.FC = () => {
   const params = useParams<{ code?: string; roomId?: string; id?: string; gameId?: string }>();
   const [searchParams] = useSearchParams();
 
@@ -81,37 +92,14 @@ export const TVScreenView: React.FC = () => {
 
     fetchInitialRoom();
 
-    const unsubStart = roomBus.on('GAME_STARTED', (evt: any) => {
-      const payload = evt?.data ?? evt;
-      const gId = payload?.gameId;
-      if (gId) {
-        const canon = normalizeGameId(gId);
-        if (canon) setLoadedGameId(canon);
-      }
-    });
-
-    const unsubCoach = roomBus.on('COACH_STATE_SYNC', () => setLoadedGameId('ai-coach'));
-    const unsubBroker = roomBus.on('BROKER_STATE_SYNC', () => setLoadedGameId('ai-broker'));
-    const unsubArabic = roomBus.on('ARABIC_STATE_SYNC', () => setLoadedGameId('ai-arabic'));
-    const unsubJudge = roomBus.on('JUDGE_STATE_SYNC', () => setLoadedGameId('ai-judge'));
-    const unsubGuide = roomBus.on('GUIDE_STATE_SYNC', () => setLoadedGameId('ai-guide'));
-    const unsubFlying = roomBus.on('FLYING_STATE_SYNC', () => setLoadedGameId('ai-flying'));
-
     const unsubTerminated = roomBus.on('ROOM_TERMINATED', () => {
       sessionStorage.clear();
       localStorage.removeItem('current_room_code');
       window.location.href = '/';
-    });
+    }, cleanCode);
 
     return () => {
       isMounted = false;
-      unsubStart();
-      unsubCoach();
-      unsubBroker();
-      unsubArabic();
-      unsubJudge();
-      unsubGuide();
-      unsubFlying();
       unsubTerminated();
     };
   }, [roomCode]);

@@ -9,6 +9,7 @@ export interface FootballSearchResult {
   clubs?: string[];
   nationality?: string;
   position?: 'GK' | 'DEF' | 'MID' | 'FWD';
+  rating?: number;
   isLocalDb: boolean;
 }
 
@@ -54,7 +55,11 @@ const additional100Items: Array<{
   const playerObj: FootballPlayer = {
     id: p.id,
     name: p.name,
+    aliases: [p.nameEn],
     nationality: '',
+    nationalityCode: '',
+    clubs: [],
+    currentClub: '',
     position: 'FWD',
     rating: 88,
   };
@@ -82,6 +87,7 @@ export function searchLocalFootballPlayers(query: string, limit = 15): FootballS
         clubs: item.player.clubs,
         nationality: item.player.nationality,
         position: item.player.position,
+        rating: item.player.rating,
         isLocalDb: true,
       });
       if (matched.length >= limit) break;

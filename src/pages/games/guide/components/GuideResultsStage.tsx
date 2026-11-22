@@ -1,3 +1,4 @@
+import { ShabahRoundReveal } from '../../../../components/common/ShabahRoundReveal';
 import React from 'react';
 import { GuideLandmark } from '../../../../data/guideLandmarks';
 import { ContestantRoundResult } from '../types';
@@ -78,7 +79,7 @@ export const GuideResultsStage: React.FC<GuideResultsStageProps> = ({
   // TV View: Map with auto-zoom on target + Side scoreboard
   if (isTV) {
     return (
-      <div
+      <ShabahRoundReveal entries={resultsList.map((item) => ({ id: item.contestantId, name: item.contestantName, answer: Math.round(item.distanceKm).toLocaleString('ar-SA') + ' كم عن المعلم' }))}><div
         dir="rtl"
         className="w-full h-screen max-h-screen bg-[#000000] text-white flex flex-col justify-between p-6 select-none overflow-hidden"
       >
@@ -235,13 +236,13 @@ export const GuideResultsStage: React.FC<GuideResultsStageProps> = ({
             </div>
           </div>
         </div>
-      </div>
+      </div></ShabahRoundReveal>
     );
   }
 
   // Mobile View: Focused Contestant Feedback Card + Ready Button
   return (
-    <div
+    <ShabahRoundReveal entries={resultsList.map((item) => ({ id: item.contestantId, name: item.contestantName, answer: Math.round(item.distanceKm).toLocaleString('ar-SA') + ' كم عن المعلم' }))}><div
       dir="rtl"
       className="flex-1 w-full min-h-screen bg-[#000000] text-white flex flex-col justify-between p-4 select-none overflow-y-auto"
     >
@@ -298,6 +299,14 @@ export const GuideResultsStage: React.FC<GuideResultsStageProps> = ({
       </div>
 
       {/* Bottom Ready Toggle Button */}
+      <div className="my-4">
+        <p className="mb-2 text-sm font-bold text-zinc-300">الموقع الصحيح وتخمينك</p>
+        <div className="h-64 overflow-hidden rounded-2xl border border-zinc-700 bg-black">
+          <GuideWorldMap interactive={true} targetLandmark={landmark}
+            markers={markers.filter((marker) => marker.id === currentContestantId)}
+            showDistanceLines={true} autoCenterOnTarget={true} className="h-full w-full" />
+        </div>
+      </div>
       <div className="pt-2 border-t border-zinc-900">
         {onToggleReady && (
           <button
@@ -326,6 +335,6 @@ export const GuideResultsStage: React.FC<GuideResultsStageProps> = ({
           </button>
         )}
       </div>
-    </div>
+    </div></ShabahRoundReveal>
   );
 };

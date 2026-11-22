@@ -1,6 +1,6 @@
 import React, { useRef, useState, useCallback } from 'react';
 
-export type GlowColor = 'purple' | 'green' | 'orange' | 'blue' | 'red';
+export type GlowColor = 'purple' | 'green' | 'orange' | 'blue' | 'red' | 'cyan';
 
 export interface GlowCardProps {
   glowColor?: GlowColor;
@@ -44,6 +44,12 @@ const GLOW_PALETTES: Record<
     ambient: 'rgba(56, 189, 248, 0.12)',
     border: 'rgba(56, 189, 248, 0.70)',
     halo: 'rgba(56, 189, 248, 0.28)',
+  },
+  cyan: {
+    spotlight: 'rgba(34, 211, 238, 0.38)',
+    ambient: 'rgba(34, 211, 238, 0.12)',
+    border: 'rgba(34, 211, 238, 0.70)',
+    halo: 'rgba(34, 211, 238, 0.28)',
   },
   red: {
     spotlight: 'rgba(248, 113, 113, 0.38)',

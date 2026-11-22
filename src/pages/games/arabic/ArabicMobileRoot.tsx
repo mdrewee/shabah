@@ -1,3 +1,5 @@
+import { ShabahThinkingScreen } from '../../../components/common/ShabahThinkingScreen';
+import { isRoomHost } from '../../../services/roomService';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useRoom, roomBus } from '../../../lib/roomBus';
@@ -58,10 +60,11 @@ export const ArabicMobileRoot: React.FC = () => {
       if (payload.phase === 'ROULETTE' || payload.phase === 'INPUT') {
         setIsReadyForNextRound(false);
       }
-      if (payload.phase === 'ROULETTE') {
-        setHasSubmittedThisRound(false);
+      const submitted = Boolean(payload.submissions?.[playerId]);
+      if (submitted || payload.phase === 'ROULETTE') {
+        setHasSubmittedThisRound(submitted);
       }
-    });
+    }, roomCode);
 
     const unsubResults = roomBus.on('ARABIC_RESULTS_READY', (evt: any) => {
       const incomingCode = evt?.roomCode;
@@ -129,6 +132,10 @@ export const ArabicMobileRoot: React.FC = () => {
       unsubResolved?.();
       unsubLobby?.();
     };
+  }, [roomCode]);
+
+  useEffect(() => {
+    roomBus.emit('REQUEST_ROOM_STATE', roomCode, {});
   }, [roomCode]);
 
   // Handle Answer Submission
@@ -200,6 +207,7 @@ export const ArabicMobileRoot: React.FC = () => {
         gameId="ai-arabic"
         gameTitle="الشبح العربي"
         role="contestant"
+        isPlayerHost={isRoomHost(roomCode)}
         currentPlayerId={playerId}
         onExit={() => {
           roomBus.leavePlayer(roomCode, playerId);
@@ -223,52 +231,9 @@ export const ArabicMobileRoot: React.FC = () => {
 
   // 3. Dedicated Correction Waiting Screen (JUDGING)
   if (arabicState.phase === 'JUDGING') {
-    return (
-      <div
-        dir="rtl"
-        className="flex-1 w-full flex flex-col items-center justify-between p-6 bg-black text-white text-center select-none"
-      >
-        <div className="w-full flex items-center justify-between pb-3 border-b border-zinc-800">
-          <div className="text-xs font-sans text-zinc-400">
-            الغرفة: <span className="font-bold text-white tracking-widest">{roomCode}</span>
-          </div>
-          <button
-            onClick={handleReturnToLobby}
-            className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-sans text-zinc-300 hover:text-white transition-colors cursor-pointer"
-          >
-            العودة للوبي
-          </button>
-        </div>
-
-        <div className="my-auto flex flex-col items-center justify-center">
-          <div className="relative mb-6">
-            <div className="p-1 rounded-full bg-gradient-to-tr from-[#B56BFF] via-[#38BDF8] to-[#4ADE80] shadow-[0_0_40px_rgba(56,189,248,0.4)] animate-pulse">
-              <div className="w-28 h-28 rounded-full bg-[#0A0A0A] flex items-center justify-center">
-                <span className="font-sans font-black text-5xl text-emerald-400">
-                  {arabicState.currentLetter}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <h2 className="font-sans font-bold text-xl sm:text-2xl text-white mb-2">
-            الشبح العربي يدقق القواميس والمعاجم...
-          </h2>
-          <p className="font-sans text-xs sm:text-sm text-zinc-400 max-w-xs leading-relaxed mb-6">
-            فحص دقيق لكلمات المتسابقين بحرف ({arabicState.currentLetter}) واكتشاف الإجابات المكررة والفريدة.
-          </p>
-
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-300 text-xs font-sans">
-            <Clock className="w-4 h-4 text-emerald-400 animate-spin" />
-            <span>إصدار النتائج وتوزيع النقاط قيد التنفيذ...</span>
-          </div>
-        </div>
-
-        <div className="w-full text-center text-[11px] font-sans text-zinc-600">
-          منظومة شبح التحكيمية
-        </div>
-      </div>
-    );
+    return <ShabahThinkingScreen title="الشبح العربي يدقّق الكلمات"
+      onRetry={isRoomHost(roomCode) ? () => window.location.reload() : undefined}
+      onReturnToLobby={isRoomHost(roomCode) ? () => roomBus.broadcastReturnToLobby(roomCode) : undefined} />;
   }
 
   // 4. Solving Phase (Mobile Input)

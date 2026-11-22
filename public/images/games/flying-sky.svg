@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1560" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="sky" x2="0" y2="100%"><stop stop-color="#070b25"/><stop offset=".38" stop-color="#14275a"/><stop offset=".67" stop-color="#205075"/><stop offset=".87" stop-color="#414071"/><stop offset="1" stop-color="#181931"/></linearGradient>
+    <radialGradient id="halo"><stop stop-color="#a1fff2" stop-opacity=".35"/><stop offset="1" stop-color="#99fff2" stop-opacity="0"/></radialGradient>
+    <pattern id="stars" width="119" height="131" patternUnits="userSpaceOnUse"><path d="M14 22h2v2h-2zm54 44h3v3h-3zm31 48h2v2h-2zM37 99h2v2h-2z" fill="#b7caff" opacity=".56"/></pattern>
+  </defs>
+  <path fill="url(#sky)" d="M0 0h720v1560H0z"/>
+  <path fill="url(#stars)" d="M0 0h720v1060H0z"/>
+  <circle cx="555" cy="240" r="143" fill="url(#halo)"/>
+  <path d="M558 172h34v12h20v18h12v72h-12v18h-20v12h-64v-12h-18v-18h-12v-72h12v-18h18v-12z" fill="#cefff2"/>
+  <path d="M558 172h34v12h20v18h12v72h-12v18h-20v12h-52v-12h38v-18h15v-18h10v-54h-10v-18h-35z" fill="#76c6d1"/>
+  <path d="M125 277h6v20h-6zm-7 7h20v6h-20zm236 163h4v15h-4zm-5 5h14v4h-14zm258 114h4v15h-4zm-5 5h14v4h-14z" fill="#d9faff"/>
+  <path d="M0 514h49l68-30h100l91 23 122 65 168 18 122-25v69l-159 18-169-34-102-48-101-15-100 17L0 607z" fill="#6da9d3" opacity=".15"/>
+  <path d="M0 741h51v-25h51v-26h76v18h68v25h56v26h92v28H0zm720 93h-69v-19h-57v-29h-102v26h-68v27h-65v31h361z" fill="#77b8ce" opacity=".36"/>
+  <path d="M0 955h95v-28h69v-29h101v26h73v31h83v40H0zm720 95h-86v-35h-78v-29h-104v27h-70v34h-55v35h393z" fill="#86c7db" opacity=".28"/>
+  <path d="M0 1238l65-77h31v-22h44v-35h24l62 59h50l36 51h70l52-32h52l59-87h48l40 36h32l55 50v379H0z" fill="#273356"/>
+  <path d="M0 1348l75-47h56l41-57h47l57 27h65l49 40h69l62-48h42l72-65h40l45 44v318H0z" fill="#1c2444"/>
+  <path d="M0 1461h95v-24h82v-30h93v-18h180v18h93v30h82v24h95v99H0z" fill="#11192f"/>
+  <path d="M0 1510h720v50H0z" fill="#0a1022"/>
+  <path d="M63 1499h594m-501 23h53m301 0h53m-265 0h122" fill="none" stroke="#74f3df" stroke-width="5" opacity=".52"/>
+  <path d="M132 1439h40m388 0h40M272 1390h176" fill="none" stroke="#ad94fb" stroke-width="4" opacity=".65"/>
+</svg>

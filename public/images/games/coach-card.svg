@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360">
+  <defs>
+    <radialGradient id="scene" cx=".49" cy=".43" r=".67"><stop stop-color="#238b61"/><stop offset="1" stop-color="#082a27"/></radialGradient>
+    <linearGradient id="mascot" x2="100%" y2="100%"><stop stop-color="#b56bff"/><stop offset=".28" stop-color="#6366f1"/><stop offset=".52" stop-color="#38bdf8"/><stop offset=".78" stop-color="#4ade80"/><stop offset="1" stop-color="#bef264"/></linearGradient>
+    <pattern id="dots" width="19" height="19" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#a5ff92" opacity=".27"/></pattern>
+  </defs>
+  <path fill="url(#scene)" d="M0 0h480v360H0z"/>
+  <path fill="url(#dots)" d="M0 0h480v360H0z"/>
+  <circle cx="232" cy="171" r="123" fill="none" stroke="#a5ff92" stroke-width="1.5" stroke-opacity=".4"/>
+  <circle cx="232" cy="171" r="139" fill="none" stroke="#a5ff92" stroke-width="1.5" stroke-dasharray="4 12" stroke-opacity=".36"/>
+  <path d="M0 290 91 259l55 25 86-20 69 26 88-37 91 29v78H0z" fill="#082a27" opacity=".78"/>
+  <ellipse cx="230" cy="268" rx="90" ry="16" fill="#080916" opacity=".68"/>
+  <path d="M64 81h13m-6.5-6.5v13m341-51h11m-5.5-5.5v11m-24 229h17m-8.5-8.5v17M100 251h9m-4.5-4.5v9" stroke="#a5ff92" stroke-width="2" stroke-linecap="round"/>
+  <g transform="translate(117 36) scale(1.9)" stroke-linejoin="round">
+    <path d="M 60 14 C 85 14, 96 32, 96 58 C 96 76, 99 91, 98 102 C 97 110, 89 112, 83 106 C 78 101, 74 101, 70 106 C 65 112, 55 112, 50 106 C 46 101, 42 101, 37 106 C 31 112, 23 110, 22 102 C 21 91, 24 76, 24 58 C 24 32, 35 14, 60 14 Z" fill="#0a0a0a" stroke="url(#mascot)" stroke-width="17"/>
+    <path d="M 60 14 C 85 14, 96 32, 96 58 C 96 76, 99 91, 98 102 C 97 110, 89 112, 83 106 C 78 101, 74 101, 70 106 C 65 112, 55 112, 50 106 C 46 101, 42 101, 37 106 C 31 112, 23 110, 22 102 C 21 91, 24 76, 24 58 C 24 32, 35 14, 60 14 Z" fill="#fff" stroke="#0a0a0a" stroke-width="10" paint-order="stroke fill"/>
+    <circle cx="47" cy="54" r="7.4" fill="#101010"/><circle cx="73" cy="54" r="7.4" fill="#101010"/>
+  </g>
+  <g transform="translate(380 192)"><circle r="49" fill="#dfffd4" stroke="#092724" stroke-width="6"/><path d="M0-20l20 14-8 23h-24l-8-23zm0-29 16 13-16 16-16-16zm47 34-6 22-21-13 8-21zm-18 53-23 9 6-30 24-2zm-58 0-7-23 24 2 6 30zm-18-53 19-12 8 21-21 13z" fill="#173934"/></g><path d="M101 234H65V93h101m-101 53h45v43H65" fill="none" stroke="#a5ff92" stroke-opacity=".55" stroke-width="4"/>
+  <path d="M34 307h41m330 0h41" stroke="#a5ff92" stroke-opacity=".55" stroke-width="2"/>
+</svg>

@@ -3,6 +3,8 @@
  * Direct CDN links and verified transparent cutouts for TheSportsDB & local assets.
  */
 
+import { ADDITIONAL_BINGO_PLAYERS, BINGO_MANAGER_PLAYERS } from './additionalBingoPlayers';
+
 export interface StaticPlayerAsset {
   id: string;
   name: string;
@@ -18,6 +20,7 @@ export interface StaticPlayerAsset {
   nationality?: string;
   trophies?: string[];
   traits?: string[];
+  managers?: string[];
 }
 
 export interface StaticClubAsset {
@@ -42,29 +45,29 @@ export const STATIC_CLUBS: Record<string, StaticClubAsset> = {
   barcelona: {
     id: 'barcelona',
     name: 'برشلونة',
-    logoUrl: '/assets/football/clubs/barcelona.png',
-    imageUrl: '/assets/football/clubs/barcelona.png',
+    logoUrl: '/assets/football/clubs/barcelona.svg',
+    imageUrl: '/assets/football/clubs/barcelona.svg',
     country: 'إسبانيا',
   },
   realmadrid: {
     id: 'realmadrid',
     name: 'ريال مدريد',
-    logoUrl: '/assets/football/clubs/real_madrid.png',
-    imageUrl: '/assets/football/clubs/real_madrid.png',
+    logoUrl: '/assets/football/clubs/real_madrid.svg',
+    imageUrl: '/assets/football/clubs/real_madrid.svg',
     country: 'إسبانيا',
   },
   chelsea: {
     id: 'chelsea',
     name: 'تشيلسي',
-    logoUrl: '/assets/football/clubs/chelsea.png',
-    imageUrl: '/assets/football/clubs/chelsea.png',
+    logoUrl: '/assets/football/clubs/chelsea.svg',
+    imageUrl: '/assets/football/clubs/chelsea.svg',
     country: 'إنجلترا',
   },
   mancity: {
     id: 'mancity',
     name: 'مانشستر سيتي',
-    logoUrl: '/assets/football/clubs/man_city.png',
-    imageUrl: '/assets/football/clubs/man_city.png',
+    logoUrl: '/assets/football/clubs/man_city.svg',
+    imageUrl: '/assets/football/clubs/man_city.svg',
     country: 'إنجلترا',
   },
   liverpool: {
@@ -105,8 +108,8 @@ export const STATIC_CLUBS: Record<string, StaticClubAsset> = {
   bayern: {
     id: 'bayern',
     name: 'بايرن ميونخ',
-    logoUrl: '/assets/football/clubs/bayern.png',
-    imageUrl: '/assets/football/clubs/bayern.png',
+    logoUrl: '/assets/football/clubs/bayern.svg',
+    imageUrl: '/assets/football/clubs/bayern.svg',
     country: 'ألمانيا',
   },
   psg: {
@@ -298,7 +301,7 @@ export const STATIC_POSITIONS: Record<string, StaticPositionAsset> = {
 // -------------------------------------------------------------
 // 3. TheSportsDB Static Player Cutouts & Superstars (Authoritative Offline-First Bank)
 // -------------------------------------------------------------
-export const STATIC_BINGO_PLAYERS: StaticPlayerAsset[] = [
+const ORIGINAL_BINGO_PLAYERS: StaticPlayerAsset[] = [
   {
     id: 'messi',
     name: 'ليونيل ميسي',
@@ -675,6 +678,11 @@ export const STATIC_BINGO_PLAYERS: StaticPlayerAsset[] = [
     traits: ['حارس_مرمى', 'لعب_بالسعودية', 'عربي', 'جدار'],
   },
 ];
+
+export const STATIC_BINGO_PLAYERS: StaticPlayerAsset[] = [...ORIGINAL_BINGO_PLAYERS, ...ADDITIONAL_BINGO_PLAYERS].map((player) => ({
+  ...player,
+  managers: Object.entries(BINGO_MANAGER_PLAYERS).filter(([, ids]) => ids.includes(player.id)).map(([manager]) => manager),
+}));
 
 export const STATIC_ROULETTE_SUPERSTARS = STATIC_BINGO_PLAYERS;
 export type StaticRoulettePlayer = StaticPlayerAsset;

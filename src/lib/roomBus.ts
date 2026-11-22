@@ -20,10 +20,21 @@ import { TrajectoryRoomState, TrajectoryPlayer, TrajectoryRound } from '../types
 import { TRAJECTORY_ROUNDS_FALLBACK, calculateHitCountries } from './trajectoryEngine';
 import { TourismRoomState, TourismPlayer, TourismItem } from '../types/tourismGame';
 import { isAnswerCorrect } from '../data/tourismLexicon';
-import { normalizeGameId } from '../utils/gameIds';
 
 const STORAGE_PREFIX = 'taghesi_room_';
 const CHANNEL_NAME = 'taghesi_bus_v3';
+const HOST_COMMAND_EVENTS = new Set([
+  'GAME_STARTED', 'HOST_START_GAME', 'GAME_ENDED', 'ROOM_TERMINATED', 'TERMINATE_ROOM',
+  'FORCE_PLAYER_KICK', 'PLAYER_KICKED', 'KICK_PLAYER',
+  'RETURN_TO_LOBBY', 'AI_RESPONSE',
+  'COACH_STATE_SYNC', 'BROKER_STATE_SYNC', 'ARABIC_STATE_SYNC',
+  'JUDGE_STATE_SYNC', 'GUIDE_STATE_SYNC', 'FLYING_STATE_SYNC',
+  'JUDGE_NEW_ROUND', 'JUDGE_START_DEFENSE', 'JUDGE_RESULTS_READY', 'JUDGE_TIME_UP',
+  'BROKER_NEW_ROUND', 'BROKER_ITEM_SYNC', 'COACH_MODE_SELECTED',
+  'PLAYER_CLAIM_SUCCESS', 'CLAIM_PLAYER_REJECTED', 'BINGO_PLAYER_SELECTED',
+  'ARABIC_TIME_UP', 'ARABIC_RESULTS_READY', 'ARABIC_OBJECTION_RESOLVED',
+  'FLYING_NEW_ROUND', 'FLYING_ROUND_RESULTS', 'FLYING_RESULTS_READY', 'FLYING_GAME_OVER',
+]);
 
 // Unique id of this browser tab (used as tie-breaker for state versions)
 const TAB_ID = 't_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -148,6 +159,7 @@ export type RoomEventType =
   | 'SCATTERGORIES_ADMIN_VETO'
   | 'GAME_STARTED'
   | 'ROOM_CLOSED'
+  | 'FORCE_PLAYER_KICK'
   | 'ROOM_TERMINATED'
   | 'COACH_STATE_SYNC'
   | 'BROKER_STATE_SYNC'
@@ -206,8 +218,9 @@ class RoomBus {
   public localPlayerId: string = '';
   public clientId: string = `client_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`;
   private lastBroadcastTimes: Map<string, number> = new Map();
+  private trailingSnapshots = new Map<string, ReturnType<typeof setTimeout>>();
   private reconnectAttempts: Map<string, number> = new Map();
-  private kickedPlayerIds: Set<string> = new Set();
+  private kickedPlayerIds = new Map<string, Set<string>>();
   private isIntentionalLeave: Map<string, boolean> = new Map();
   private reconnectTimers: Map<string, any> = new Map();
   private isReconnecting: Map<string, boolean> = new Map();
@@ -291,20 +304,9 @@ class RoomBus {
       'ARABIC_OBJECTION_VOTE',
       'PLAYER_READY_UPDATE',
       'BINGO_PLAYER_SELECTED',
-      'TERMINATE_ROOM',
-      'ROOM_TERMINATED',
+      'HOST_COMMAND',
+      'AI_RESPONSE',
     ]);
-
-    if (!NO_THROTTLE_EVENTS.has(event)) {
-      const senderKey = payload?._senderId || payload?.contestantId || payload?.playerId || this.localPlayerId || '';
-      const throttleKey = senderKey ? `${cleanCode}:${event}:${senderKey}` : `${cleanCode}:${event}`;
-      const now = Date.now();
-      const lastTime = this.lastBroadcastTimes.get(throttleKey) || 0;
-      if (now - lastTime < 300) {
-        return; // Dropped by Flood Guard
-      }
-      this.lastBroadcastTimes.set(throttleKey, now);
-    }
 
     const ch = this.supabaseChannels.get(cleanCode);
     const isSubscribed = this.supabaseChannelStates.get(cleanCode) === 'SUBSCRIBED' && ch?.state === 'joined';
@@ -315,6 +317,7 @@ class RoomBus {
       'BROKER_STATE_SYNC',
       'JUDGE_STATE_SYNC',
       'ARABIC_STATE_SYNC',
+      'FLYING_STATE_SYNC',
       'STATE_UPDATED',
     ]);
 
@@ -327,9 +330,37 @@ class RoomBus {
       console.log(`[ROOM_BUS] Buffering "${event}" until SUBSCRIBED for room ${cleanCode}...`);
       const existingQueue = this.pendingBroadcasts.get(cleanCode) || [];
       // Deduplicate: keep only the latest payload for the same event to avoid stale spam
-      const filteredQueue = existingQueue.filter((item) => item.event !== event);
+      const filteredQueue = (event === 'HOST_COMMAND' || event === 'AI_RESPONSE') ? existingQueue : existingQueue.filter((item) => item.event !== event);
       filteredQueue.push({ event, payload });
       this.pendingBroadcasts.set(cleanCode, filteredQueue);
+      return;
+    }
+
+    if (!NO_THROTTLE_EVENTS.has(event)) {
+      const senderKey = payload?._senderId || payload?.contestantId || payload?.playerId || this.localPlayerId || '';
+      const key = [cleanCode, event, senderKey].join(':');
+      const now = Date.now();
+      const remaining = (this.lastBroadcastTimes.get(key) ?? -Infinity) + 300 - now;
+      const pending = this.trailingSnapshots.get(key);
+      if (pending !== undefined) {
+        clearTimeout(pending);
+        this.trailingSnapshots.delete(key);
+      }
+      if (remaining > 0) {
+        if (AUTO_SYNC_EVENTS.has(event)) {
+          // A reconnect request can arrive just after the previous snapshot was sent.
+          this.trailingSnapshots.set(key, setTimeout(() => {
+            this.trailingSnapshots.delete(key);
+            if (this.supabaseChannels.get(cleanCode) === ch) this.safeBroadcast(cleanCode, event, payload);
+          }, remaining));
+        }
+        return;
+      }
+      this.lastBroadcastTimes.set(key, now);
+    }
+
+    if (HOST_COMMAND_EVENTS.has(event)) {
+      void this.sendHostCommand(cleanCode, event, payload);
       return;
     }
 
@@ -387,29 +418,64 @@ class RoomBus {
     this.safeBroadcast(clean, 'ROUND_STARTED', { round, timestamp: Date.now() });
   }
 
-  public broadcastGameStarted(roomCode: string, payload: any): void {
-    const clean = cleanRoomCode(roomCode);
-    const gameId = payload?.gameId;
-    if (gameId) {
-      const room = this.getRoom(clean);
-      if (room) {
-        room.selectedGameId = gameId;
-        this.saveRoom(room);
-      }
-      import('../services/roomService').then(({ updateRoomStatus }) => {
-        if (typeof updateRoomStatus === 'function') {
-          updateRoomStatus(clean, 'playing', gameId);
-        }
-      }).catch((e) => console.warn('updateRoomStatus err:', e));
+  private seenHostCommands = new Map<string, number>();
+  private hostSequence = Date.now() * 1000;
+  private receivedHostSequences = new Map<string, number>();
+
+  private async sendHostCommand(roomCode: string, event: string, payload: object): Promise<boolean> {
+    const code = cleanRoomCode(roomCode);
+    const secret = localStorage.getItem('shabah_host_' + code);
+    if (!secret) return false;
+
+    try {
+      const { data: id, error } = await supabase.rpc('issue_shabah_room_command', {
+        code, secret, command: event, body: { ...payload, _hostSequence: ++this.hostSequence },
+      });
+      if (error || !id) throw error;
+      this.seenHostCommands.set(id, Date.now());
+      this.safeBroadcast(code, 'HOST_COMMAND', { id });
+      if (event === 'GAME_STARTED' || event === 'ROOM_TERMINATED') this.applyHostCommand(code, event, payload);
+      return true;
+    } catch (err) {
+      console.warn('[roomBus] Host command failed:', err);
+      return false;
     }
-    this.emit('GAME_STARTED', clean, payload);
-    this.safeBroadcast(clean, 'GAME_STARTED', payload);
+  }
+
+  private applyHostCommand(roomCode: string, event: string, payload: any): void {
+    const dispatch = (type: RoomEventType | string, data = payload) =>
+      this.dispatchLocal({ roomCode, type: type as RoomEventType, data, timestamp: Date.now() });
+
+    if (event === 'GAME_STARTED') {
+      dispatch('GAME_STARTED');
+    } else if (event === 'ROOM_TERMINATED') {
+      this.removeLocalRoom(roomCode);
+      dispatch('ROOM_TERMINATED');
+    } else if (event === 'FORCE_PLAYER_KICK' && typeof payload.targetPlayerId === 'string') {
+      this.rememberKick(roomCode, payload.targetPlayerId);
+      const room = this.getRoom(roomCode);
+      if (room) {
+        room.players = room.players.filter((player) => player.id !== payload.targetPlayerId);
+        this.writeLocal(room);
+      }
+      dispatch('FORCE_PLAYER_KICK');
+    } else if (HOST_COMMAND_EVENTS.has(event)) {
+      const key = roomCode + ':' + event;
+      const sequence = payload?._hostSequence;
+      if (event !== 'AI_RESPONSE' && (!Number.isSafeInteger(sequence) || sequence <= (this.receivedHostSequences.get(key) ?? 0))) return;
+      this.receivedHostSequences.set(key, sequence);
+      dispatch(event);
+    }
+  }
+
+  public broadcastGameStarted(roomCode: string, payload: object): Promise<boolean> {
+    return this.sendHostCommand(roomCode, 'GAME_STARTED', payload);
   }
 
   private isBroadcastingLobbyReturn = false;
 
   public broadcastReturnToLobby(roomCode: string): void {
-    if (this.isBroadcastingLobbyReturn) return;
+    if (this.isBroadcastingLobbyReturn || !localStorage.getItem('shabah_host_' + cleanRoomCode(roomCode))) return;
     this.isBroadcastingLobbyReturn = true;
 
     try {
@@ -588,6 +654,7 @@ class RoomBus {
   private supabaseChannelStates: Map<string, 'CONNECTING' | 'SUBSCRIBED' | 'CLOSED'> = new Map();
   private pendingMessagesQueue: Map<string, RoomEventPayload[]> = new Map();
   private pendingPresence: Map<string, any> = new Map();
+  private latestPresence = new Map<string, { id: string; name: string; isHost?: boolean; isReady?: boolean }>();
 
   // --- Host authority (the TV screen owns the room state) ---
   private hostedRooms: Map<string, number> = new Map();
@@ -599,22 +666,43 @@ class RoomBus {
   private hostTicker: { stop: () => void } | null = null;
 
   private currentRoomCode: string | null = null;
-  private syncDebounceTimer: any = null;
+  private syncedPresenceRooms = new Set<string>();
+
+  public hasPresenceSnapshot(roomCode: string): boolean {
+    return this.syncedPresenceRooms.has(cleanRoomCode(roomCode));
+  }
+
+  private rememberKick(roomCode: string, playerId: string): void {
+    const kicked = this.kickedPlayerIds.get(roomCode) ?? new Set<string>();
+    kicked.add(playerId);
+    this.kickedPlayerIds.set(roomCode, kicked);
+  }
   private pendingBroadcasts: Map<string, Array<{ event: string; payload: any }>> = new Map();
 
   constructor() {
-    // Prevent duplicate instances during Vite HMR
-    if (typeof window !== 'undefined' && (window as any).__SHABAH_BUS__) {
-      return (window as any).__SHABAH_BUS__;
-    }
-    if (typeof window !== 'undefined') {
-      (window as any).__SHABAH_BUS__ = this;
-    }
-
     this.initChannel();
     this.initStorageFallback();
     this.initRequestListener();
     this.initIntentListener();
+    const requests = new Map<string, number>();
+    this.on('AI_REQUEST', async (event) => {
+      const code = cleanRoomCode(event.roomCode);
+      if (!localStorage.getItem('shabah_host_' + code)) return;
+      const data = event.data;
+      if (typeof data?.requestId !== 'string' || !/^[a-f0-9-]{36}$/.test(data.requestId) ||
+          typeof data.prompt !== 'string' || data.prompt.length > 90000 ||
+          !this.getFormattedPlayers(code).some((player) => player.id === data.playerId)) return;
+      for (const [id, time] of requests) if (Date.now() - time > 60000) requests.delete(id);
+      if (requests.has(data.requestId)) return;
+      requests.set(data.requestId, Date.now());
+      try {
+        const { requestRoomAI } = await import('../services/geminiClient');
+        const text = await requestRoomAI(code, data.prompt, data.options || {});
+        this.emit('AI_RESPONSE', code, { requestId: data.requestId, text });
+      } catch {
+        this.emit('AI_RESPONSE', code, { requestId: data.requestId, error: true });
+      }
+    });
   }
 
   // Only the hosting TV answers state requests, and it re-broadcasts WITHOUT bumping the version
@@ -715,7 +803,7 @@ class RoomBus {
       // Deduplicate incoming list strictly by player ID
       const uniqueMap = new Map<string, any>();
       list.forEach((p) => {
-        if (p && p.id && p.id !== 'host_tv' && !this.kickedPlayerIds.has(p.id)) {
+        if (p && p.id && p.id !== 'host_tv' && !this.kickedPlayerIds.get(clean)?.has(p.id)) {
           if (uniqueMap.has(p.id)) {
             const prev = uniqueMap.get(p.id);
             uniqueMap.set(p.id, {
@@ -748,38 +836,31 @@ class RoomBus {
       });
       room.players = Array.from(roomPlayersMap.values());
 
+      for (const p of cleanList) {
+        if (!room.players.some((player) => player.id === p.id)) {
+          this.joinPlayer(clean, p.name || 'متسابق', p.avatar || 'avatar_1', p.team || 'team_a', p.id, true);
+          room = this.getRoom(clean) ?? room;
+        }
+      }
+
+      const targetRoom = room;
       let hasChanges = false;
       cleanList.forEach((p) => {
-        if (!p || !p.id) return;
-        let curr = this.getRoom(clean);
-        if (!curr) return;
-
-        let existing = curr.players.find((pl) => pl.id === p.id);
-        
-        if (!existing) {
-          this.joinPlayer(clean, p.name || 'متسابق', p.avatar || 'avatar_1', p.team || 'team_a', p.id, true);
-          const refreshed = this.getRoom(clean);
-          if (refreshed) curr = refreshed;
-          existing = curr.players.find((pl) => pl.id === p.id);
+        const existing = targetRoom.players.find((player) => player.id === p.id);
+        if (!existing) return;
+        if (!existing.isOnline) {
+          existing.isOnline = true;
           hasChanges = true;
-        } else {
-          if (!existing.isOnline) {
-            existing.isOnline = true;
-            hasChanges = true;
-          }
-          if (p.isReady !== undefined && existing.isReady !== p.isReady) {
-            existing.isReady = Boolean(p.isReady);
-            hasChanges = true;
-          }
-          if (p.name && existing.name !== p.name) {
-            existing.name = p.name;
-            hasChanges = true;
-          }
         }
-
-        const activeId = existing ? existing.id : p.id;
-        const targetRoom = curr;
-        room = targetRoom;
+        if (p.isReady !== undefined && existing.isReady !== p.isReady) {
+          existing.isReady = Boolean(p.isReady);
+          hasChanges = true;
+        }
+        if (p.name && existing.name !== p.name) {
+          existing.name = p.name;
+          hasChanges = true;
+        }
+        const activeId = existing.id;
 
         if (targetRoom.flagState) {
           if (!targetRoom.flagState.players[activeId]) {
@@ -862,10 +943,9 @@ class RoomBus {
         }
       });
 
-      if (hasChanges && room) {
-        room.lastActivity = Date.now();
-        this.saveRoom(room);
-        this.emit('STATE_UPDATED', clean, room);
+      if (hasChanges) {
+        targetRoom.lastActivity = Date.now();
+        this.saveRoom(targetRoom);
       }
     } catch (err) {
       console.error('[roomBus] syncPresencePlayers error shielded:', err);
@@ -892,6 +972,7 @@ class RoomBus {
       this.leaveRoom(this.currentRoomCode);
     }
     this.currentRoomCode = cleanCode;
+    if (player?.id) this.latestPresence.set(cleanCode, player);
 
     // Clean up any lingering channels registered inside supabase client
     if (typeof supabase?.getChannels === 'function') {
@@ -918,8 +999,10 @@ class RoomBus {
 
   public async trackPlayer(roomCode: string, player: { id: string; name: string; isHost?: boolean; isReady?: boolean; [key: string]: any }): Promise<void> {
     const clean = cleanRoomCode(roomCode);
+    if (!clean) return;
+    this.latestPresence.set(clean, player);
     const ch = this.supabaseChannels.get(clean) || this.ensureSupabaseChannel(clean);
-    if (!ch) return;
+    if (ch?.state !== 'joined') return;
 
     try {
       await ch.track({
@@ -934,6 +1017,15 @@ class RoomBus {
     }
   }
 
+  private publishPresence(roomCode: string): void {
+    this.dispatchLocal({
+      type: 'presence_sync',
+      roomCode,
+      data: this.getFormattedPlayers(roomCode),
+      timestamp: Date.now(),
+    });
+  }
+
   public getFormattedPlayers(roomCode: string): Array<{ id: string; name: string; isHost: boolean; isReady: boolean }> {
     const clean = cleanRoomCode(roomCode);
     const ch = this.supabaseChannels.get(clean);
@@ -943,7 +1035,7 @@ class RoomBus {
         const all = Object.values(state).flat() as any[];
         const map = new Map<string, { id: string; name: string; isHost: boolean; isReady: boolean }>();
         all.forEach((p) => {
-          if (p && p.id && p.id !== 'host_tv' && !this.kickedPlayerIds.has(p.id)) {
+          if (p && p.id && p.id !== 'host_tv' && !this.kickedPlayerIds.get(clean)?.has(p.id)) {
             map.set(p.id, {
               id: p.id,
               name: p.name || 'متسابق',
@@ -952,7 +1044,7 @@ class RoomBus {
             });
           }
         });
-        if (map.size > 0) {
+        if (map.size > 0 || this.hasPresenceSnapshot(clean)) {
           return Array.from(map.values());
         }
       } catch (err) {
@@ -963,7 +1055,7 @@ class RoomBus {
     const r = this.getRoom(clean);
     if (r && r.players.length > 0) {
       return r.players
-        .filter((p) => p.id !== 'host_tv' && !this.kickedPlayerIds.has(p.id))
+        .filter((p) => p.id !== 'host_tv' && !this.kickedPlayerIds.get(clean)?.has(p.id))
         .map((p) => ({
           id: p.id,
           name: p.name,
@@ -977,7 +1069,7 @@ class RoomBus {
         const saved = sessionStorage.getItem(`taghesi_player_${clean}`) || localStorage.getItem(`taghesi_player_${clean}`);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (parsed?.id && parsed?.name) {
+          if (parsed?.id && parsed?.name && !this.kickedPlayerIds.get(clean)?.has(parsed.id)) {
             return [{
               id: parsed.id,
               name: parsed.name,
@@ -1005,7 +1097,6 @@ class RoomBus {
   }
 
   public leaveRoom(roomCode?: string, playerId?: string): void {
-    clearTimeout(this.syncDebounceTimer);
     const code = roomCode || this.currentRoomCode;
     if (!code) return;
     const clean = cleanRoomCode(code);
@@ -1026,6 +1117,8 @@ class RoomBus {
 
     const ch = this.supabaseChannels.get(clean);
     this.supabaseChannels.delete(clean);
+    this.syncedPresenceRooms.delete(clean);
+    this.latestPresence.delete(clean);
     this.supabaseChannelStates.set(clean, 'CLOSED');
 
     if (ch) {
@@ -1040,6 +1133,8 @@ class RoomBus {
       this.currentRoomCode = null;
     }
     this.pendingBroadcasts.delete(clean);
+    this.pendingMessagesQueue.delete(clean);
+    this.pendingPresence.delete(clean);
   }
 
   public registerChannel(roomCode: string, channel: any) {
@@ -1109,53 +1204,14 @@ class RoomBus {
         },
       });
 
+      let presenceTimer: ReturnType<typeof setTimeout>;
       ch.on('presence', { event: 'sync' }, () => {
-        clearTimeout(this.syncDebounceTimer);
-        this.syncDebounceTimer = setTimeout(() => {
-          try {
-            const state = ch.presenceState();
-            const allPresences = Object.values(state).flat() as any[];
-            const playersMap = new Map<string, any>();
-
-            allPresences.forEach((entry) => {
-              if (entry && entry.id && entry.id !== 'host_tv') {
-                playersMap.set(entry.id, entry);
-              }
-            });
-
-            const uniquePlayerList = Array.from(playersMap.values());
-            console.log(`[ROOM_BUS] Authoritative Players Count: ${uniquePlayerList.length}`, uniquePlayerList);
-            this.syncPresencePlayers(cleanCode, uniquePlayerList);
-            this.emit('presence_sync', cleanCode, this.getFormattedPlayers(cleanCode));
-          } catch (err) {
-            console.warn('[roomBus] Presence sync error:', err);
-          }
-        }, 150);
-      });
-
-      ch.on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
-        clearTimeout(this.syncDebounceTimer);
-        this.syncDebounceTimer = setTimeout(() => {
-          try {
-            const list = (newPresences || []).filter((p: any) => p && p.id && p.id !== 'host_tv');
-            this.syncPresencePlayers(cleanCode, list);
-            this.emit('presence_join', cleanCode, { key, newPresences });
-            this.emit('presence_sync', cleanCode, this.getFormattedPlayers(cleanCode));
-          } catch (err) {
-            console.warn('[roomBus] Presence join error:', err);
-          }
-        }, 150);
-      });
-
-      ch.on('presence', { event: 'leave' }, ({ key, leftPresences }: any) => {
-        clearTimeout(this.syncDebounceTimer);
-        this.syncDebounceTimer = setTimeout(() => {
-          try {
-            this.emit('presence_leave', cleanCode, { key, leftPresences });
-            this.emit('presence_sync', cleanCode, this.getFormattedPlayers(cleanCode));
-          } catch (err) {
-            console.warn('[roomBus] Presence leave error:', err);
-          }
+        clearTimeout(presenceTimer);
+        presenceTimer = setTimeout(() => {
+          if (this.supabaseChannels.get(cleanCode) !== ch) return;
+          this.syncedPresenceRooms.add(cleanCode);
+          this.syncPresencePlayers(cleanCode, Object.values(ch.presenceState()).flat());
+          this.publishPresence(cleanCode);
         }, 150);
       });
 
@@ -1267,40 +1323,26 @@ class RoomBus {
         }
       });
 
-      ch.on('broadcast', { event: 'GAME_STARTED' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          this.emit('GAME_STARTED', cleanCode, payload);
-        } catch (err) {
-          console.error('[roomBus] GAME_STARTED broadcast error shielded:', err);
-        }
-      });
+      ch.on('broadcast', { event: 'HOST_COMMAND' }, async ({ payload }) => {
+        const id = payload?.id;
+        if (this.isSelfBroadcast(payload) || typeof id !== 'string' ||
+            !/^[0-9a-f-]{36}$/i.test(id) || this.seenHostCommands.has(id)) return;
 
-      ch.on('broadcast', { event: 'RETURN_TO_LOBBY' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          if (payload?._senderId && this.localPlayerId && payload._senderId === this.localPlayerId) return;
-          this.emit('RETURN_TO_LOBBY', cleanCode, payload || {});
-        } catch (err) {
-          console.error('[roomBus] RETURN_TO_LOBBY broadcast error shielded:', err);
+        const now = Date.now();
+        for (const [seenId, time] of this.seenHostCommands) {
+          if (now - time > 60_000) this.seenHostCommands.delete(seenId);
         }
-      });
-
-      ch.on('broadcast', { event: 'COACH_STATE_SYNC' }, ({ payload }) => {
+        this.seenHostCommands.set(id, now);
         try {
-          if (this.isSelfBroadcast(payload)) return;
-          this.emit('COACH_STATE_SYNC', cleanCode, payload);
+          const { data, error } = await supabase.rpc('read_shabah_room_command', {
+            code: cleanCode, command_id: id,
+          });
+          if (error) throw error;
+          if (data) this.applyHostCommand(cleanCode, data.event, data.payload);
+          else this.seenHostCommands.delete(id);
         } catch (err) {
-          console.error('[roomBus] COACH_STATE_SYNC broadcast error shielded:', err);
-        }
-      });
-
-      ch.on('broadcast', { event: 'BROKER_STATE_SYNC' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          this.emit('BROKER_STATE_SYNC', cleanCode, payload);
-        } catch (err) {
-          console.error('[roomBus] BROKER_STATE_SYNC broadcast error shielded:', err);
+          this.seenHostCommands.delete(id);
+          console.warn('[roomBus] Could not verify room command:', err);
         }
       });
 
@@ -1328,33 +1370,6 @@ class RoomBus {
           this.emit('CLAIM_PLAYER_REQUEST', cleanCode, payload);
         } catch (err) {
           console.error('[roomBus] CLAIM_PLAYER_REQUEST broadcast error shielded:', err);
-        }
-      });
-
-      ch.on('broadcast', { event: 'PLAYER_CLAIM_SUCCESS' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          this.emit('PLAYER_CLAIM_SUCCESS', cleanCode, payload);
-        } catch (err) {
-          console.error('[roomBus] PLAYER_CLAIM_SUCCESS broadcast error shielded:', err);
-        }
-      });
-
-      ch.on('broadcast', { event: 'CLAIM_PLAYER_REJECTED' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          this.emit('CLAIM_PLAYER_REJECTED', cleanCode, payload);
-        } catch (err) {
-          console.error('[roomBus] CLAIM_PLAYER_REJECTED broadcast error shielded:', err);
-        }
-      });
-
-      ch.on('broadcast', { event: 'ARABIC_STATE_SYNC' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          this.emit('ARABIC_STATE_SYNC', cleanCode, payload);
-        } catch (err) {
-          console.error('[roomBus] ARABIC_STATE_SYNC broadcast error shielded:', err);
         }
       });
 
@@ -1392,34 +1407,6 @@ class RoomBus {
         }
       });
 
-      ch.on('broadcast', { event: 'ARABIC_TIME_UP' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          this.dispatchLocal({
-            roomCode: cleanCode,
-            type: 'ARABIC_TIME_UP',
-            data: payload,
-            timestamp: Date.now(),
-          });
-        } catch (err) {
-          console.error('[roomBus] ARABIC_TIME_UP broadcast error shielded:', err);
-        }
-      });
-
-      ch.on('broadcast', { event: 'ARABIC_RESULTS_READY' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          this.dispatchLocal({
-            roomCode: cleanCode,
-            type: 'ARABIC_RESULTS_READY',
-            data: payload,
-            timestamp: Date.now(),
-          });
-        } catch (err) {
-          console.error('[roomBus] ARABIC_RESULTS_READY broadcast error shielded:', err);
-        }
-      });
-
       ch.on('broadcast', { event: 'ARABIC_OBJECTION_FILED' }, ({ payload }) => {
         try {
           if (this.isSelfBroadcast(payload)) return;
@@ -1438,44 +1425,12 @@ class RoomBus {
         }
       });
 
-      ch.on('broadcast', { event: 'JUDGE_STATE_SYNC' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          this.emit('JUDGE_STATE_SYNC', cleanCode, payload);
-        } catch (err) {
-          console.error('[roomBus] JUDGE_STATE_SYNC broadcast error shielded:', err);
-        }
-      });
-
       ch.on('broadcast', { event: 'JUDGE_SUBMIT_EXCUSE' }, ({ payload }) => {
         try {
           if (this.isSelfBroadcast(payload)) return;
           this.emit('JUDGE_SUBMIT_EXCUSE', cleanCode, payload);
         } catch (err) {
           console.error('[roomBus] JUDGE_SUBMIT_EXCUSE broadcast error shielded:', err);
-        }
-      });
-
-      ch.on('broadcast', { event: 'JUDGE_RESULTS_READY' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          this.emit('JUDGE_RESULTS_READY', cleanCode, payload);
-        } catch (err) {
-          console.error('[roomBus] JUDGE_RESULTS_READY broadcast error shielded:', err);
-        }
-      });
-
-      ch.on('broadcast', { event: 'GUIDE_STATE_SYNC' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          this.dispatchLocal({
-            roomCode: cleanCode,
-            type: 'GUIDE_STATE_SYNC',
-            data: payload,
-            timestamp: Date.now(),
-          });
-        } catch (err) {
-          console.error('[roomBus] GUIDE_STATE_SYNC broadcast error shielded:', err);
         }
       });
 
@@ -1502,86 +1457,15 @@ class RoomBus {
         }
       });
 
-      ch.on('broadcast', { event: 'ROOM_TERMINATED' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          this.emit('ROOM_TERMINATED', cleanCode, payload || {});
-          this.emit('TERMINATE_ROOM', cleanCode, payload || {});
-        } catch (err) {
-          console.error('[roomBus] ROOM_TERMINATED broadcast error shielded:', err);
-        }
-      });
-
-      ch.on('broadcast', { event: 'TERMINATE_ROOM' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          const room = this.getRoom(cleanCode);
-          if (room?.hostId && payload?._senderId && payload._senderId !== room.hostId && payload._senderId !== 'host_tv') {
-            console.warn('[roomBus] Unauthorized TERMINATE_ROOM dropped from:', payload._senderId);
-            return;
-          }
-          this.emit('TERMINATE_ROOM', cleanCode, payload || {});
-          this.emit('ROOM_TERMINATED', cleanCode, payload || {});
-        } catch (err) {
-          console.error('[roomBus] TERMINATE_ROOM broadcast error shielded:', err);
-        }
-      });
-
-      ch.on('broadcast', { event: 'FORCE_PLAYER_KICK' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          const room = this.getRoom(cleanCode);
-          if (room?.hostId && payload?._senderId && payload._senderId !== room.hostId && payload._senderId !== 'host_tv') {
-            console.warn('[roomBus] Unauthorized FORCE_PLAYER_KICK dropped from:', payload._senderId);
-            return;
-          }
-          const kickedId = payload?.targetPlayerId || payload?.playerId || payload?.data;
-          if (kickedId) {
-            this.kickedPlayerIds.add(kickedId);
-          }
-          this.emit('FORCE_PLAYER_KICK', cleanCode, payload || {});
-          this.emit('PLAYER_KICKED', cleanCode, payload || {});
-        } catch (err) {
-          console.error('[roomBus] FORCE_PLAYER_KICK broadcast error shielded:', err);
-        }
-      });
-
-      ch.on('broadcast', { event: 'PLAYER_KICKED' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          const room = this.getRoom(cleanCode);
-          if (room?.hostId && payload?._senderId && payload._senderId !== room.hostId && payload._senderId !== 'host_tv') {
-            console.warn('[roomBus] Unauthorized PLAYER_KICKED dropped from:', payload._senderId);
-            return;
-          }
-          const kickedId = payload?.targetPlayerId || payload?.playerId || payload?.data;
-          if (kickedId) {
-            this.kickedPlayerIds.add(kickedId);
-          }
-          this.emit('FORCE_PLAYER_KICK', cleanCode, payload || {});
-          this.emit('PLAYER_KICKED', cleanCode, payload || {});
-        } catch (err) {
-          console.error('[roomBus] PLAYER_KICKED broadcast error shielded:', err);
-        }
-      });
-
-      ch.on('broadcast', { event: 'BINGO_PLAYER_SELECTED' }, ({ payload }) => {
-        try {
-          if (this.isSelfBroadcast(payload)) return;
-          this.emit('BINGO_PLAYER_SELECTED', cleanCode, payload);
-        } catch (err) {
-          console.error('[roomBus] BINGO_PLAYER_SELECTED broadcast error shielded:', err);
-        }
-      });
-
       ch.on('broadcast', { event: 'room_event' }, ({ payload }) => {
         try {
-          if (this.isSelfBroadcast(payload)) return;
+          if (this.isSelfBroadcast(payload) || payload?.type === 'presence_sync' || HOST_COMMAND_EVENTS.has(payload?.type)) return;
           if (payload && payload.roomCode) {
             const cleanIncoming = cleanRoomCode(payload.roomCode);
             if (cleanIncoming === cleanCode) {
               if (payload.type === 'STATE_UPDATED' && payload.data) {
                 const state = payload.data as RoomState;
+                if (cleanRoomCode(state.code) !== cleanCode || cleanRoomCode(state.id) !== cleanCode) return;
                 // Version gate: never let an older/stale copy overwrite a newer local state
                 if (!isNewerState(state, this.getRoom(cleanCode))) {
                   return;
@@ -1597,6 +1481,7 @@ class RoomBus {
       });
 
       ch.subscribe(async (status: string) => {
+        if (this.supabaseChannels.get(cleanCode) !== ch) return;
         console.log(`[ROOM_BUS] Channel Status: ${status}`);
         if (status === 'SUBSCRIBED') {
           this.supabaseChannelStates.set(cleanCode, 'SUBSCRIBED');
@@ -1610,8 +1495,9 @@ class RoomBus {
           this.reconnectAttempts.delete(cleanCode);
           this.flushPendingQueue(cleanCode);
 
-          if (player) {
-            await this.trackPlayer(cleanCode, player);
+          const latestPlayer = this.latestPresence.get(cleanCode) ?? player;
+          if (latestPlayer) {
+            await this.trackPlayer(cleanCode, latestPlayer);
           } else {
             const pending = this.pendingPresence.get(cleanCode);
             if (pending) {
@@ -1628,6 +1514,8 @@ class RoomBus {
               } catch {}
             }
           }
+
+          if (this.supabaseChannels.get(cleanCode) !== ch) return;
 
           // Flush any queued broadcasts that were attempted before subscription
           const queue = this.pendingBroadcasts.get(cleanCode);
@@ -1769,7 +1657,7 @@ class RoomBus {
       return;
     }
 
-    if (this.isSelfBroadcast(payload.data)) {
+    if (payload.type === 'presence_sync' || HOST_COMMAND_EVENTS.has(payload.type) || this.isSelfBroadcast(payload.data)) {
       return;
     }
 
@@ -1880,14 +1768,19 @@ class RoomBus {
 
   public on<T = any>(
     type: RoomEventType | '*' | string,
-    callback: (event: any) => void
+    callback: (event: any) => void,
+    roomCode?: string
   ): () => void {
     if (!this.typedListeners.has(type)) {
       this.typedListeners.set(type, new Set());
     }
     const set = this.typedListeners.get(type)!;
-    set.add(callback);
-    return () => this.off(type, callback);
+    const code = roomCode && cleanRoomCode(roomCode);
+    const listener = code ? (event: RoomEventPayload) => {
+      if (event.roomCode === code) callback(event);
+    } : callback;
+    set.add(listener);
+    return () => this.off(type, listener);
   }
 
   public off<T = any>(
@@ -1914,6 +1807,13 @@ class RoomBus {
       cleanCode = (data?.roomCode || this.currentRoomCode || '').toUpperCase().replace(/^ROOM_/, '');
     }
 
+    if (HOST_COMMAND_EVENTS.has(type)) {
+      if (!localStorage.getItem('shabah_host_' + cleanCode)) return;
+      this.dispatchLocal({ roomCode: cleanCode, type: type as RoomEventType, data, timestamp: Date.now() });
+      this.safeBroadcast(cleanCode, type, data);
+      return;
+    }
+
     const payload: RoomEventPayload<T> = {
       roomCode: cleanCode,
       type: type as any,
@@ -1926,6 +1826,7 @@ class RoomBus {
       type === 'COACH_STATE_SYNC' ||
       type === 'BROKER_STATE_SYNC' ||
       type === 'JUDGE_STATE_SYNC' ||
+      type === 'FLYING_STATE_SYNC' ||
       type === 'ARABIC_STATE_SYNC';
 
     // 1. Post to native BroadcastChannel (skip auto-sync loops)
@@ -2140,7 +2041,7 @@ class RoomBus {
         break;
       }
       case 'LEAVE': {
-        this.kickPlayer(cleanCode, intent.playerId);
+        this.leavePlayer(cleanCode, intent.playerId);
         break;
       }
       case 'PLAYER_SET_READY':
@@ -2372,28 +2273,6 @@ class RoomBus {
 
     this.saveRoom(newRoom);
 
-    // Sync to authoritative Supabase rooms table for cross-device support
-    if (gameModeId) {
-      supabase
-        .from('rooms')
-        .upsert(
-          {
-            room_code: code,
-            game_id: normalizeGameId(gameModeId) || gameModeId,
-            status: 'lobby',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'room_code' }
-        )
-        .then(
-          ({ error }: any) => {
-            if (error) console.warn('[RoomBus] Supabase room sync:', error.message);
-          },
-          (e: any) => console.warn('[RoomBus] Supabase room sync err:', e)
-        );
-    }
-
     return newRoom;
   }
 
@@ -2588,7 +2467,7 @@ class RoomBus {
 
   public kickPlayer(roomId: string, playerId: string) {
     const clean = cleanRoomCode(roomId);
-    this.kickedPlayerIds.add(playerId);
+    this.rememberKick(clean, playerId);
     const room = this.getRoom(clean);
     if (!room) return;
 
@@ -2623,55 +2502,26 @@ class RoomBus {
 
     this.emit('FORCE_PLAYER_KICK', clean, { targetPlayerId: playerId, playerId });
     this.emit('PLAYER_KICKED', clean, { targetPlayerId: playerId, playerId });
-    this.emit('presence_sync', clean, this.getFormattedPlayers(clean));
-    this.safeBroadcast(clean, 'FORCE_PLAYER_KICK', { targetPlayerId: playerId, playerId });
-    this.safeBroadcast(clean, 'PLAYER_KICKED', { targetPlayerId: playerId, playerId });
+    this.publishPresence(clean);
   }
 
-  public broadcastForcePlayerKick(roomCode: string, targetPlayerId: string): void {
-    const clean = cleanRoomCode(roomCode);
-    this.kickPlayer(clean, targetPlayerId);
+  public async broadcastForcePlayerKick(roomCode: string, targetPlayerId: string): Promise<boolean> {
+    const sent = await this.sendHostCommand(roomCode, 'FORCE_PLAYER_KICK', { targetPlayerId });
+    if (sent) this.kickPlayer(roomCode, targetPlayerId);
+    return sent;
   }
 
-  public broadcastTerminateRoom(roomCode: string): void {
-    const clean = cleanRoomCode(roomCode);
-    this.emit('TERMINATE_ROOM', clean, { roomCode: clean });
-    this.emit('ROOM_TERMINATED', clean, { roomCode: clean });
-    this.safeBroadcast(clean, 'TERMINATE_ROOM', { roomCode: clean });
-    this.safeBroadcast(clean, 'ROOM_TERMINATED', { roomCode: clean });
+  private removeLocalRoom(roomCode: string): void {
+    localStorage.removeItem(STORAGE_PREFIX + roomCode);
+    localStorage.removeItem(STORAGE_PREFIX + 'ROOM_' + roomCode);
+    localStorage.removeItem('shabah_host_' + roomCode);
   }
 
-  public async terminateRoom(roomCode: string, reason = 'تم إنهاء الغرفة بواسطة المضيف'): Promise<void> {
+  public async terminateRoom(roomCode: string, reason = 'تم إنهاء الغرفة بواسطة المضيف'): Promise<boolean> {
     const clean = cleanRoomCode(roomCode);
-    try {
-      if (supabase) {
-        await supabase
-          .from('rooms')
-          .delete()
-          .eq('room_code', clean);
-      }
-    } catch (err) {
-      console.warn('[ROOM_BUS] Error deleting room from DB:', err);
-    }
-
-    try {
-      await this.safeBroadcast(clean, 'ROOM_TERMINATED', {
-        roomCode: clean,
-        reason,
-        timestamp: Date.now(),
-      });
-      await this.safeBroadcast(clean, 'TERMINATE_ROOM', {
-        roomCode: clean,
-        reason,
-        timestamp: Date.now(),
-      });
-    } catch (err) {
-      console.warn('[ROOM_BUS] Error broadcasting ROOM_TERMINATED:', err);
-    }
-
-    this.emit('ROOM_TERMINATED', clean, { roomCode: clean, reason });
-    this.emit('TERMINATE_ROOM', clean, { roomCode: clean, reason });
+    if (!await this.sendHostCommand(clean, 'ROOM_TERMINATED', { reason })) return false;
     this.leaveRoom(clean);
+    return true;
   }
 
   public broadcastBingoPlayerSelected(roomCode: string, player: any): void {
@@ -5210,8 +5060,7 @@ class RoomBus {
   }
 }
 
-export const roomBus: RoomBus =
-  (typeof window !== 'undefined' && (window as any).__SHABAH_BUS__) || new RoomBus();
+export const roomBus = new RoomBus();
 
 export function useRoom(roomId: string | undefined) {
   const [room, setRoom] = useState<RoomState | null>(() => (roomId ? roomBus.getRoom(roomId) : null));

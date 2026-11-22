@@ -134,6 +134,7 @@ export interface BingoRoulettePlayer {
   nationality: string;
   trophies: string[];
   traits: string[];
+  managers?: string[];
   position?: 'GK' | 'DEF' | 'MID' | 'ATT' | string;
 }
 
@@ -174,6 +175,7 @@ export interface CoachRoomState {
   currentRoulettePlayer?: BingoRoulettePlayer | null;
   rouletteHistory: string[]; // playerIds
   rouletteSkipVotes: string[]; // playerIds who voted or marked this roulette player
+  rouletteEndsAt?: number;
   bingoWinnerId?: string | null;
   bingoWinnerName?: string | null;
 }

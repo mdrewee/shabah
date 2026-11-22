@@ -41,8 +41,8 @@ export function savePersistedCoachState(roomCode: string, state: CoachRoomState)
   }
 }
 
-export function createInitialCoachState(roomCode: string, mode: CoachGameMode = 'draft'): CoachRoomState {
-  const existing = getPersistedCoachState(roomCode);
+export function createInitialCoachState(roomCode: string, mode: CoachGameMode = 'draft', fresh = false): CoachRoomState {
+  const existing = fresh ? null : getPersistedCoachState(roomCode);
   if (existing) {
     return existing;
   }
@@ -212,6 +212,7 @@ export function getRandomRoulettePlayer(excludeIds: string[] = []): BingoRoulett
     nationality: picked.country || picked.nationality || '',
     trophies: picked.trophies || [],
     traits: picked.traits || [],
+    managers: picked.managers || [],
     position: picked.position || 'ATT',
   };
 }
@@ -240,6 +241,7 @@ export function generatePreloadedBingoPool(): {
     nationality: p.country || p.nationality || '',
     trophies: p.trophies || [],
     traits: p.traits || [],
+    managers: p.managers || [],
     position: p.position || 'ATT',
   }));
 
@@ -255,6 +257,17 @@ export function generatePreloadedBingoPool(): {
 /**
  * Validate whether a roulette player matches a specific bingo cell condition
  */
+function bingoValue(value: string): string {
+  const normalized = value.trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/\s+/g, ' ');
+  const aliases: Record<string, string> = {
+    'انتر ميلان': 'انتر',
+    'الدوري السعودي': 'دوري روشن',
+    'دوري روشن السعودي': 'دوري روشن',
+    'دوري ابطال اسيا للنخبة': 'دوري ابطال اسيا',
+  };
+  return aliases[normalized] || normalized;
+}
+
 export function doesPlayerMatchBingoCell(
   player: BingoRoulettePlayer | null | undefined,
   cell: BingoCell
@@ -264,12 +277,7 @@ export function doesPlayerMatchBingoCell(
 
   // 1. Club check
   if (cell.type === 'club') {
-    if (player.currentClub && (player.currentClub.toLowerCase().includes(target) || target.includes(player.currentClub.toLowerCase()))) {
-      return true;
-    }
-    if (player.clubs && player.clubs.some((c) => c.toLowerCase().includes(target) || target.includes(c.toLowerCase()))) {
-      return true;
-    }
+    return [player.currentClub, ...(player.clubs || [])].some((club) => club && bingoValue(club) === bingoValue(cell.targetValue));
   }
 
   // 2. Nationality check
@@ -281,9 +289,7 @@ export function doesPlayerMatchBingoCell(
 
   // 3. Trophy check
   if (cell.type === 'trophy') {
-    if (player.trophies && player.trophies.some((t) => t.toLowerCase().includes(target) || target.includes(t.toLowerCase()))) {
-      return true;
-    }
+    return (player.trophies || []).some((title) => bingoValue(title) === bingoValue(cell.targetValue));
   }
 
   // 4. Trait check (e.g. أصلع, كابتن, أشول, رقم 10, أسمر)
@@ -305,11 +311,8 @@ export function doesPlayerMatchBingoCell(
 
   // 5. Manager check
   if (cell.type === 'manager') {
-    if (target.includes('غوارديولا') && player.clubs?.some((c) => ['برشلونة', 'بايرن ميونخ', 'مانشستر سيتي'].includes(c))) return true;
-    if (target.includes('أنشيلوتي') && player.clubs?.some((c) => ['ريال مدريد', 'ميلان', 'تشيلسي', 'باريس سان جيرمان', 'بايرن ميونخ'].includes(c))) return true;
-    if (target.includes('مورينيو') && player.clubs?.some((c) => ['ريال مدريد', 'تشيلسي', 'إنتر', 'مانشستر يونايتد', 'روما', 'بورتو'].includes(c))) return true;
-    if (target.includes('زيدان') && player.clubs?.some((c) => ['ريال مدريد'].includes(c))) return true;
-    if (target.includes('خيسوس') && player.clubs?.some((c) => ['الهلال', 'بنفيكا', 'فلامنغو', 'فنربخشة'].includes(c))) return true;
+    const managers = player.managers ?? STATIC_BINGO_PLAYERS.find((entry) => entry.id === player.id)?.managers ?? [];
+    return managers.includes(cell.targetValue);
   }
 
   // 6. Position check (حارس، مدافع، وسط، مهاجم)

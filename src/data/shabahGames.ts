@@ -3,9 +3,12 @@ export interface ShabahGame {
   title: string;
   badgeText: string;
   shortExplanation: string;
-  placeholderImage: string;
+  cardImage: string;
   glowColor: 'purple' | 'green' | 'orange' | 'blue' | 'red' | 'cyan';
   route: string;
+  minPlayers: number;
+  maxPlayers: number;
+  duration: string;
 }
 
 export const SHABAH_GAMES: ShabahGame[] = [
@@ -14,8 +17,11 @@ export const SHABAH_GAMES: ShabahGame[] = [
     title: 'الشبح القاضي',
     badgeText: 'ورطات وأعذار',
     shortExplanation: 'شبح يحطك في تهمة أو ورطة محرجة! اكتب أقوى عذر، والشبح بيحكم بينكم ويقصف جبهة صاحب أضعف عذر ويعلن البريء.',
-    placeholderImage: '/images/games/judge-placeholder.svg',
+    cardImage: '/images/games/judge-card-v2.jpg',
     glowColor: 'purple',
+    minPlayers: 2,
+    maxPlayers: 10,
+    duration: '١٠–١٥ دقيقة تقريبًا',
     route: '/game/ai-judge'
   },
   {
@@ -23,8 +29,11 @@ export const SHABAH_GAMES: ShabahGame[] = [
     title: 'الشبح المدرب',
     badgeText: 'تحدي التشكيلات',
     shortExplanation: 'ابنِ تشكيلتك من 5 لاعبين بشروط تكتيكية صعبة، والشبح يحلل قوتها ومراكزها كمدرب عصبي بدون مجاملة.',
-    placeholderImage: '/images/games/coach-placeholder.svg',
+    cardImage: '/images/games/coach-card-v2.jpg',
     glowColor: 'green',
+    minPlayers: 2,
+    maxPlayers: 10,
+    duration: '١٠–١٥ دقيقة تقريبًا',
     route: '/game/ai-coach'
   },
   {
@@ -32,8 +41,11 @@ export const SHABAH_GAMES: ShabahGame[] = [
     title: 'الشبح الشريطي',
     badgeText: 'تثمين وصيدة',
     shortExplanation: 'سلعة خردة وفيها عيب قاتل للجميع؛ فاوض الشريطي في شات مباشر وأقنعه يرفع السوم لأعلى سعر!',
-    placeholderImage: '/images/games/broker-placeholder.svg',
+    cardImage: '/images/games/broker-card-v2.jpg',
     glowColor: 'orange',
+    minPlayers: 2,
+    maxPlayers: 10,
+    duration: '١٠–١٥ دقيقة تقريبًا',
     route: '/game/ai-broker'
   },
   {
@@ -41,8 +53,11 @@ export const SHABAH_GAMES: ShabahGame[] = [
     title: 'الشبح العربي',
     badgeText: 'حروف وسرعة',
     shortExplanation: 'سباق حروف وفئات عمودية سريعة؛ اكتب إجاباتك والشبح الفصيح يصحح فوراً ويفضح الشطحات مع إمكانية الاعتراض.',
-    placeholderImage: '/images/games/arabic-placeholder.svg',
+    cardImage: '/images/games/arabic-card-v2.jpg',
     glowColor: 'blue',
+    minPlayers: 2,
+    maxPlayers: 10,
+    duration: '١٠–١٥ دقيقة تقريبًا',
     route: '/game/ai-arabic'
   },
   {
@@ -50,8 +65,11 @@ export const SHABAH_GAMES: ShabahGame[] = [
     title: 'الشبح المرشد',
     badgeText: 'تحديد المعالم',
     shortExplanation: 'خريطة تفاعلية و ٥ تلميحات تدريجية؛ خمّن مكان المعلم السري بالدبوس واكسب أعلى النقاط بأدق مسافة!',
-    placeholderImage: '/images/games/guide-placeholder.svg',
+    cardImage: '/images/games/guide-card-v2.jpg',
     glowColor: 'red',
+    minPlayers: 2,
+    maxPlayers: 10,
+    duration: '١٠–١٥ دقيقة تقريبًا',
     route: '/game/ai-guide'
   },
   {
@@ -59,8 +77,11 @@ export const SHABAH_GAMES: ShabahGame[] = [
     title: 'الشبح الطائر',
     badgeText: 'أجوبة نادرة',
     shortExplanation: 'جاوب أندر إجابة وخلّ شبحك يطير لأعلى مسافة في السماء! احذر من تكرار إجابتك مع غيرك فتحترق.',
-    placeholderImage: '/images/games/flying-placeholder.svg',
+    cardImage: '/images/games/flying-card-v2.jpg',
     glowColor: 'cyan',
+    minPlayers: 2,
+    maxPlayers: 10,
+    duration: '١٠–١٥ دقيقة تقريبًا',
     route: '/game/ai-flying'
   }
 ];

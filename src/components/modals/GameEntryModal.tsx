@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ShabahGame } from '../../data/shabahGames';
 
 export interface GameEntryModalProps {
@@ -6,6 +6,7 @@ export interface GameEntryModalProps {
   game: ShabahGame | null;
   playerName: string;
   error?: string | null;
+  isSubmitting?: boolean;
   onNameChange: (value: string) => void;
   onSubmitContestant: (e: React.FormEvent) => void;
   onEnterTVMode: () => void;
@@ -17,19 +18,48 @@ export const GameEntryModal: React.FC<GameEntryModalProps> = ({
   game,
   playerName,
   error,
+  isSubmitting = false,
   onNameChange,
   onSubmitContestant,
   onEnterTVMode,
   onClose,
 }) => {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    if (!isOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const focusable = () => Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), input:not(:disabled)'
+    ) || []);
+    (focusable()[0] || dialogRef.current)?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isSubmitting) closeRef.current();
+      if (event.key !== 'Tab') return;
+      const items = focusable();
+      if (!items.length) { event.preventDefault(); return; }
+      const edge = event.shiftKey ? items[0] : items[items.length - 1];
+      if (document.activeElement === edge) {
+        event.preventDefault();
+        (event.shiftKey ? items[items.length - 1] : items[0])?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      previous?.focus();
+    };
+  }, [isOpen, isSubmitting]);
   if (!isOpen || !game) return null;
 
   return (
     <div
       className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-xs select-none"
-      onClick={onClose}
+      onClick={() => { if (!isSubmitting) onClose(); }}
     >
       <div
+        ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="entry-title"
         className="w-full max-w-sm shabah-border-wrap animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
@@ -39,7 +69,7 @@ export const GameEntryModal: React.FC<GameEntryModalProps> = ({
             className="shabah-surface p-6 flex flex-col items-center text-center"
           >
             {/* 1. Main Title */}
-            <h3 className="text-2xl font-black text-[#0A0A0A] text-center mb-1">
+            <h3 id="entry-title" className="text-2xl font-black text-[#0A0A0A] text-center mb-1">
               اكتب اسمك
             </h3>
 
@@ -55,7 +85,8 @@ export const GameEntryModal: React.FC<GameEntryModalProps> = ({
               onChange={(e) => onNameChange(e.target.value)}
               placeholder="اسمك هنا..."
               maxLength={18}
-              autoFocus
+              aria-label="اسم اللاعب"
+              disabled={isSubmitting}
               className="placeholder-neutral-400 font-black text-center text-lg h-13 rounded-xl border-2 border-[#0A0A0A] w-full mb-4 bg-white text-[#0A0A0A] focus:outline-none"
             />
 
@@ -69,19 +100,21 @@ export const GameEntryModal: React.FC<GameEntryModalProps> = ({
             <div className="flex items-center gap-2.5 w-full">
               {/* Primary Button (Right in RTL): [تأكيد الدخول] */}
               <button
+                disabled={isSubmitting}
                 type="submit"
                 className="flex-1 h-12 rounded-xl text-white font-black text-base shabah-btn-black cursor-pointer shadow-[2px_2px_0px_#0A0A0A]"
               >
-                تأكيد الدخول
+                {isSubmitting ? 'جاري تجهيز الغرفة…' : 'ألعب وأستضيف'}
               </button>
 
               {/* Dedicated Pure Vector TV Screen Button (Left in RTL) */}
               <button
                 type="button"
                 onClick={onEnterTVMode}
+                disabled={isSubmitting}
                 title="وضع شاشة العرض / TV"
                 aria-label="وضع شاشة العرض / TV"
-                className="h-12 w-12 flex-shrink-0 bg-white hover:bg-[#0A0A0A]/5 border-2 border-[#0A0A0A] rounded-xl shadow-[2px_2px_0px_#0A0A0A] flex items-center justify-center transition-transform active:scale-95 cursor-pointer"
+                className="h-12 px-3 flex-shrink-0 gap-2 text-xs font-bold bg-white hover:bg-[#0A0A0A]/5 border-2 border-[#0A0A0A] rounded-xl shadow-[2px_2px_0px_#0A0A0A] flex items-center justify-center transition-transform active:scale-95 cursor-pointer"
               >
                 <svg
                   className="w-6 h-6 text-[#0A0A0A]"
@@ -96,6 +129,7 @@ export const GameEntryModal: React.FC<GameEntryModalProps> = ({
                   <line x1="8" x2="16" y1="21" y2="21" />
                   <line x1="12" x2="12" y1="17" y2="21" />
                 </svg>
+                <span>شاشة العرض</span>
               </button>
             </div>
           </form>

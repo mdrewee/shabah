@@ -1,4 +1,5 @@
 export interface FootballPlayer {
+  rating?: number;
   id: string;
   name: string;             // Official Arabic name (e.g. "كريم بنزيما")
   aliases: string[];        // Common nicknames & English names (e.g. ["بنزيما", "الحكومة", "benzema"])

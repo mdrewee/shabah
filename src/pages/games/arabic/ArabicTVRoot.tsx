@@ -1,3 +1,5 @@
+import { useGameState } from '../../../hooks/useGameState';
+import { ShabahThinkingScreen } from '../../../components/common/ShabahThinkingScreen';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useRoom, roomBus } from '../../../lib/roomBus';
@@ -27,7 +29,7 @@ import { ArabicTVResults } from './components/ArabicTVResults';
 import { ArabicFinalPodium } from './components/ArabicFinalPodium';
 import { Clock } from 'lucide-react';
 
-export const ArabicTVRoot: React.FC = () => {
+export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; name: string }> }> = ({ mobileContestants }) => {
   const { code: rawCode } = useParams<{ code?: string }>();
   const navigate = useNavigate();
   const roomCode = (rawCode || 'SHBH').trim().toUpperCase();
@@ -36,30 +38,35 @@ export const ArabicTVRoot: React.FC = () => {
   const activeRoom = room || roomBus.getRoom(roomCode);
 
   // Realtime presence connection for Host TV
-  const { connectedPlayers: realtimeContestants } = useRoomSync({
-    roomCode,
+  const { connectedPlayers: realtimeContestants, hasPresenceSnapshot } = useRoomSync({
+    roomCode: mobileContestants ? '' : roomCode,
     role: 'host',
   });
 
-  const [arabicState, setArabicState] = useState<ArabicRoomState>(() =>
+  const [arabicState, setArabicState, stateRef] = useGameState<ArabicRoomState>(() =>
     createInitialArabicState(roomCode)
   );
 
-  const stateRef = useRef(arabicState);
+  const analysisGeneration = useRef(0);
+
+  useEffect(() => roomBus.on('REQUEST_ROOM_STATE', () => {
+    roomBus.broadcastArabicSync(roomCode, stateRef.current);
+  }, roomCode), [roomCode]);
   useEffect(() => {
     stateRef.current = arabicState;
     savePersistedArabicState(roomCode, arabicState);
   }, [arabicState, roomCode]);
 
   // Merged connected contestants
-  const mergedContestants =
-    realtimeContestants.length > 0
+  const mergedContestants = mobileContestants ?? (
+    hasPresenceSnapshot || realtimeContestants.length > 0
       ? realtimeContestants
-      : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv');
+      : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv'));
 
   // Synchronize state to mobile contestants
   const syncState = useCallback(
     (newState: ArabicRoomState) => {
+      stateRef.current = newState;
       setArabicState(newState);
       roomBus.broadcastArabicSync(roomCode, newState);
     },
@@ -109,9 +116,10 @@ export const ArabicTVRoot: React.FC = () => {
     syncState(nextState);
   }, [syncState]);
 
-  const executeJudging = useCallback(async (overrideSubmissions?: Record<string, any>) => {
+  const executeJudging = useCallback(async (overrideSubmissions?: Record<string, any>, resume = false) => {
     const curr = stateRef.current;
-    if (curr.phase === 'JUDGING' || curr.phase === 'RESULTS') return;
+    if (curr.phase !== 'INPUT' && !(resume && curr.phase === 'JUDGING')) return;
+    const generation = ++analysisGeneration.current;
 
     sound.playTick();
     const judgingState: ArabicRoomState = {
@@ -164,6 +172,7 @@ export const ArabicTVRoot: React.FC = () => {
       submissionsList
     );
 
+    if (generation !== analysisGeneration.current) return;
     // Update cumulative scores & legacy format
     const updatedCumulative = { ...(curr.cumulativeScores || {}) };
     const legacyEvals: Record<string, ContestantEvaluation> = {};
@@ -207,6 +216,17 @@ export const ArabicTVRoot: React.FC = () => {
 
     sound.playVictory();
   }, [mergedContestants, roomCode, syncState]);
+
+  const resumedAnalysis = useRef(arabicState.phase === 'JUDGING');
+  useEffect(() => {
+    if (!resumedAnalysis.current) return;
+    const timer = window.setTimeout(() => {
+      resumedAnalysis.current = false;
+      void executeJudging(undefined, true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [executeJudging]);
+  useEffect(() => () => { ++analysisGeneration.current; }, []);
 
   const handleNextRound = useCallback(() => {
     const curr = stateRef.current;
@@ -272,10 +292,9 @@ export const ArabicTVRoot: React.FC = () => {
   }, [syncState]);
 
   const handleEndGame = useCallback(async () => {
-    try {
-      await roomBus.terminateRoom(roomCode, 'تم إنهاء الغرفة بواسطة المضيف');
-    } catch (err) {
-      console.warn('[ArabicTVRoot] terminateRoom error:', err);
+    if (!await roomBus.terminateRoom(roomCode)) {
+      alert('تعذر إنهاء الغرفة، حاول مرة أخرى');
+      return;
     }
     sessionStorage.clear();
     localStorage.removeItem('current_room_code');
@@ -644,6 +663,24 @@ export const ArabicTVRoot: React.FC = () => {
   // -------------------------------------------------------------
 
   // 1. Lobby View
+  useEffect(() => roomBus.on('GAME_STARTED', () => {
+    if (stateRef.current.phase === 'LOBBY') void startRoundRoulette();
+  }, roomCode), [roomCode, startRoundRoulette]);
+
+  useEffect(() => {
+    if (!mobileContestants || arabicState.phase !== 'ROULETTE') return;
+    const timer = setTimeout(() => { void startRoundInput(); }, 4200);
+    return () => clearTimeout(timer);
+  }, [mobileContestants, arabicState.phase, startRoundInput]);
+
+  useEffect(() => roomBus.on('RETURN_TO_LOBBY', () => {
+    ++analysisGeneration.current;
+    const fresh = createInitialArabicState(roomCode, true);
+    syncState(fresh);
+  }, roomCode), [roomCode, syncState]);
+
+  if (mobileContestants) return null;
+
   if (arabicState.phase === 'LOBBY') {
     return (
       <UnifiedShabahLobby
@@ -651,7 +688,6 @@ export const ArabicTVRoot: React.FC = () => {
         gameId="ai-arabic"
         gameTitle="الشبح العربي"
         role="host"
-        onStartGame={startRoundRoulette}
       />
     );
   }
@@ -672,56 +708,7 @@ export const ArabicTVRoot: React.FC = () => {
 
   // 3. Judging Phase (Dedicated Waiting Screen)
   if (arabicState.phase === 'JUDGING') {
-    return (
-      <div dir="rtl" className="w-full h-screen max-h-screen bg-black text-white flex flex-col justify-between p-6 select-none">
-        {/* Top Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
-          <div className="flex items-center gap-2">
-            <span className="text-zinc-400 font-sans text-xs">الغرفة:</span>
-            <span className="font-sans font-bold text-white tracking-widest">{roomCode}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleReturnToLobby}
-              className="px-3.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white font-sans font-bold text-xs transition-colors cursor-pointer"
-            >
-              العودة للوبي
-            </button>
-            <button
-              onClick={handleEndGame}
-              className="px-3.5 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-900/60 border border-red-800/60 text-red-300 hover:text-red-200 font-sans font-bold text-xs transition-colors cursor-pointer"
-            >
-              إنهاء اللعبة
-            </button>
-          </div>
-        </div>
-
-        {/* Center Ghost Waiting Stage */}
-        <div className="flex-1 flex flex-col items-center justify-center text-center">
-          <div className="relative mb-6">
-            <div className="p-1 rounded-full bg-gradient-to-tr from-[#B56BFF] via-[#38BDF8] to-[#4ADE80] shadow-[0_0_50px_rgba(56,189,248,0.4)] animate-pulse">
-              <div className="w-36 h-36 rounded-full bg-[#0A0A0A] flex items-center justify-center">
-                <span className="font-sans font-black text-6xl text-emerald-400">
-                  {arabicState.currentLetter}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <h2 className="font-sans font-bold text-3xl text-white tracking-tight mb-3">
-            الشبح العربي يدقق القواميس والمعاجم...
-          </h2>
-          <p className="font-sans text-sm text-zinc-400 max-w-md leading-relaxed mb-6">
-            مطابقة إجابات المتسابقين في المعاجم العربية وتطبيق قواعد النقاط والمكررات.
-          </p>
-
-          <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-300 text-xs font-sans">
-            <Clock className="w-4 h-4 text-emerald-400 animate-spin" />
-            <span>تصحيح الإجابات ورصد بونص السرعة قيد التنفيذ...</span>
-          </div>
-        </div>
-      </div>
-    );
+    return <ShabahThinkingScreen title="الشبح العربي يدقّق الكلمات" />;
   }
 
   // 4. Solving Stage (TV View)

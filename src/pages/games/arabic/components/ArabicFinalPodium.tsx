@@ -156,7 +156,7 @@ export const ArabicFinalPodium: React.FC<ArabicFinalPodiumProps> = ({
           className="w-full py-3 px-4 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 font-sans font-bold text-sm flex items-center justify-center gap-2 active:scale-98 transition-all"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>العودة للوبي</span>
+          <span>إعادة اللعب بنفس المجموعة</span>
         </button>
       </div>
     </div>

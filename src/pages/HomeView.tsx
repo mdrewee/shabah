@@ -26,15 +26,6 @@ const HERO_PHRASES: Array<{
   { text: 'جاهز ولا خايف؟', mood: 'surprised', gaze: { x: 0, y: 2 } },
 ];
 
-function generateRoomCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let result = '';
-  for (let i = 0; i < 4; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
-
 export const HomeView: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -142,13 +133,18 @@ export const HomeView: React.FC = () => {
     }
 
     setPersistedPlayerName(cleanName);
-    const code = generateRoomCode();
     const pid = getOrCreatePlayerId();
 
+    setJoinError(null);
     setIsCreatingRoom(true);
     try {
       // Authoritative Supabase room creation so mobile devices can find the room
-      await createRoom(code, joinModalGame.id, pid);
+      const result = await createRoom(joinModalGame.id, pid);
+      if (!result.ok) {
+        setJoinError(result.error);
+        return;
+      }
+      const { code } = result;
 
       const room = roomBus.createRoom(code);
       room.selectedGameId = joinModalGame.id;
@@ -156,7 +152,7 @@ export const HomeView: React.FC = () => {
       roomBus.joinRoom(code, cleanName, 'falcon', pid);
 
       sound.playClick();
-      navigate(`/room/${code}/play?host=1`);
+      navigate(`/room/${code}/play`);
     } finally {
       setIsCreatingRoom(false);
     }
@@ -166,13 +162,18 @@ export const HomeView: React.FC = () => {
   const handleEnterTVMode = async () => {
     if (!joinModalGame || isCreatingRoom) return;
     sound.playClick();
-    const code = generateRoomCode();
     const pid = getOrCreatePlayerId();
 
+    setJoinError(null);
     setIsCreatingRoom(true);
     try {
       // Authoritative Supabase room creation
-      await createRoom(code, joinModalGame.id, pid);
+      const result = await createRoom(joinModalGame.id, pid);
+      if (!result.ok) {
+        setJoinError(result.error);
+        return;
+      }
+      const { code } = result;
 
       const room = roomBus.createRoom(code);
       room.selectedGameId = joinModalGame.id;
@@ -297,7 +298,7 @@ export const HomeView: React.FC = () => {
           titleComponent={
             <div className="flex flex-col items-center justify-center text-center">
               {/* Shabah Mascot with interactive gaze */}
-              <div className="w-40 h-40 sm:w-56 sm:h-56 flex items-center justify-center">
+              <div className="w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center">
                 <ShabahGhost
                   mood={currentPhrase.mood}
                   gazeOffset={swipeGaze || currentPhrase.gaze}
@@ -316,7 +317,7 @@ export const HomeView: React.FC = () => {
 
               {/* White text + Iridescent border wordmark */}
               <div className="mt-1">
-                <ShabahWordmark size="xl" />
+                <ShabahWordmark size="md" />
               </div>
             </div>
           }
@@ -356,7 +357,8 @@ export const HomeView: React.FC = () => {
                       autoCorrect="off"
                       spellCheck={false}
                       disabled={isVerifyingRoom}
-                      className="flex-1 h-12 px-4 rounded-xl bg-white border-2 border-[#0A0A0A] text-[#0A0A0A] placeholder-neutral-400 text-center font-black tracking-widest uppercase focus:outline-none disabled:opacity-50"
+                      aria-label="كود الغرفة"
+                      className="min-w-0 flex-1 h-12 px-4 rounded-xl bg-white border-2 border-[#0A0A0A] text-[#0A0A0A] placeholder-neutral-400 text-center font-black tracking-widest uppercase focus:outline-none disabled:opacity-50"
                     />
 
                     <button
@@ -390,6 +392,7 @@ export const HomeView: React.FC = () => {
           setPlayerNameInput(val);
           setJoinError(null);
         }}
+        isSubmitting={isCreatingRoom}
         onSubmitContestant={handleConfirmContestantEntry}
         onEnterTVMode={handleEnterTVMode}
         onClose={() => setJoinModalGame(null)}

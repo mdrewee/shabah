@@ -1,3 +1,4 @@
+import { isRoomHost } from '../../../services/roomService';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useRoom, roomBus } from '../../../lib/roomBus';
@@ -52,15 +53,12 @@ export const JudgeMobileRoot: React.FC = () => {
       if (!payload) return;
       setJudgeState(payload);
 
-      // Reset submission flag when a new round starts
-      if (
-        (payload.phase === 'case_briefing' || payload.phase === 'defending' || payload.phase === 'EXCUSE_INPUT') &&
-        payload.roundNumber !== judgeState.roundNumber
-      ) {
-        setHasSubmittedThisRound(false);
-        setIsReadyForNextRound(false);
+      const submitted = Boolean(payload.excuses?.[playerId]);
+      if (submitted || payload.roundNumber !== judgeState.roundNumber) {
+        setHasSubmittedThisRound(submitted);
       }
-    });
+      setIsReadyForNextRound(Boolean(payload.readyPlayersNextRound?.includes(playerId)));
+    }, roomCode);
 
     const unsubLobby = roomBus.on('RETURN_TO_LOBBY', (evt: any) => {
       const incomingCode = evt?.roomCode;
@@ -133,24 +131,18 @@ export const JudgeMobileRoot: React.FC = () => {
       }));
     });
 
-    const unsubTerminated = roomBus.on('ROOM_TERMINATED', (evt: any) => {
-      const payload = evt?.data ?? evt;
-      roomBus.leaveRoom();
-      sessionStorage.clear();
-      localStorage.removeItem('current_room_code');
-      alert(payload?.reason || 'تم إنهاء اللعبة والعودة للرئيسية.');
-      window.location.href = '/';
-    });
-
     return () => {
       unsubSync?.();
       unsubNewRound?.();
       unsubStartDefense?.();
       unsubResultsReady?.();
       unsubLobby?.();
-      unsubTerminated?.();
     };
-  }, [roomCode, judgeState.roundNumber]);
+  }, [roomCode, judgeState.roundNumber, playerId]);
+
+  useEffect(() => {
+    roomBus.emit('REQUEST_ROOM_STATE', roomCode, {});
+  }, [roomCode]);
 
   // Handle Excuse Submission
   const handleSubmitExcuse = (excuse: string, wasAutoSubmitted = false) => {
@@ -160,12 +152,12 @@ export const JudgeMobileRoot: React.FC = () => {
     const payload = {
       playerId,
       playerName,
+      roundNumber: judgeState.roundNumber,
       excuse,
       wasAutoSubmitted,
     };
 
     roomBus.broadcastJudgeExcuse(roomCode, payload);
-    roomBus.broadcast('SUBMIT_EXCUSE', payload);
   };
 
   // Handle Ready Toggle for Next Round
@@ -192,6 +184,7 @@ export const JudgeMobileRoot: React.FC = () => {
         gameId="ai-judge"
         gameTitle="الشبح القاضي"
         role="contestant"
+        isPlayerHost={isRoomHost(roomCode)}
         currentPlayerId={playerId}
         onExit={() => {
           roomBus.leavePlayer(roomCode, playerId);
@@ -223,6 +216,7 @@ export const JudgeMobileRoot: React.FC = () => {
         roundNumber={judgeState.roundNumber}
         totalRounds={judgeState.totalRounds}
         phase={judgeState.phase}
+        briefingEndsAt={judgeState.briefingEndsAt}
         timerSeconds={judgeState.timerSeconds}
         hasSubmitted={hasSubmittedThisRound}
         onSubmitExcuse={handleSubmitExcuse}

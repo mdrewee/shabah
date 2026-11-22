@@ -207,6 +207,7 @@ ${JSON.stringify(
       systemInstruction: SYSTEM_INSTRUCTION,
       temperature: 0.1,
       jsonMode: true,
+      maxOutputTokens: 8192,
     });
 
     const parsed = cleanAndParseJSON<{ results: any[] }>(rawResponse);

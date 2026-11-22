@@ -1,3 +1,4 @@
+import { ShabahRoundReveal } from '../../../../components/common/ShabahRoundReveal';
 import React, { useState, useEffect } from 'react';
 import {
   ArabicRoomState,
@@ -69,7 +70,7 @@ export const ArabicTVResults: React.FC<ArabicTVResultsProps> = ({
       : 'grid grid-flow-col auto-cols-[280px] gap-4 overflow-x-auto pb-2';
 
   return (
-    <div
+    <ShabahRoundReveal entries={playerEvals.map((item) => ({ id: item.playerId, name: item.playerName, answer: item.results.map((result) => result.category + ': ' + result.answer).join(' · ') }))}><div
       dir="rtl"
       className="w-full h-screen max-h-screen overflow-hidden bg-black text-white p-5 flex flex-col justify-between select-none"
     >
@@ -320,7 +321,7 @@ export const ArabicTVResults: React.FC<ArabicTVResultsProps> = ({
           </div>
         </div>
       )}
-    </div>
+    </div></ShabahRoundReveal>
   );
 };
 

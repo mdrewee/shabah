@@ -217,13 +217,17 @@ export const CoverflowCarousel: React.FC<CoverflowCarouselProps> = ({
                   {game.title}
                 </h2>
 
+                <p className="mt-2 text-center text-[11px] font-bold text-zinc-300">
+                  {game.minPlayers}–{game.maxPlayers} لاعبين
+                </p>
+
                 {/* مساحة الصورة بالمنتصف: إطار مخصص للصورة */}
-                <div className="w-full flex-1 my-3 rounded-2xl bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center relative p-3">
+                <div className="w-full flex-1 my-3 rounded-2xl bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center relative">
                   <img
-                    src={game.placeholderImage}
-                    alt={game.title}
+                    src={game.cardImage}
+                    alt=""
                     draggable={false}
-                    className="w-full h-full object-contain max-h-[180px] drop-shadow-[0_8px_16px_rgba(0,0,0,0.6)] select-none"
+                    className="absolute inset-0 w-full h-full object-cover select-none"
                   />
                 </div>
 

@@ -1,5 +1,6 @@
+import { isRoomHost } from '../../../services/roomService';
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useRoom, roomBus } from '../../../lib/roomBus';
 import { useRoomSync } from '../../../hooks/useRoomSync';
 import { sound } from '../../../lib/audio';
@@ -20,6 +21,7 @@ import {
 } from './brokerSync';
 import { getBrokerItemByIndex, ensureBrokerItem } from '../../../data/brokerItems';
 import { formatPriceArabic, toArabicDigits } from './brokerUtils';
+import { formatSecondsToTime } from '../../../utils/numberFormat';
 import { evaluateBrokerPitch } from '../../../services/brokerEngine';
 import { BrokerShowcaseStage } from './components/BrokerShowcaseStage';
 import { BrokerRoundWinner } from './components/BrokerRoundWinner';
@@ -36,10 +38,9 @@ import {
 
 export const BrokerMobileRoot: React.FC = () => {
   const { code: rawCode } = useParams<{ code?: string }>();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const roomCode = (rawCode || 'SHBH').trim().toUpperCase();
-  const isPlayerHost = searchParams.get('host') === '1';
+  const isPlayerHost = isRoomHost(roomCode);
 
   const [playerId] = useState(() => getOrCreatePlayerId());
   const [playerName] = useState(() => getPersistedPlayerName() || getOrCreatePlayerName('متسابق'));
@@ -55,6 +56,10 @@ export const BrokerMobileRoot: React.FC = () => {
   const [brokerState, setBrokerState] = useState<BrokerRoomState>(() =>
     createInitialBrokerState(roomCode)
   );
+
+  const chatRequest = useRef(0);
+  const brokerStateRef = useRef(brokerState);
+  brokerStateRef.current = brokerState;
 
   // Private contestant chat state
   const [messages, setMessages] = useState<BrokerChatMessage[]>([]);
@@ -87,6 +92,8 @@ export const BrokerMobileRoot: React.FC = () => {
     if (lastActiveItemKeyRef.current === itemKey) return;
     lastActiveItemKeyRef.current = itemKey;
 
+    ++chatRequest.current;
+    setIsSubmitting(false);
     // Reset conversation completely and set the new item's greeting
     const initialGreeting =
       (currentAuctionItem as any).openingGreeting ||
@@ -115,7 +122,7 @@ export const BrokerMobileRoot: React.FC = () => {
       }
       setBrokerState(payload);
       savePersistedBrokerState(roomCode, payload);
-    });
+    }, roomCode);
 
     const unsubNewRound = roomBus.on('BROKER_NEW_ROUND', (evt: any) => {
       const payload = evt?.data || evt;
@@ -164,6 +171,8 @@ export const BrokerMobileRoot: React.FC = () => {
     });
 
     const unsubLobby = roomBus.on('RETURN_TO_LOBBY', () => {
+      ++chatRequest.current;
+      setIsSubmitting(false);
       setBrokerState((prev) => {
         const next: BrokerRoomState = { ...prev, phase: 'LOBBY' };
         savePersistedBrokerState(roomCode, next);
@@ -182,6 +191,10 @@ export const BrokerMobileRoot: React.FC = () => {
       unsubGameStart();
       unsubLobby();
     };
+  }, [roomCode]);
+
+  useEffect(() => {
+    roomBus.emit('REQUEST_ROOM_STATE', roomCode, {});
   }, [roomCode]);
 
   // Submit contestant pitch to Shuraiti
@@ -206,6 +219,7 @@ export const BrokerMobileRoot: React.FC = () => {
     setMessages((prev) => [...prev, contestantMsg]);
     setInputText('');
     setIsSubmitting(true);
+    const request = ++chatRequest.current;
 
     const isFirstBid = messages.filter((m) => m.sender === 'contestant').length === 0 || currentBid === 0;
     const newBullets = Math.max(0, bulletsRemaining - 1);
@@ -220,6 +234,8 @@ export const BrokerMobileRoot: React.FC = () => {
         isFirstBid,
         playerName,
       });
+
+      if (request !== chatRequest.current || brokerStateRef.current.phase !== 'NEGOTIATION') return;
 
       // 3. Audio & Visual Feedback
       if (evaluation.soundFx === 'cash') {
@@ -258,10 +274,14 @@ export const BrokerMobileRoot: React.FC = () => {
         bulletsRemaining: newBullets,
       });
     } catch (err) {
+      if (request !== chatRequest.current) return;
+      setBulletsRemaining((value) => value + 1);
+      setInputText(pitch);
+      setMessages((previous) => [...previous, { id: 'error_' + Date.now(), sender: 'broker', text: 'تعذر الاتصال. محاولتك محفوظة، اضغط إرسال لإعادة المحاولة.', timestamp: Date.now() }]);
       console.warn('[BrokerMobile] Pitch evaluation failed:', err);
       sound.playBuzz?.();
     } finally {
-      setIsSubmitting(false);
+      if (request === chatRequest.current) setIsSubmitting(false);
     }
   };
 
@@ -270,25 +290,6 @@ export const BrokerMobileRoot: React.FC = () => {
     const nextReady = !isReadyForNext;
     setIsReadyForNext(nextReady);
     roomBus.broadcastPlayerReadyUpdate(roomCode, playerId, nextReady, playerName);
-  };
-
-  // Host mobile starts game
-  const handleStartGame = () => {
-    sound.playSuccess();
-    const firstItem = getBrokerItemByIndex(1);
-    const nextState: BrokerRoomState = {
-      ...brokerState,
-      phase: 'SHOWCASE',
-      roundNumber: 1,
-      totalRounds: 5,
-      currentItem: firstItem,
-      winnerId: null,
-      winnerName: null,
-      winningBid: null,
-      winningQuote: null,
-    };
-    setBrokerState(nextState);
-    roomBus.broadcastBrokerSync(roomCode, nextState);
   };
 
   // Phase 1: Lobby View
@@ -301,7 +302,6 @@ export const BrokerMobileRoot: React.FC = () => {
         role="contestant"
         isPlayerHost={isPlayerHost}
         currentPlayerId={playerId}
-        onStartGame={handleStartGame}
         onExit={() => {
           roomBus.leavePlayer(roomCode, playerId);
           navigate('/');
@@ -402,32 +402,24 @@ export const BrokerMobileRoot: React.FC = () => {
     <div
       key={`${roomCode}-${currentAuctionItem?.id || 'item'}-${currentRoundNumber}`}
       dir="rtl"
-      className="min-h-screen min-h-[100dvh] w-full bg-[#000000] text-[#FFFFFF] flex flex-col justify-between selection:bg-white selection:text-black overflow-hidden font-sans"
+      className="h-full min-h-0 w-full bg-[#000000] text-[#FFFFFF] flex flex-col justify-between selection:bg-white selection:text-black overflow-hidden font-sans"
     >
       {/* 1. Header & Top Data Bar */}
       <header className="w-full bg-[#000000] border-b-2 border-white/10 p-3 flex flex-col gap-2 shrink-0 select-none z-20">
+        <div className="flex items-center justify-between text-sm font-bold text-zinc-300">
+          <span>الجولة {toArabicDigits(brokerState.roundNumber)} من {toArabicDigits(brokerState.totalRounds)}</span>
+          <span role="timer" dir="ltr" className={brokerState.timerSeconds <= 15 ? 'text-red-300' : 'text-emerald-300'}>{formatSecondsToTime(brokerState.timerSeconds)}</span>
+        </div>
         {/* Product Pill */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 overflow-hidden">
             <div className="w-7 h-7 shrink-0">
               <ShabahGhost mood="judging" className="w-full h-full" />
             </div>
-            <div className="truncate">
+            <div className="min-w-0">
               <span className="text-xs font-black text-white block truncate">
                 {currentAuctionItem.name}
               </span>
-              <div className="flex items-center gap-2 text-[10px] truncate">
-                <span className="text-red-400 flex items-center gap-1 font-bold truncate">
-                  <AlertTriangle className="w-3 h-3 shrink-0" />
-                  {currentAuctionItem.flaw}
-                </span>
-                {currentAuctionItem.perk && (
-                  <span className="text-emerald-400 flex items-center gap-1 font-bold truncate">
-                    <Sparkles className="w-3 h-3 shrink-0" />
-                    {currentAuctionItem.perk}
-                  </span>
-                )}
-              </div>
             </div>
           </div>
 
@@ -444,6 +436,11 @@ export const BrokerMobileRoot: React.FC = () => {
           </div>
         </div>
 
+        <details className="rounded-xl border border-white/15 bg-zinc-900 px-3 py-2 text-sm leading-7">
+          <summary className="cursor-pointer font-bold text-zinc-200">تفاصيل السلعة وعيوبها</summary>
+          <p className="mt-2 flex items-start gap-2 text-red-300"><AlertTriangle className="mt-1 h-4 w-4 shrink-0" />{currentAuctionItem.flaw}</p>
+          {currentAuctionItem.perk && <p className="flex items-start gap-2 text-emerald-300"><Sparkles className="mt-1 h-4 w-4 shrink-0" />{currentAuctionItem.perk}</p>}
+        </details>
         {/* Current Bid Display Card */}
         <div
           className={`w-full py-2 px-4 rounded-xl border-2 transition-all duration-300 flex items-center justify-between ${
@@ -463,7 +460,7 @@ export const BrokerMobileRoot: React.FC = () => {
       </header>
 
       {/* 2. Private Brutalist Chat Stream (STRICT font-sans) */}
-      <main className="flex-1 w-full overflow-y-auto p-4 flex flex-col gap-3.5 max-w-2xl mx-auto font-sans">
+      <main className="min-h-0 flex-1 w-full overflow-y-auto p-4 flex flex-col gap-3.5 max-w-2xl mx-auto font-sans">
         {messages.map((msg) => {
           const isContestant = msg.sender === 'contestant';
 

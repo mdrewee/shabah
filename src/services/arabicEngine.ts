@@ -111,7 +111,7 @@ export async function executeGeminiPrompt(prompt: string): Promise<any[]> {
   const rawText = await callGeminiWithFallback(prompt, {
     jsonMode: true,
     temperature: 0.1,
-    maxOutputTokens: 1000,
+    maxOutputTokens: 8192,
   });
 
   const parsed = cleanAndParseJSON(rawText);
@@ -207,9 +207,7 @@ export function applyScoringAndDuplicates(
       const ans = stripEmojis(String(foundRes?.answer || origAnswer || ''));
       const isCorrect = Boolean(
         foundRes?.isCorrect ??
-        foundRes?.status === 'صحيح' ??
-        foundRes?.status === 'correct' ??
-        (foundRes?.points && foundRes?.points > 0)
+        (foundRes?.status === 'صحيح' || foundRes?.status === 'correct' || foundRes?.points > 0)
       );
 
       if (!isCorrect || !ans) {

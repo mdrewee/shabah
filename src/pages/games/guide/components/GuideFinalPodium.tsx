@@ -66,7 +66,7 @@ export const GuideFinalPodium: React.FC<GuideFinalPodiumProps> = ({
           className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white hover:bg-zinc-200 text-black font-sans font-black text-sm shadow-[0_0_20px_rgba(255,255,255,0.3)] active:scale-95 transition-all cursor-pointer"
         >
           <RotateCcw className="w-4 h-4" />
-          <span>العودة للوبي الرئيسي</span>
+          <span>إعادة اللعب بنفس المجموعة</span>
         </button>
       </header>
 
@@ -188,7 +188,7 @@ export const GuideFinalPodium: React.FC<GuideFinalPodiumProps> = ({
           }}
           className="w-full max-w-md py-3.5 px-4 rounded-2xl bg-white hover:bg-zinc-200 text-black font-sans font-black text-base shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-98 transition-all cursor-pointer"
         >
-          العودة للوبي الرئيسي
+          إعادة اللعب بنفس المجموعة
         </button>
       </footer>
     </div>

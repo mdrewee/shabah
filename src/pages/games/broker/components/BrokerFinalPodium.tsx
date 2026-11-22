@@ -189,7 +189,7 @@ export const BrokerFinalPodium: React.FC<BrokerFinalPodiumProps> = ({
             className="w-full py-4 px-6 rounded-xl font-black text-[#0A0A0A] bg-white hover:bg-neutral-100 shadow-[3px_3px_0px_#0A0A0A] border-2 border-[#0A0A0A] active:scale-95 transition-transform flex items-center justify-center gap-2 cursor-pointer text-sm"
           >
             <ArrowRight className="w-5 h-5" />
-            <span>العودة للوبي (بدء لعبة جديدة)</span>
+            <span>إعادة اللعب بنفس المجموعة</span>
           </button>
         ) : (
           <p className="text-xs text-neutral-400 font-bold text-center">

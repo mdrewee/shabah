@@ -1,3 +1,4 @@
+import { ShabahRoundReveal } from '../../../../components/common/ShabahRoundReveal';
 import React, { useEffect } from 'react';
 import { ShabahGhost } from '../../../../components/mascot/ShabahGhost';
 import { BrokerItem, ContestantBidState } from '../types';
@@ -49,7 +50,7 @@ export const BrokerRoundWinner: React.FC<BrokerRoundWinnerProps> = ({
   const readyCount = contestants.filter((c) => c.isReadyForNextRound).length;
 
   return (
-    <div
+    <ShabahRoundReveal entries={contestants.map((item) => ({ id: item.playerId, name: item.playerName, answer: item.bestQuote || 'السومة: ' + item.currentBid.toLocaleString('ar-SA') }))}><div
       dir="rtl"
       className="min-h-screen w-full bg-[#000000] text-[#FFFFFF] flex flex-col items-center justify-between p-4 sm:p-8 select-none relative overflow-y-auto"
     >
@@ -226,6 +227,6 @@ export const BrokerRoundWinner: React.FC<BrokerRoundWinnerProps> = ({
           </div>
         )}
       </footer>
-    </div>
+    </div></ShabahRoundReveal>
   );
 };

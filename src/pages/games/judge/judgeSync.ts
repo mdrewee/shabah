@@ -30,8 +30,8 @@ export function savePersistedJudgeState(roomCode: string, state: JudgeRoomState)
   }
 }
 
-export function createInitialJudgeState(roomCode: string): JudgeRoomState {
-  const existing = getPersistedJudgeState(roomCode);
+export function createInitialJudgeState(roomCode: string, fresh = false): JudgeRoomState {
+  const existing = fresh ? null : getPersistedJudgeState(roomCode);
   if (existing) {
     return existing;
   }

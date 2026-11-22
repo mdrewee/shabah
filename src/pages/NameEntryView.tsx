@@ -12,15 +12,6 @@ import {
 import { createRoom, checkRoomExists, normalizeRoomCode } from '../services/roomService';
 import { normalizeGameId } from '../utils/gameIds';
 
-function generateRoomCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let result = '';
-  for (let i = 0; i < 4; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
-
 function mapShabahIdToEngineId(gameId: string): string {
   switch (gameId) {
     case 'ai-judge':
@@ -94,10 +85,14 @@ export const NameEntryView: React.FC = () => {
     try {
       // Case 1: Creating/Starting a Game from Home ([العب])
       if (queryGame && !queryRoom) {
-        const code = generateRoomCode();
         const engineGameId = mapShabahIdToEngineId(queryGame);
 
-        await createRoom(code, engineGameId, pid);
+        const result = await createRoom(engineGameId, pid);
+        if (!result.ok) {
+          setErrorMsg(result.error);
+          return;
+        }
+        const { code } = result;
 
         const room = roomBus.createRoom(code);
         room.selectedGameId = engineGameId;
@@ -123,7 +118,7 @@ export const NameEntryView: React.FC = () => {
       }
 
       // Case 2: Joining an existing Room by Code ([دخول] or QR Scan)
-      const targetRoomCode = queryRoom || generateRoomCode();
+      let targetRoomCode = queryRoom;
       let roomCheckResult: { exists: boolean; gameId?: string; error?: string } | null = null;
       if (queryRoom) {
         roomCheckResult = await checkRoomExists(targetRoomCode);
@@ -140,7 +135,12 @@ export const NameEntryView: React.FC = () => {
         : (roomCheckResult?.gameId ? normalizeGameId(roomCheckResult.gameId) : null);
 
       if (!queryRoom) {
-        await createRoom(targetRoomCode, detectedGame || 'ai-judge', pid);
+        const result = await createRoom(detectedGame || 'ai-judge', pid);
+        if (!result.ok) {
+          setErrorMsg(result.error);
+          return;
+        }
+        targetRoomCode = result.code;
       }
 
       const existing = roomBus.getRoom(targetRoomCode);

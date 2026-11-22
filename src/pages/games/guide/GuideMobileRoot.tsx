@@ -1,3 +1,4 @@
+import { isRoomHost } from '../../../services/roomService';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useRoom, roomBus } from '../../../lib/roomBus';
@@ -79,10 +80,11 @@ export const GuideMobileRoot: React.FC = () => {
       if (payload.phase === 'INTRO' || payload.phase === 'GUESSING') {
         setIsReadyForNextRound(false);
       }
-      if (payload.phase === 'INTRO') {
-        setHasSubmittedThisRound(false);
+      const submitted = Boolean(payload.guesses?.[playerId]);
+      if (submitted || payload.phase === 'INTRO') {
+        setHasSubmittedThisRound(submitted);
       }
-    });
+    }, roomCode);
 
     const unsubLobby = roomBus.on('RETURN_TO_LOBBY', (evt: any) => {
       const incomingCode = evt?.roomCode;
@@ -100,6 +102,10 @@ export const GuideMobileRoot: React.FC = () => {
       unsubSync?.();
       unsubLobby?.();
     };
+  }, [roomCode]);
+
+  useEffect(() => {
+    roomBus.emit('REQUEST_ROOM_STATE', roomCode, {});
   }, [roomCode]);
 
   // Local fluid countdown and clue progression on mobile (prevents network flood)
@@ -173,6 +179,7 @@ export const GuideMobileRoot: React.FC = () => {
         gameId="ai-guide"
         gameTitle="الشبح المرشد"
         role="contestant"
+        isPlayerHost={isRoomHost(roomCode)}
         currentPlayerId={playerId}
         onExit={() => {
           roomBus.leavePlayer(roomCode, playerId);
@@ -201,7 +208,7 @@ export const GuideMobileRoot: React.FC = () => {
           الشبح المرشد ينطلق نحو وجهة سرية!
         </h2>
         <p className="font-sans text-xs sm:text-sm text-zinc-400 max-w-xs leading-relaxed mb-6">
-          تابع شاشة التلفزيون لمشاهدة رحلة الشبح... وكن مستعداً لوضع دبوسك وقراءة التلميحات!
+          استعد لرحلة الشبح... بعد لحظات تظهر التلميحات وتقدر تحط دبوسك!
         </p>
 
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-300 text-xs font-sans">

@@ -1,5 +1,7 @@
+import { ShabahThinkingScreen } from '../../../components/common/ShabahThinkingScreen';
+import { isRoomHost } from '../../../services/roomService';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useRoom, roomBus } from '../../../lib/roomBus';
 import { useRoomSync } from '../../../hooks/useRoomSync';
 import { sound } from '../../../lib/audio';
@@ -23,6 +25,7 @@ import {
 } from './flyingSync';
 import { stripEmojis } from './flyingEngine';
 import { FlyingSkyWorld } from './FlyingSkyWorld';
+import { FlyingTVRoot } from './FlyingTVRoot';
 import { GhostAvatar, getTierDisplayLabel } from './GhostAvatar';
 import {
   CheckCircle2,
@@ -36,17 +39,15 @@ const ROUND_TIME = 35;
 
 export const FlyingMobileView: React.FC = () => {
   const { code } = useParams<{ code?: string }>();
-  const [searchParams] = useSearchParams();
   const roomCode = (code || 'SHBH').trim().toUpperCase();
-  const navigate = useNavigate();
-  const isPlayerHost = searchParams.get('host') === '1';
+  const isPlayerHost = isRoomHost(roomCode);
 
   const [playerId] = useState<string>(() => getOrCreatePlayerId());
   const [playerName] = useState<string>(() => {
     return getPersistedPlayerName() || getOrCreatePlayerName('متسابق');
   });
 
-  const { connectedPlayers: realtimeContestants } = useRoomSync({
+  const { connectedPlayers: realtimeContestants, hasPresenceSnapshot } = useRoomSync({
     roomCode,
     role: 'contestant',
     playerId,
@@ -55,6 +56,33 @@ export const FlyingMobileView: React.FC = () => {
 
   const { room } = useRoom(roomCode);
   const activeRoom = room || roomBus.getRoom(roomCode);
+  const contestants =
+    hasPresenceSnapshot || realtimeContestants.length > 0
+      ? realtimeContestants
+      : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv');
+
+  return (
+    <>
+      {isPlayerHost && <FlyingTVRoot mobileContestants={contestants} />}
+      <FlyingMobilePlayer
+        roomCode={roomCode}
+        playerId={playerId}
+        playerName={playerName}
+        isPlayerHost={isPlayerHost}
+        mergedContestants={contestants}
+      />
+    </>
+  );
+};
+
+const FlyingMobilePlayer: React.FC<{
+  roomCode: string;
+  playerId: string;
+  playerName: string;
+  isPlayerHost: boolean;
+  mergedContestants: Array<{ id: string; name: string }>;
+}> = ({ roomCode, playerId, playerName, isPlayerHost, mergedContestants }) => {
+  const navigate = useNavigate();
 
   const [flyingState, setFlyingState] = useState<FlyingRoomState>(
     () => getPersistedFlyingState(roomCode) || createInitialFlyingState(roomCode)
@@ -66,18 +94,6 @@ export const FlyingMobileView: React.FC = () => {
   const [hasSubmittedThisRound, setHasSubmittedThisRound] = useState<boolean>(false);
   const [submittedAnswer, setSubmittedAnswer] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-
-  const mergedContestants =
-    realtimeContestants.length > 0
-      ? realtimeContestants
-      : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv');
-
-  const handleStartGame = useCallback(() => {
-    sound.playVictory();
-    // Signal TV host to start game
-    roomBus.safeBroadcast(roomCode, 'GAME_STARTED', { roomCode });
-    roomBus.broadcast('GAME_STARTED', { roomCode });
-  }, [roomCode]);
 
   const handleReturnToLobby = useCallback(() => {
     sound.playClick();
@@ -215,23 +231,21 @@ export const FlyingMobileView: React.FC = () => {
       savePersistedFlyingState(roomCode, payload);
 
       if (payload.phase === 'QUESTION') {
+        const mySub = payload.submissions?.[playerId];
         if (isNewRoundOrQuestion) {
-          setHasSubmittedThisRound(false);
           setAnswerInput('');
-          setSubmittedAnswer('');
           setIsSubmitting(false);
-        } else {
-          const mySub = payload.submissions?.[playerId];
-          if (mySub) {
-            setHasSubmittedThisRound(true);
-            setSubmittedAnswer(mySub.answer);
-          }
+          setHasSubmittedThisRound(Boolean(mySub));
+          setSubmittedAnswer(mySub?.answer || '');
+        } else if (mySub) {
+          setHasSubmittedThisRound(true);
+          setSubmittedAnswer(mySub.answer);
         }
       } else if (payload.phase === 'PODIUM') {
         setHasSubmittedThisRound(false);
         setAnswerInput('');
       }
-    });
+    }, roomCode);
 
     // 5. Game Over / Final Podium Event
     const unsubGameOver = roomBus.on('FLYING_GAME_OVER', (evt: any) => {
@@ -275,6 +289,10 @@ export const FlyingMobileView: React.FC = () => {
     };
   }, [roomCode, playerId]);
 
+  useEffect(() => {
+    roomBus.emit('REQUEST_ROOM_STATE', roomCode, {});
+  }, [roomCode]);
+
   // -------------------------------------------------------------
   // Submit Answer (Pure socket broadcast, no local AI evaluation)
   // -------------------------------------------------------------
@@ -300,16 +318,11 @@ export const FlyingMobileView: React.FC = () => {
       playerId,
       playerName,
       roundIndex: flyingState.roundNumber,
+      questionId: flyingState.currentQuestion?.id,
       roomCode,
     };
 
-    // Broadcast across socket channels for arrival at TV Host
-    roomBus.broadcast('FLYING_SUBMIT_ANSWER', submitPayload);
-    roomBus.safeBroadcast(roomCode, 'FLYING_SUBMIT_ANSWER', submitPayload);
-    roomBus.emit('FLYING_SUBMIT_ANSWER', roomCode, submitPayload);
-    if ((roomBus as any).broadcastFlyingAnswer) {
-      (roomBus as any).broadcastFlyingAnswer(roomCode, submitPayload);
-    }
+    roomBus.broadcastFlyingAnswer(roomCode, submitPayload);
 
     setFlyingState((prev) => ({
       ...prev,
@@ -331,9 +344,11 @@ export const FlyingMobileView: React.FC = () => {
   // -------------------------------------------------------------
   // 1. Lobby Phase
   // -------------------------------------------------------------
+  if (flyingState.phase === 'CALCULATING') return <ShabahThinkingScreen title="الشبح الطائر يوازن ندرة الإجابات" />;
+
   if (flyingState.phase === 'LOBBY') {
     return (
-      <div dir="rtl" className="min-h-screen w-full bg-[#030712] select-none overflow-hidden pixel-art">
+      <div dir="rtl" className="min-h-[100dvh] w-full bg-[#08080c] font-sans">
         <UnifiedShabahLobby
           roomCode={roomCode}
           gameId="ai-flying"
@@ -341,7 +356,6 @@ export const FlyingMobileView: React.FC = () => {
           role="contestant"
           isPlayerHost={isPlayerHost}
           currentPlayerId={playerId}
-          onStartGame={handleStartGame}
           onExit={() => {
             roomBus.leavePlayer(roomCode, playerId);
             navigate('/');
@@ -434,7 +448,11 @@ export const FlyingMobileView: React.FC = () => {
           {isPlayerHost && (
             <button
               type="button"
-              onClick={handleStartGame}
+              onClick={async () => {
+                if (!await roomBus.broadcastGameStarted(roomCode, { gameId: 'ai-flying' })) {
+                  alert('تعذر بدء اللعبة، حاول مرة أخرى');
+                }
+              }}
               className="flex-1 py-3 px-4 font-mono font-black text-xs uppercase tracking-wider text-black bg-amber-400 border-4 border-black shadow-[4px_4px_0px_#000] active:translate-x-1 active:translate-y-1 active:shadow-none transition-none flex items-center justify-center gap-2 cursor-pointer"
             >
               <RotateCcw className="w-4 h-4" />
@@ -457,7 +475,7 @@ export const FlyingMobileView: React.FC = () => {
   // -------------------------------------------------------------
   // 3. Question Answering Phase (16-Bit Pixel Aesthetic)
   // -------------------------------------------------------------
-  if (flyingState.phase === 'QUESTION' || flyingState.phase === 'CALCULATING') {
+  if (flyingState.phase === 'QUESTION') {
     return (
       <div
         dir="rtl"
@@ -476,20 +494,7 @@ export const FlyingMobileView: React.FC = () => {
 
         {/* Main Content Card */}
         <main className="w-full max-w-md mx-auto flex flex-col my-auto py-2">
-          {flyingState.phase === 'CALCULATING' ? (
-            <div className="pixel-box bg-[#111827] text-white border-4 border-black p-6 sm:p-8 flex flex-col items-center text-center">
-              <div className="w-12 h-12 border-4 border-amber-400 border-t-black animate-spin mb-5" />
-              <div className="inline-block px-3 py-1 bg-amber-400 text-black font-mono font-black text-xs tracking-wider mb-3 border-2 border-black">
-                جاري التحكيم الذكي
-              </div>
-              <h2 className="font-mono font-black text-lg sm:text-xl text-white mb-2">
-                فحص ندرة الإجابات بالأمتار
-              </h2>
-              <p className="text-zinc-400 font-mono text-xs leading-relaxed">
-                يتم الآن رصد الإجابات المتطابقة وتحديد ارتفاع الأشباح في سماء الرياض
-              </p>
-            </div>
-          ) : (
+          {(
             <div className="pixel-box bg-[#111827] text-white border-4 border-black p-5 sm:p-6 flex flex-col items-center text-center">
               <span className="px-3 py-1 bg-amber-400 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider mb-4">
                 {q.category}
@@ -534,7 +539,7 @@ export const FlyingMobileView: React.FC = () => {
                       تم اعتماد إجابتك
                     </h3>
                     <p className="text-xs font-mono text-zinc-400">
-                      بانتظار انتهاء الوقت وحساب النتيجة من شاشة التلفزيون
+                      بانتظار انتهاء الوقت وحساب النتيجة
                     </p>
                   </div>
 

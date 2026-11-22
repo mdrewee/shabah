@@ -51,6 +51,7 @@ export interface BrokerRoomState {
   currentItem: BrokerItem;
   usedItemIds?: string[]; // All items played in this session to prevent repetition
   timerSeconds: number;
+  roundEndsAt?: number;
   contestantBids: Record<string, ContestantBidState>;
   announcements: BrokerAnnouncement[];
   winnerId?: string | null;

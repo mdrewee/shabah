@@ -13,13 +13,13 @@ interface GuideMobileMapProps {
 // Custom Glowing Purple Shabah Pin
 const customPinIcon = L.divIcon({
   className: 'custom-pin',
-  html: `<div style="transform: translate(-50%, -100%);">
+  html: `<div>
            <div style="width: 24px; height: 24px; background: #A855F7; border: 3px solid #FFFFFF; border-radius: 50%; box-shadow: 0 0 14px #A855F7; display: flex; align-items: center; justify-content: center;">
              <div style="width: 8px; height: 8px; background: #000000; border-radius: 50%;"></div>
            </div>
          </div>`,
   iconSize: [24, 24],
-  iconAnchor: [12, 24],
+  iconAnchor: [12, 12],
 });
 
 /**

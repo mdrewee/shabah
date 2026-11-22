@@ -1,3 +1,4 @@
+import { useConfirmation } from '../../../../components/common/ConfirmationProvider';
 import React from 'react';
 import { ShabahGhost, ShabahMood } from '../../../../components/mascot/ShabahGhost';
 import { formatSecondsToTime, toArabicNumber } from '../../../../utils/numberFormat';
@@ -30,10 +31,11 @@ export const CoachTopBar: React.FC<CoachTopBarProps> = ({
   onReturnToLobby,
   onExit,
 }) => {
+  const confirm = useConfirmation();
   return (
     <header className="w-full max-w-5xl mx-auto flex flex-col items-center pt-2 pb-4 px-3 select-none">
       {/* Top action row */}
-      <div className="w-full flex items-center justify-between mb-2">
+      <div className="w-full flex flex-wrap items-center justify-between gap-2 mb-2">
         {/* Badges: Game & Mode */}
         <div className="flex items-center gap-2">
           <span className="px-3 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-xs font-black text-neutral-300">
@@ -64,7 +66,7 @@ export const CoachTopBar: React.FC<CoachTopBarProps> = ({
           {isHost && onReturnToLobby && (
             <button
               type="button"
-              onClick={onReturnToLobby}
+              onClick={async () => { if (await confirm('ترجع الجميع للوبي وتنهي الجولة الحالية؟')) onReturnToLobby(); }}
               className="px-3 py-1 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-black border border-neutral-700 cursor-pointer transition-transform active:scale-95"
             >
               العودة للوبي

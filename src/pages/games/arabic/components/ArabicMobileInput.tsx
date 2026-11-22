@@ -1,3 +1,4 @@
+import { useConfirmation } from '../../../../components/common/ConfirmationProvider';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { toArabicNumber, formatSecondsToTime } from '../../../../utils/numberFormat';
 import { sound } from '../../../../lib/audio';
@@ -33,6 +34,7 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
     4: '',
   });
 
+  const confirm = useConfirmation();
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const submitButtonRef = useRef<HTMLButtonElement | null>(null);
   const answersRef = useRef<Record<number, string>>(answers);
@@ -84,8 +86,10 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
     answersRef.current[index] = val;
   };
 
-  const handleSubmitEarly = () => {
+  const handleSubmitEarly = async () => {
     if (isSubmittedRef.current) return;
+    const emptyCount = categories.filter((_, index) => !answersRef.current[index]?.trim()).length;
+    if (emptyCount > 0 && !await confirm(`باقي ${toArabicNumber(emptyCount)} فئات فارغة. تسلّم إجاباتك الآن؟`)) return;
     forceSubmitAnswers();
   };
 

@@ -1,5 +1,4 @@
 import { supabase } from '../lib/supabase';
-import { roomBus } from '../lib/roomBus';
 import { normalizeGameId } from '../utils/gameIds';
 
 /**
@@ -13,197 +12,76 @@ export function normalizeRoomCode(inputCode: string): string {
   return inputCode
     .trim()
     .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
-    .toUpperCase();
+    .toUpperCase()
+    .replace(/^ROOM_/, '');
 }
 
-/**
- * Authoritative Supabase room creation.
- * Persists room into 'rooms' table so cross-device and mobile players can verify and join instantly.
- */
+export function isRoomHost(roomCode: string): boolean {
+  return Boolean(localStorage.getItem('shabah_host_' + normalizeRoomCode(roomCode)));
+}
+
 export async function createRoom(
-  generatedCode: string,
   gameId: string,
-  hostId: string | null = null
-): Promise<{ ok: boolean; code: string; error?: string }> {
-  const cleanCode = normalizeRoomCode(generatedCode);
-  if (!cleanCode) {
-    return { ok: false, code: '', error: 'كود الغرفة غير صالح' };
-  }
-
-  const canonicalGameId = normalizeGameId(gameId) || 'ai-judge';
-
+  hostId: string
+): Promise<{ ok: true; code: string } | { ok: false; error: string }> {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   try {
-    const { error } = await supabase
-      .from('rooms')
-      .upsert(
-        {
-          room_code: cleanCode,
-          game_id: canonicalGameId,
-          host_id: hostId,
-          status: 'lobby',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'room_code' }
-      );
-
-    if (error) {
-      console.warn('[RoomService] Supabase room creation warning:', error);
-      return { ok: false, code: cleanCode, error: error.message };
+    const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
+      byte.toString(16).padStart(2, '0')
+    ).join('');
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = Array.from(crypto.getRandomValues(new Uint8Array(4)), (byte) =>
+        alphabet[byte & 31]
+      ).join('');
+      const { data, error } = await supabase.rpc('create_shabah_room', {
+        code,
+        game: normalizeGameId(gameId) || 'ai-judge',
+        player: hostId,
+        secret: token,
+      });
+      if (error) throw error;
+      if (!data) continue;
+      localStorage.setItem('shabah_host_' + code, token);
+      return { ok: true, code };
     }
-
-    return { ok: true, code: cleanCode };
-  } catch (err: any) {
-    console.error('[RoomService] createRoom error:', err);
-    return { ok: false, code: cleanCode, error: err?.message || 'تعذر تسجيل الغرفة' };
-  }
-}
-
-const inFlightChecks = new Map<string, Promise<{ exists: boolean; gameId?: string; status?: string; error?: string }>>();
-const recentChecksCache = new Map<string, { timestamp: number; result: { exists: boolean; gameId?: string; status?: string; error?: string } }>();
-const lastStatusUpdate = new Map<string, string>();
-
-/**
- * Update room status (e.g. 'lobby' -> 'playing' -> 'ended')
- */
-export async function updateRoomStatus(
-  inputCode: string,
-  status: 'lobby' | 'playing' | 'ended',
-  gameId?: string
-): Promise<void> {
-  const cleanCode = normalizeRoomCode(inputCode);
-  if (!cleanCode) return;
-
-  const key = `${cleanCode}:${status}:${gameId || ''}`;
-  if (lastStatusUpdate.get(cleanCode) === key) return;
-  lastStatusUpdate.set(cleanCode, key);
-
-  try {
-    const payload: Record<string, any> = {
-      status,
-      updated_at: new Date().toISOString(),
-    };
-    if (gameId) {
-      const canon = normalizeGameId(gameId);
-      if (canon) payload.game_id = canon;
-    }
-    await supabase
-      .from('rooms')
-      .update(payload)
-      .eq('room_code', cleanCode);
+    return { ok: false, error: 'تعذر تخصيص كود للغرفة، حاول مرة أخرى' };
   } catch (err) {
-    console.warn('[RoomService] updateRoomStatus error:', err);
+    console.warn('[RoomService] Room creation failed:', err);
+    return { ok: false, error: 'تعذر إنشاء الغرفة، تحقق من الاتصال وحاول مرة أخرى' };
   }
 }
 
-/**
- * Authoritative Supabase room verification.
- * Verifies room existence across all devices (TV, desktop, external mobile).
- * Features in-flight deduplication and 4s cache to kill runaway /rest/v1/rooms queries.
- */
-export async function checkRoomExists(
-  inputCode: string
-): Promise<{ exists: boolean; gameId?: string; status?: string; error?: string }> {
-  const cleanCode = normalizeRoomCode(inputCode);
-  if (!cleanCode || cleanCode.length < 3) {
-    return { exists: false, error: 'كود الغرفة غير مكتمل' };
+const inFlightChecks = new Map<string, Promise<{ exists: boolean; gameId?: string; error?: string }>>();
+
+export async function checkRoomExists(inputCode: string): Promise<{ exists: boolean; gameId?: string; error?: string }> {
+  const code = normalizeRoomCode(inputCode);
+  if (!/^[A-Z0-9]{3,8}$/.test(code)) {
+    return { exists: false, error: 'كود الغرفة غير صحيح' };
   }
 
-  const now = Date.now();
-  const cached = recentChecksCache.get(cleanCode);
-  if (cached && now - cached.timestamp < 4000) {
-    return cached.result;
-  }
+  const pending = inFlightChecks.get(code);
+  if (pending) return pending;
 
-  if (inFlightChecks.has(cleanCode)) {
-    return inFlightChecks.get(cleanCode)!;
-  }
-
-  const checkPromise = (async () => {
+  const check = (async () => {
     try {
       const { data, error } = await supabase
         .from('rooms')
-        .select('room_code, game_id, status')
-        .eq('room_code', cleanCode)
+        .select('game_id')
+        .eq('room_code', code)
         .in('status', ['lobby', 'playing'])
         .maybeSingle();
-
-      if (error) {
-        console.warn('[RoomCheck] Supabase query fallback:', error);
-        const local = roomBus.getRoom(cleanCode);
-        if (local && !(local as any).isTerminated && local.selectedGameId) {
-          return { exists: true, gameId: normalizeGameId(local.selectedGameId) || undefined, status: 'lobby' };
-        }
-        return { exists: false, error: 'تعذر الاتصال بالخادم، تأكد من اتصال الإنترنت' };
-      }
-
-      if (data) {
-        return { exists: true, gameId: normalizeGameId(data.game_id) || undefined, status: data.status };
-      }
-
-      // Local check fallback (if just created locally before remote sync)
-      const local = roomBus.getRoom(cleanCode);
-      if (local && !(local as any).isTerminated && local.selectedGameId) {
-        return { exists: true, gameId: normalizeGameId(local.selectedGameId) || undefined, status: 'lobby' };
-      }
-
-      const judgeRaw = localStorage.getItem(`shabah_judge_state_${cleanCode}`);
-      if (judgeRaw) {
-        try {
-          const parsed = JSON.parse(judgeRaw);
-          if (parsed && parsed.phase !== 'TERMINATED') {
-            return { exists: true, gameId: 'ai-judge', status: parsed.phase === 'LOBBY' ? 'lobby' : 'playing' };
-          }
-        } catch {}
-      }
-
-      const arabicRaw = localStorage.getItem(`shabah_arabic_state_${cleanCode}`);
-      if (arabicRaw) {
-        try {
-          const parsed = JSON.parse(arabicRaw);
-          if (parsed && parsed.phase !== 'TERMINATED') {
-            return { exists: true, gameId: 'ai-arabic', status: parsed.phase === 'LOBBY' ? 'lobby' : 'playing' };
-          }
-        } catch {}
-      }
-
-      const brokerRaw = sessionStorage.getItem(`shabah_broker_state_${cleanCode}`) || localStorage.getItem(`shabah_broker_state_${cleanCode}`);
-      if (brokerRaw) {
-        try {
-          const parsed = JSON.parse(brokerRaw);
-          if (parsed && parsed.phase !== 'GAME_OVER') {
-            return { exists: true, gameId: 'ai-broker', status: parsed.phase === 'LOBBY' ? 'lobby' : 'playing' };
-          }
-        } catch {}
-      }
-
-      const coachRaw = localStorage.getItem(`shabah_coach_state_${cleanCode}`);
-      if (coachRaw) {
-        try {
-          const parsed = JSON.parse(coachRaw);
-          if (parsed && parsed.phase !== 'TERMINATED') {
-            return { exists: true, gameId: 'ai-coach', status: parsed.phase === 'LOBBY' ? 'lobby' : 'playing' };
-          }
-        } catch {}
-      }
-
+      if (error) throw error;
+      if (data) return { exists: true, gameId: normalizeGameId(data.game_id) || undefined };
       return { exists: false, error: 'كود الغرفة غير صحيح أو الغرفة غير موجودة حالياً' };
     } catch (err) {
-      console.error('[RoomCheck] Error:', err);
-      const local = roomBus.getRoom(cleanCode);
-      if (local && !(local as any).isTerminated && local.selectedGameId) {
-        return { exists: true, gameId: normalizeGameId(local.selectedGameId) || undefined, status: 'lobby' };
-      }
+      console.warn('[RoomCheck] Room lookup failed:', err);
       return { exists: false, error: 'تعذر الاتصال بالخادم، حاول مرة أخرى' };
     }
   })();
-
-  inFlightChecks.set(cleanCode, checkPromise);
+  inFlightChecks.set(code, check);
   try {
-    const res = await checkPromise;
-    recentChecksCache.set(cleanCode, { timestamp: Date.now(), result: res });
-    return res;
+    return await check;
   } finally {
-    inFlightChecks.delete(cleanCode);
+    inFlightChecks.delete(code);
   }
 }

@@ -384,11 +384,6 @@ function checkPlayerCondition(
       return { isValid: false, reason: 'لم يتوج بدوري الأبطال مع ناديين مختلفين' };
 
     // Legacy Criteria Mappings
-      if (includesIn(['كروس', 'كريستيانو', 'رونالدو', 'سيدورف', 'بيكيه', 'ايتو', 'الونسو', 'ديشان', 'كوفاسيتش', 'الابا', 'شاكيري', 'ستوريدج'])) {
-        return { isValid: true, reason: 'توج بدوري الأبطال مع ناديين مختلفين' };
-      }
-      return { isValid: false, reason: 'لم يتوج بدوري الأبطال مع ناديين مختلفين' };
-
     case 'crit_top_scorer_country':
       if (includesIn(['رونالدو', 'ميسي', 'نيمار', 'كين', 'ماجد عبدالله', 'صلاح', 'سواريز', 'دروغبا', 'ايتو', 'ليفاندوفسكي', 'لوكاكو', 'دزيكو', 'ابراهيموفيتش', 'كلوزه', 'فيا'])) {
         return { isValid: true, reason: 'الهداف التاريخي لمنتخب بلاده' };
@@ -835,7 +830,7 @@ export async function evaluateAllSquadsWithAI(
       systemPrompt,
       temperature: 0.2,
       jsonMode: true,
-      maxOutputTokens: 1600,
+      maxOutputTokens: 8192,
     });
 
     if (responseText) {
@@ -863,11 +858,10 @@ export async function evaluateAllSquadsWithAI(
               const isSlotValid = Boolean(aiSlot.isValid && (aiSlot.points === 10 || aiSlot.points > 0));
               if (isSlotValid) {
                 currentSlot.isValidCondition = true;
-                currentSlot.isValidPosition = true;
                 if (aiSlot.comment) currentSlot.conditionReason = aiSlot.comment;
                 validConditionsCount += 1;
-                validPositionsCount += 1;
-                totalPowerSum += currentSlot.playerPower > 0 ? currentSlot.playerPower : 75;
+                validPositionsCount += Number(currentSlot.isValidPosition);
+                if (currentSlot.isValidPosition) totalPowerSum += currentSlot.playerPower > 0 ? currentSlot.playerPower : 75;
               } else {
                 currentSlot.isValidCondition = false;
                 currentSlot.isValidPosition = false;

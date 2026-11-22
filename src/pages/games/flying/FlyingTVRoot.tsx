@@ -1,3 +1,5 @@
+import { useGameState } from '../../../hooks/useGameState';
+import { ShabahThinkingScreen } from '../../../components/common/ShabahThinkingScreen';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useRoom, roomBus } from '../../../lib/roomBus';
@@ -30,7 +32,9 @@ import {
 
 const ROUND_TIME = 35;
 
-export const FlyingTVRoot: React.FC = () => {
+export const FlyingTVRoot: React.FC<{
+  mobileContestants?: Array<{ id: string; name: string }>;
+}> = ({ mobileContestants }) => {
   const { code } = useParams<{ code?: string }>();
   const roomCode = (code || 'SHBH').trim().toUpperCase();
   const navigate = useNavigate();
@@ -38,32 +42,37 @@ export const FlyingTVRoot: React.FC = () => {
   const { room } = useRoom(roomCode);
   const activeRoom = room || roomBus.getRoom(roomCode);
 
-  const { connectedPlayers: realtimeContestants } = useRoomSync({
-    roomCode,
+  const { connectedPlayers: realtimeContestants, hasPresenceSnapshot } = useRoomSync({
+    roomCode: mobileContestants ? '' : roomCode,
     role: 'host',
   });
 
-  const [flyingState, setFlyingState] = useState<FlyingRoomState>(() =>
+  const [flyingState, setFlyingState, stateRef] = useGameState<FlyingRoomState>(() =>
     createInitialFlyingState(roomCode)
   );
-  const stateRef = useRef<FlyingRoomState>(flyingState);
+  const analysisGeneration = useRef(0);
+
+  useEffect(() => roomBus.on('REQUEST_ROOM_STATE', () => {
+    roomBus.broadcastFlyingSync(roomCode, stateRef.current);
+  }, roomCode), [roomCode]);
   stateRef.current = flyingState;
 
   const [isMuted, setIsMuted] = useState(sound.getMuted());
   const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState<number>(6);
 
-  const mergedContestants =
-    realtimeContestants.length > 0
+  const mergedContestants = mobileContestants ?? (
+    hasPresenceSnapshot || realtimeContestants.length > 0
       ? realtimeContestants
-      : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv');
+      : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv')
+  );
 
   const syncState = useCallback(
     (newState: FlyingRoomState) => {
       stateRef.current = newState;
+      stateRef.current = newState;
       setFlyingState(newState);
       savePersistedFlyingState(roomCode, newState);
-      roomBus.safeBroadcast(roomCode, 'FLYING_STATE_SYNC', newState);
-      roomBus.broadcast('FLYING_STATE_SYNC', newState);
+      roomBus.broadcastFlyingSync(roomCode, newState);
     },
     [roomCode]
   );
@@ -137,9 +146,10 @@ export const FlyingTVRoot: React.FC = () => {
   }, [roomCode]);
 
   // Exclusive AI Evaluation (Runs solely on TV Host)
-  const executeEvaluation = useCallback(async () => {
+  const executeEvaluation = useCallback(async (resume = false) => {
     const curr = stateRef.current;
-    if (curr.phase === 'CALCULATING' || curr.phase === 'REVEALING') return;
+    if (curr.phase !== 'QUESTION' && !(resume && curr.phase === 'CALCULATING')) return;
+    const generation = ++analysisGeneration.current;
 
     sound.playTick();
     const subs = curr.submissions || {};
@@ -205,6 +215,7 @@ export const FlyingTVRoot: React.FC = () => {
       curr.cumulativeMeters
     );
 
+    if (generation !== analysisGeneration.current) return;
     const nextCumulative = { ...(curr.cumulativeMeters || {}) };
     const resultMap: Record<string, FlyingContestantResult> = {};
 
@@ -237,6 +248,17 @@ export const FlyingTVRoot: React.FC = () => {
     roomBus.safeBroadcast(roomCode, 'FLYING_RESULTS_READY', resultsPayload);
     roomBus.broadcast('FLYING_RESULTS_READY', resultsPayload);
   }, [mergedContestants, roomCode, syncState]);
+
+  const resumedAnalysis = useRef(flyingState.phase === 'CALCULATING');
+  useEffect(() => {
+    if (!resumedAnalysis.current) return;
+    const timer = window.setTimeout(() => {
+      resumedAnalysis.current = false;
+      void executeEvaluation(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [executeEvaluation]);
+  useEffect(() => () => { ++analysisGeneration.current; }, []);
 
   // -------------------------------------------------------------
   // Question Timer Countdown
@@ -304,8 +326,10 @@ export const FlyingTVRoot: React.FC = () => {
 
       return () => clearTimeout(advanceTimer);
     } else if (flyingState.cameraMode === 'global_overview') {
+      let secondsRemaining = 5;
       const overviewTimer = setInterval(() => {
-        setAutoAdvanceSeconds((sec) => {
+        const sec = secondsRemaining--;
+        setAutoAdvanceSeconds(Math.max(0, secondsRemaining));
           if (sec <= 1) {
             clearInterval(overviewTimer);
             if (flyingState.roundNumber >= flyingState.totalRounds) {
@@ -325,10 +349,7 @@ export const FlyingTVRoot: React.FC = () => {
             } else {
               startQuestionRound(flyingState.roundNumber + 1, flyingState.usedQuestionIds);
             }
-            return 0;
           }
-          return sec - 1;
-        });
       }, 1000);
 
       return () => clearInterval(overviewTimer);
@@ -372,7 +393,9 @@ export const FlyingTVRoot: React.FC = () => {
       const answer = stripEmojis(String(rawAnswer || '').trim());
 
       const curr = stateRef.current;
-      if (curr.phase !== 'QUESTION') return;
+      if (curr.phase !== 'QUESTION' || !answer ||
+          payload.roundIndex !== curr.roundNumber || payload.questionId !== curr.currentQuestion?.id ||
+          Object.hasOwn(curr.submissions, contestantId)) return;
 
       sound.playClick();
       const newSub: FlyingSubmission = {
@@ -392,11 +415,7 @@ export const FlyingTVRoot: React.FC = () => {
         submissions: updatedSubmissions,
       };
 
-      stateRef.current = updatedState;
-      setFlyingState(updatedState);
-      savePersistedFlyingState(roomCode, updatedState);
-      roomBus.safeBroadcast(roomCode, 'FLYING_STATE_SYNC', updatedState);
-      roomBus.broadcast('FLYING_STATE_SYNC', updatedState);
+      syncState(updatedState);
     });
 
     let isStartingGame = false;
@@ -404,7 +423,7 @@ export const FlyingTVRoot: React.FC = () => {
       const incomingCode = evt?.roomCode;
       if (incomingCode && incomingCode !== roomCode) return;
       if (isStartingGame) return;
-      if (stateRef.current.phase === 'LOBBY') {
+      if (stateRef.current.phase === 'LOBBY' || stateRef.current.phase === 'PODIUM') {
         isStartingGame = true;
         handleStartGame();
         setTimeout(() => {
@@ -414,6 +433,7 @@ export const FlyingTVRoot: React.FC = () => {
     });
 
     const unsubLobby = roomBus.on('RETURN_TO_LOBBY', (evt: any) => {
+      ++analysisGeneration.current;
       const incomingCode = evt?.roomCode;
       if (incomingCode && incomingCode !== roomCode) return;
       clearPersistedFlyingState(roomCode);
@@ -427,7 +447,9 @@ export const FlyingTVRoot: React.FC = () => {
       unsubGameStarted();
       unsubLobby();
     };
-  }, [roomCode, handleStartGame]);
+  }, [roomCode, handleStartGame, syncState]);
+
+  if (mobileContestants) return null;
 
   // Contestant list resolution
   const contestantsList =
@@ -452,15 +474,15 @@ export const FlyingTVRoot: React.FC = () => {
   // -------------------------------------------------------------
   // 1. Lobby Phase
   // -------------------------------------------------------------
+  if (flyingState.phase === 'CALCULATING') return <ShabahThinkingScreen title="الشبح الطائر يوازن ندرة الإجابات" />;
+
   if (flyingState.phase === 'LOBBY') {
     return (
-      <div dir="rtl" className="h-screen w-full bg-[#030712] select-none overflow-hidden pixel-art">
+      <div dir="rtl" className="min-h-[100dvh] w-full bg-[#08080c] font-sans">
         <UnifiedShabahLobby
           gameId="flying"
           roomCode={roomCode}
-          isHost={true}
-          isTv={true}
-          onStartGame={handleStartGame}
+          role="host"
         />
       </div>
     );
@@ -569,7 +591,7 @@ export const FlyingTVRoot: React.FC = () => {
   // 3. Question, Calculating & Revealing: Continuous Vertical Pixel World
   // -------------------------------------------------------------
   const isQuestionPhase = flyingState.phase === 'QUESTION';
-  const isCalculatingPhase = flyingState.phase === 'CALCULATING';
+  const isCalculatingPhase = false;
   const isRevealingPhase = flyingState.phase === 'REVEALING';
 
   return (
