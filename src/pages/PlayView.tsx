@@ -10,6 +10,7 @@ import {
 import { normalizeGameId, ShabahGameCanonicalId } from '../utils/gameIds';
 import { useRoomSync } from '../hooks/useRoomSync';
 import { RoomHostControls } from '../components/common/RoomHostControls';
+import { RoomReactions } from '../components/common/RoomReactions';
 
 const CoachTVRoot = React.lazy(() => import('./games/coach/CoachTVRoot').then(({ CoachTVRoot }) => ({ default: CoachTVRoot })));
 const BrokerTVRoot = React.lazy(() => import('./games/broker/BrokerTVRoot').then(({ BrokerTVRoot }) => ({ default: BrokerTVRoot })));
@@ -84,9 +85,10 @@ const ActivePlayView: React.FC<{ roomCode: string; initialGameId: ShabahGameCano
   }, [roomCode, playerId, playerName]);
 
   // Strict dynamic game routing based on authoritative gameId:
+  const renderGame=()=>{
   switch (initialGameId) {
     case 'ai-judge':
-      return <>{isRoomHost(roomCode) && <><RoomHostControls roomCode={roomCode} syncEvent="JUDGE_STATE_SYNC" /><JudgeTVRoot mobileContestants={connectedPlayers} /></>}<JudgeMobileRoot /></>;
+      return <div className="flex h-[100dvh] flex-col overflow-hidden">{isRoomHost(roomCode) && <><RoomHostControls roomCode={roomCode} syncEvent="JUDGE_STATE_SYNC" /><JudgeTVRoot mobileContestants={connectedPlayers} /></>}<div className="min-h-0 flex-1 overflow-y-auto"><JudgeMobileRoot /></div></div>;
     case 'ai-coach':
       return <>{isRoomHost(roomCode) && <CoachTVRoot mobileContestants={connectedPlayers} />}<CoachMobileRoot /></>;
     case 'ai-broker':
@@ -99,8 +101,13 @@ const ActivePlayView: React.FC<{ roomCode: string; initialGameId: ShabahGameCano
     case 'ai-guide':
       return <>{isRoomHost(roomCode) && <GuideTVRoot mobileContestants={connectedPlayers} />}<GuideMobileRoot /></>;
     case 'ai-flying':
-      return <>{isRoomHost(roomCode) && <RoomHostControls roomCode={roomCode} syncEvent="FLYING_STATE_SYNC" />}<FlyingMobileView /></>;
+      return <div className="flex h-[100dvh] flex-col overflow-hidden">
+        {isRoomHost(roomCode) && <RoomHostControls roomCode={roomCode} syncEvent="FLYING_STATE_SYNC" />}
+        <div className="min-h-0 flex-1 overflow-y-auto"><FlyingMobileView /></div>
+      </div>;
   }
+  };
+  return <><RoomReactions roomCode={roomCode} playerId={playerId}/>{renderGame()}</>;
 };
 
 export default PlayView;

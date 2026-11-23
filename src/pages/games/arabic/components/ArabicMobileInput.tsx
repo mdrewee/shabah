@@ -214,6 +214,7 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
               <input
                 ref={(el) => (inputRefs.current[index] = el)}
                 type="text"
+                maxLength={160}
                 value={val}
                 onChange={(e) => handleChange(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(e, index)}
@@ -229,6 +230,11 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
         })}
       </div>
 
+      <details className="text-xs text-zinc-400 my-2">
+        <summary>قواعد الحرف والتصحيح</summary>
+        <p className="py-2">تُهمل «الـ» التعريف. نتسامح مع الهمزات والتشكيل وة/ه وي/ى. الصحيحة المنفردة ١٠، المكررة ٥، وأسرع تسليم بثلاث إجابات صحيحة على الأقل +٥.</p>
+        <p>الفئات الوصفية تقبل علاقة منطقية واضحة، وبلاد تشمل الدول والمدن، وسيارة تشمل العلامات والموديلات.</p>
+      </details>
       {/* Action Footer: [خلصت!] button */}
       <div className="pt-2">
         <button

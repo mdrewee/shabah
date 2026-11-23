@@ -80,8 +80,8 @@ export const ArabicMobileRoot: React.FC = () => {
           contestantId: pe.playerId,
           contestantName: pe.playerName,
           totalRoundPoints: pe.totalScore,
-          roundPoints: pe.totalScore,
-          speedBonus: 0,
+          roundPoints: pe.totalScore - (pe.speedBonus || 0),
+          speedBonus: pe.speedBonus || 0,
           answers: pe.results.map((r, idx) => ({
             categoryIndex: idx,
             categoryName: r.category,
@@ -90,6 +90,7 @@ export const ArabicMobileRoot: React.FC = () => {
             isUnique: r.score === 10,
             points: r.score,
             comment: r.reason,
+            needsReview: r.needsReview,
           })),
         };
       });
@@ -151,6 +152,7 @@ export const ArabicMobileRoot: React.FC = () => {
       answers,
       finishedAt: Date.now(),
       durationMs,
+      roundNumber: arabicState.roundNumber,
     };
 
     roomBus.broadcastArabicAnswers(roomCode, payload);
@@ -168,6 +170,7 @@ export const ArabicMobileRoot: React.FC = () => {
       category: categoryName,
       categoryIndex,
       answer,
+      roundNumber: arabicState.roundNumber,
     };
     roomBus.broadcastArabicObjection(roomCode, payload);
     roomBus.safeBroadcast(roomCode, 'ARABIC_OBJECTION_RAISED', payload);
@@ -192,6 +195,7 @@ export const ArabicMobileRoot: React.FC = () => {
 
   // Handle Return to Lobby
   const handleReturnToLobby = () => {
+    if (!isRoomHost(roomCode) || !window.confirm('ترجع للوبي وتنهي الجولة؟')) return;
     roomBus.broadcastReturnToLobby(roomCode);
     setArabicState((prev) => ({
       ...prev,
@@ -269,7 +273,7 @@ export const ArabicMobileRoot: React.FC = () => {
         onToggleReady={handleToggleReady}
         readyContestantsCount={arabicState.readyPlayersNextRound?.length || 0}
         totalContestantsCount={connectedContestantsCount}
-        onReturnToLobby={handleReturnToLobby}
+        onReturnToLobby={isRoomHost(roomCode) ? handleReturnToLobby : undefined}
       />
     );
   }
@@ -284,7 +288,7 @@ export const ArabicMobileRoot: React.FC = () => {
     <ArabicFinalPodium
       rankedContestants={ranked}
       isTV={false}
-      onReturnToLobby={handleReturnToLobby}
+      onReturnToLobby={isRoomHost(roomCode) ? handleReturnToLobby : undefined}
     />
   );
 };

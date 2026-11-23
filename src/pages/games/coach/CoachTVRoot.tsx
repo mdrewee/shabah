@@ -1,3 +1,5 @@
+import { resolveDraftPlayer, canonicalDraftName, isAmbiguousDraftName } from './draftPlayers';
+import { fillMissedDraftPicks } from './draftRound';
 import { applyBingoAttempt, canClaimDraftSlot } from './coachRules';
 import { useGameState } from '../../../hooks/useGameState';
 import { ShabahThinkingScreen } from '../../../components/common/ShabahThinkingScreen';
@@ -76,7 +78,7 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
     if (coachState.phase !== 'EVALUATING') return;
     let active = true;
     const fallback = coachState.verdict || evaluateAllSquads(coachState.squads);
-    evaluateAllSquadsWithAI(coachState.squads).catch(() => fallback).then((result) => {
+    evaluateAllSquadsWithAI(coachState.squads, coachState.verdict || undefined).catch(() => fallback).then((result) => {
       if (!active) return;
       const verdict = result?.evaluations.length ? result : fallback;
       setCoachState((previous) => {
@@ -124,7 +126,7 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
           id: crit.id,
           title: crit.title,
           description: crit.description,
-          rulePrompt: crit.rulePrompt,
+          rulePrompt: crit.rulePrompt || crit.description,
         };
       }
     }
@@ -143,22 +145,34 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       const contestantId = payload.contestantId || payload.playerId;
       if (!contestantId) return;
 
-      const contestantName = payload.contestantName || payload.playerName || 'متسابق';
-      const { player, roundIndex, slotKey } = payload;
+      const member=contestantsRef.current.find(c=>c.id===contestantId);
+      if(!member || evt.roomCode!==roomCode) return;
+      const contestantName=member.name;
+      const { roundIndex, slotKey }=payload;
+      const rawName=payload.player.name || payload.player.playerName;
+      if(typeof rawName!=='string' || rawName.trim().length<2 || rawName.length>80) return;
+      if(isAmbiguousDraftName(rawName)) {
+        roomBus.broadcastClaimPlayerRejected(roomCode,{contestantId,reason:'الاسم يطابق أكثر من لاعب؛ اختر الاسم الكامل من البحث.'});
+        return;
+      }
+      const known=resolveDraftPlayer(rawName);
+      const player=known?{id:known.id,name:known.name,photoUrl:known.photo,position:known.position,isLocalDb:true}:{id:'custom_'+normalizeFootballSearch(rawName),name:canonicalDraftName(rawName),isLocalDb:false};
       const curState = coachStateRef.current;
       if (curState.phase !== 'DRAFTING') return;
       if (!canClaimDraftSlot(curState, contestantId, slotKey, roundIndex)) return;
 
-      const normName = normalizeFootballSearch(player.name || player.playerName);
+      const normName = normalizeFootballSearch(player.name);
       const existingClaim = curState.claimedPlayers[normName];
 
-      // Exclusivity Check: If already claimed by another contestant, reject immediately
-      if (existingClaim && existingClaim.contestantId !== contestantId) {
+      // A claimed player cannot occupy another slot, including in the same squad.
+      if (existingClaim) {
         sound.playBuzz?.();
         roomBus.broadcastClaimPlayerRejected(roomCode, {
           contestantId,
-          playerName: player.name || player.playerName,
-          reason: `اللاعب حجزه ${existingClaim.contestantName} قبلك! اختر لاعباً آخر بسرعة!`,
+          playerName: player.name,
+          reason: existingClaim.contestantId === contestantId
+            ? 'اللاعب موجود في تشكيلتك بالفعل؛ اختر لاعباً آخر.'
+            : `اللاعب حجزه ${existingClaim.contestantName} قبلك! اختر لاعباً آخر بسرعة!`,
         });
         return;
       }
@@ -168,7 +182,7 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
         sound.playBuzz?.();
         roomBus.broadcastClaimPlayerRejected(roomCode, {
           contestantId,
-          playerName: player.name || player.playerName,
+          playerName: player.name,
           reason: `اللاعب تم استخدامه في جولة سابقة! اختر لاعباً آخر`,
         });
         return;
@@ -180,7 +194,7 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
         ...curState.claimedPlayers,
         [normName]: {
           normalizedName: normName,
-          originalName: player.name || player.playerName,
+          originalName: player.name,
           contestantId,
           contestantName,
           timestamp: Date.now(),
@@ -192,12 +206,13 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       const cond = getActiveCondition(curState);
 
       const pickData: CoachPlayerPick = {
-        playerName: player.name || player.playerName,
+        playerName: player.name,
         isCustom: !player.isLocalDb,
-        playerPhoto: player.photoUrl || player.photo,
+        playerPhoto: player.photoUrl,
         matchedDbId: player.id,
         conditionId: cond.id,
         conditionTitle: cond.title,
+        conditionPrompt: cond.rulePrompt || cond.title,
         confirmedAt: Date.now(),
       };
 
@@ -241,11 +256,12 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
         player,
         pick: pickData,
         slotKey: targetSlot,
+        roundNumber:curState.roundNumber,
         allClaimedIds: Object.keys(updatedClaims),
       });
       roomBus.broadcastCoachSync(roomCode, nextState);
 
-      setStatusBanner(`خطف ${contestantName} النجم ${player.name || player.playerName} رسمياً!`);
+      setStatusBanner(`خطف ${contestantName} النجم ${player.name} رسمياً!`);
       window.setTimeout(() => setStatusBanner(null), 3000);
 
       // Check if ALL contestants have made their pick for this round
@@ -271,6 +287,7 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
         contestantName: payload.playerName,
         player: p,
         slotKey: payload.slotKey,
+        roundIndex: payload.roundIndex,
       });
     });
 
@@ -376,6 +393,9 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
 
     const unsubMode = roomBus.on('COACH_MODE_SELECTED', (evt: any) => {
       const payload = evt?.data || evt;
+      if(payload?.action==='retryDraft' && coachStateRef.current.mode==='draft' && coachStateRef.current.phase==='VERDICT') {
+        const next={...coachStateRef.current,phase:'EVALUATING' as const};setCoachState(next);roomBus.broadcastCoachSync(roomCode,next);return;
+      }
       if (payload && payload.mode) {
         setCoachState((prev) => {
           const next = { ...prev, mode: payload.mode };
@@ -432,31 +452,8 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
 
     sound.playSuccess?.();
     const curRound = cur.roundNumber || 1;
-    const currentSlotKey = COACH_SLOTS_ORDER[curRound - 1] || 'FWD';
     const cond = getActiveCondition(cur);
-
-    // Record empty slot for any contestant who didn't select before timer
-    const updatedSquads = { ...cur.squads };
-    const allParticipantsMap = new Map<string, string>();
-    contestantsRef.current.forEach((c) => allParticipantsMap.set(c.id, c.name));
-    Object.values(updatedSquads).forEach((sq) => {
-      if (sq?.playerId && !allParticipantsMap.has(sq.playerId)) {
-        allParticipantsMap.set(sq.playerId, sq.playerName || 'متسابق');
-      }
-    });
-
-    allParticipantsMap.forEach((pName, pId) => {
-      const s = updatedSquads[pId] || { playerId: pId, playerName: pName, slots: {} };
-      if (!s.slots[currentSlotKey] || !s.slots[currentSlotKey]?.playerName) {
-        s.slots[currentSlotKey] = {
-          playerName: 'خانة فارغة (فاتك الوقت)',
-          isCustom: true,
-          conditionId: cond.id,
-          conditionTitle: cond.title,
-        };
-      }
-      updatedSquads[pId] = s;
-    });
+    const updatedSquads=fillMissedDraftPicks(cur,cond);
 
     // If 5 rounds completed, trigger final evaluation!
     if (curRound >= 5) {
@@ -877,7 +874,7 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
         mood={coachState.verdict ? 'happy' : timerSeconds <= 10 ? 'angry' : 'judging'}
         remark={
           coachState.phase === 'VERDICT'
-            ? coachState.verdict?.coachBanner || 'انتهى تقييم الجولة وحسم الشبح المدرب النتيجة!'
+            ? coachState.verdict?.verificationMode!=='ai'?'تقييم مبدئي؛ لم تكتمل مراجعة التشكيلات.':coachState.verdict?.coachBanner || 'انتهى تقييم الجولة وحسم الشبح المدرب النتيجة!'
             : coachState.phase === 'BINGO_PLAYING'
             ? 'طابقوا لاعب الروليت مع بطاقاتكم بسرعة!'
             : `جولة ${coachState.roundNumber} من ٥ • اختر لاعبك التكتيكي بدون ما تكرر لاعب غيرك!`
@@ -894,6 +891,7 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
             contestants={contestants}
             squads={coachState.squads}
             verdict={coachState.verdict}
+            onRetryEvaluation={()=>roomBus.emit('COACH_MODE_SELECTED',roomCode,{action:'retryDraft'})}
             statusBanner={statusBanner}
             roundNumber={coachState.roundNumber}
             totalRounds={coachState.totalRounds || 5}

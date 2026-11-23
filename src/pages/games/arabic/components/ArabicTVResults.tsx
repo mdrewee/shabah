@@ -74,6 +74,7 @@ export const ArabicTVResults: React.FC<ArabicTVResultsProps> = ({
       dir="rtl"
       className="w-full h-screen max-h-screen overflow-hidden bg-black text-white p-5 flex flex-col justify-between select-none"
     >
+      {Object.values(state.evaluations).some(p => p.answers.some(a => a.needsReview)) && <p role="status" className="text-amber-300 text-sm p-2">تعذر التحقق من بعض الإجابات؛ اطلبوا مراجعة المجموعة قبل الجولة التالية.</p>}
       {/* Top Header Bar */}
       <div className="flex-shrink-0 flex items-center justify-between pb-3 border-b border-zinc-800">
         <div className="flex items-center gap-4">

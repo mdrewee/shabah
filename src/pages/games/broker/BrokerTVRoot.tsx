@@ -1,3 +1,5 @@
+import { beginBrokerNegotiation, nextBrokerRound, finishBrokerRound, acceptsBrokerPitch } from './brokerRound';
+import { evaluateBrokerPitch } from '../../../services/brokerEngine';
 import { useGameState } from '../../../hooks/useGameState';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -100,99 +102,59 @@ export const BrokerTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
     });
   }, [mergedContestants, roomCode]);
 
+  const pendingPitches = useRef(new Map<string, string>());
+
   // Listen for contestant bid updates from mobile
   useEffect(() => {
-    const unsubBid = roomBus.on('BROKER_BID_SUBMITTED', (evt: any) => {
-      const payload = evt?.data || evt;
-      if (!payload || !payload.playerId) return;
-
-      const {
-        playerId,
-        playerName,
-        newBid,
-        bidIncrease,
-        quote,
-        announcement,
-        bulletsRemaining,
-      } = payload;
-
-      setBrokerState((prev) => {
-        const existing = prev.contestantBids[playerId] || {
-          playerId,
-          playerName: playerName || 'متسابق',
-          currentBid: 0,
-          bulletsRemaining: 7,
-          rank: 1,
-          totalBankroll: 0,
-          isReadyForNextRound: false,
-        };
-
-        const updated: ContestantBidState = {
-          ...existing,
-          currentBid: newBid,
-          bulletsRemaining:
-            bulletsRemaining !== undefined ? bulletsRemaining : existing.bulletsRemaining,
-          bestQuote: quote || existing.bestQuote,
-          lastBidIncrease: bidIncrease,
-          lastBidTimestamp: Date.now(),
-        };
-
-        const newMap = {
-          ...prev.contestantBids,
-          [playerId]: updated,
-        };
-
-        const ranked = sortAndRankContestants(newMap);
-        const rankedMap: Record<string, ContestantBidState> = {};
-        ranked.forEach((c) => {
-          rankedMap[c.playerId] = c;
-        });
-
-        const updatedAnnouncements = announcement
-          ? [
-              ...prev.announcements,
-              { id: `ann_${Date.now()}`, text: announcement, timestamp: Date.now() },
-            ]
-          : prev.announcements;
-
-        const next = {
-          ...prev,
-          contestantBids: rankedMap,
-          announcements: updatedAnnouncements,
-        };
-
+    const unsubBid = roomBus.on('BROKER_BID_SUBMITTED', async evt => {
+      if (evt.roomCode !== roomCode) return;
+      const p = evt.data;
+      const cur = brokerStateRef.current;
+      const member = mergedContestantsRef.current.find(c => c.id === p?.playerId);
+      const bid = cur.contestantBids[p?.playerId];
+      if (!member || !acceptsBrokerPitch(cur, p, mergedContestantsRef.current.map(c => c.id), pendingPitches.current.has(p?.playerId))) return;
+      pendingPitches.current.set(p.playerId, p.requestId);
+      try {
+        const result = await evaluateBrokerPitch({ item: cur.currentItem, pitch: p.pitch,
+          currentBid: bid.currentBid, isFirstBid: bid.currentBid === 0, playerName: member.name });
+        const latest = brokerStateRef.current;
+        if (latest.phase !== 'NEGOTIATION' || latest.roundNumber !== cur.roundNumber ||
+            latest.currentItem.id !== cur.currentItem.id || latest.gameStartedAt !== cur.gameStartedAt || Date.now() >= (latest.roundEndsAt || 0)) throw new Error('انتهت الجولة');
+        const updated = { ...bid, currentBid: result.newBid, bulletsRemaining: bid.bulletsRemaining - 1,
+          lastRequestId: p.requestId, lastBidTimestamp: result.bidIncrease > 0 ? Date.now() : bid.lastBidTimestamp,
+          lastBidIncrease: result.bidIncrease,
+          bestQuote: result.persuasionScore > (bid.bestPitchScore || 0) ? p.pitch : bid.bestQuote,
+          bestPitchScore: Math.max(bid.bestPitchScore || 0, result.persuasionScore) };
+        const next: BrokerRoomState = { ...latest, contestantBids: { ...latest.contestantBids, [p.playerId]: updated },
+          announcements: [...latest.announcements, { id:p.requestId, text:result.publicAnnouncement, timestamp:Date.now() }] };
+        setBrokerState(next);
         roomBus.broadcastBrokerSync(roomCode, next);
-        return next;
-      });
-
-      // Highlight the bidding contestant card on TV
-      if (bidIncrease > 0) {
-        sound.playCash();
-        setHighlightedPlayerId(playerId);
-        setMascotMood('happy');
-        window.setTimeout(() => {
-          setHighlightedPlayerId(null);
-          setMascotMood('judging');
-        }, 1200);
-      } else {
-        sound.playBuzz();
-        setMascotMood('angry');
-        window.setTimeout(() => {
-          setMascotMood('judging');
-        }, 1200);
-      }
-    });
+        roomBus.emit('AI_RESPONSE', roomCode, { kind:'broker', requestId:p.requestId, result });
+        const activeIds = mergedContestantsRef.current.map(c => c.id);
+        if (activeIds.length && activeIds.every(id => next.contestantBids[id]?.bulletsRemaining === 0)) {
+          const finished = finishBrokerRound(next, activeIds);
+          setBrokerState(finished);
+          roomBus.broadcastBrokerSync(roomCode, finished);
+        }
+      } catch {
+        roomBus.emit('AI_RESPONSE', roomCode, { kind:'broker', requestId:p.requestId, error:true });
+      } finally { if (pendingPitches.current.get(p.playerId) === p.requestId) pendingPitches.current.delete(p.playerId); }
+    }, roomCode);
+    const unsubControl = roomBus.on('BROKER_ITEM_SYNC', evt => {
+      if (evt.data?.action === 'startNegotiation') handleShowcaseComplete();
+      if (evt.data?.action === 'advanceRound') handleAdvanceFromRound();
+    }, roomCode);
 
     // Listen for contestant readiness updates ONLY in ROUND_WINNER phase
     const unsubReady = roomBus.on('PLAYER_READY_UPDATE', (evt: any) => {
       const payload = evt?.data || evt;
-      if (!payload || !payload.playerId) return;
+      if (evt.roomCode !== roomCode || !payload || !mergedContestantsRef.current.some(c => c.id === payload.playerId)) return;
 
       setBrokerState((prev) => {
         if (prev.phase !== 'ROUND_WINNER') return prev;
         if (!prev.contestantBids[payload.playerId]) return prev;
 
-        const updatedBids = {
+        const updatedBids: Record<string, ContestantBidState> = {
           ...prev.contestantBids,
           [payload.playerId]: {
             ...prev.contestantBids[payload.playerId],
@@ -204,10 +166,11 @@ export const BrokerTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
         roomBus.broadcastBrokerSync(roomCode, next);
 
         // Check if all active contestants are ready
-        const allReady = Object.values(updatedBids).every((c: any) => c.isReadyForNextRound);
+        const allReady = mergedContestantsRef.current.length > 0 && mergedContestantsRef.current.every(c => updatedBids[c.id]?.isReadyForNextRound);
         if (allReady && Object.keys(updatedBids).length > 0) {
           window.setTimeout(() => {
-            handleAdvanceFromRound();
+            const state = brokerStateRef.current;
+            if (mergedContestantsRef.current.length && mergedContestantsRef.current.every(c => state.contestantBids[c.id]?.isReadyForNextRound)) handleAdvanceFromRound();
           }, 800);
         }
 
@@ -224,6 +187,7 @@ export const BrokerTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
 
     return () => {
       unsubBid();
+      unsubControl();
       unsubReady();
       unsubHostStart();
     };
@@ -233,7 +197,7 @@ export const BrokerTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
   useEffect(() => {
     if (brokerState.phase !== 'NEGOTIATION') return;
 
-    const endsAt = brokerState.roundEndsAt || Date.now() + Math.max(0, brokerState.timerSeconds) * 1000;
+    const endsAt = brokerState.roundEndsAt || Date.now() + 180000;
     const tick = () => {
       const current = brokerStateRef.current;
       if (current.phase !== 'NEGOTIATION') return;
@@ -255,50 +219,9 @@ export const BrokerTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
   const handleRoundTimeout = () => {
     const cur = brokerStateRef.current;
     if (cur.phase !== 'NEGOTIATION') return;
-    const ranked = sortAndRankContestants(cur.contestantBids);
-
-    if (ranked.length > 0) {
-      const winner = ranked[0];
-      const winningAmount = winner.currentBid;
-
-      const updatedBids = { ...cur.contestantBids };
-      if (updatedBids[winner.playerId]) {
-        updatedBids[winner.playerId] = {
-          ...updatedBids[winner.playerId],
-          totalBankroll: (updatedBids[winner.playerId].totalBankroll || 0) + winningAmount,
-        };
-      }
-
-      // Reset isReadyForNextRound for all
-      Object.keys(updatedBids).forEach((pid) => {
-        updatedBids[pid].isReadyForNextRound = false;
-      });
-
-      const nextState: BrokerRoomState = {
-        ...cur,
-        phase: 'ROUND_WINNER',
-        contestantBids: updatedBids,
-        winnerId: winner.playerId,
-        winnerName: winner.playerName,
-        winningBid: winningAmount,
-        winningQuote: winner.bestQuote || 'أقنع الشريطي بالذكاء والسرعة وفاز بالسومة!',
-      };
-
-      setBrokerState(nextState);
-      roomBus.broadcastBrokerSync(roomCode, nextState);
-    } else {
-      const fallbackWinner = mergedContestantsRef.current[0]?.name || 'لا توجد سومات';
-      const nextState: BrokerRoomState = {
-        ...cur,
-        phase: 'ROUND_WINNER',
-        winnerId: mergedContestantsRef.current[0]?.id || null,
-        winnerName: fallbackWinner,
-        winningBid: 0,
-        winningQuote: 'انتهى وقت المزاد دون تقديم سومات!',
-      };
-      setBrokerState(nextState);
-      roomBus.broadcastBrokerSync(roomCode, nextState);
-    }
+    const next = finishBrokerRound(cur, mergedContestantsRef.current.map(c => c.id));
+    setBrokerState(next);
+    roomBus.broadcastBrokerSync(roomCode, next);
   };
 
   // Start Game from Lobby: initialize 5 rounds, item 1, go to SHOWCASE
@@ -326,6 +249,9 @@ export const BrokerTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
     const nextState: BrokerRoomState = {
       ...cur,
       phase: 'SHOWCASE',
+      gameStartedAt: Date.now(),
+      timerSeconds: 10,
+      roundEndsAt: undefined,
       roundNumber: 1,
       totalRounds: 5,
       currentItem: firstItem,
@@ -352,85 +278,22 @@ export const BrokerTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
 
   // Complete 10s Showcase -> Move to NEGOTIATION (180s)
   const handleShowcaseComplete = () => {
-    sound.playClick();
     const cur = brokerStateRef.current;
-    const nextState: BrokerRoomState = {
-      ...cur,
-      phase: 'NEGOTIATION',
-      roundEndsAt: Date.now() + 180000,
-      timerSeconds: 180,
-      announcements: [
-        ...cur.announcements,
-        {
-          id: `neg_${Date.now()}`,
-          text: `بدأ وقت السوم والمفاوضات! معكم ٣ دقائق لرفع السوم.`,
-          timestamp: Date.now(),
-        },
-      ],
-    };
-    setBrokerState(nextState);
-    roomBus.broadcastBrokerSync(roomCode, nextState);
+    const next = beginBrokerNegotiation(cur);
+    if (next === cur) return;
+    setBrokerState(next);
+    roomBus.broadcastBrokerSync(roomCode, next);
   };
 
   // Advance from ROUND_WINNER to next round SHOWCASE or FINAL_PODIUM
   const handleAdvanceFromRound = () => {
     const cur = brokerStateRef.current;
-
-    // Check if 5 rounds completed
-    if (cur.roundNumber >= cur.totalRounds) {
-      sound.playVictory();
-      const nextState: BrokerRoomState = {
-        ...cur,
-        phase: 'FINAL_PODIUM',
-      };
-      setBrokerState(nextState);
-      roomBus.broadcastBrokerSync(roomCode, nextState);
-      return;
-    }
-
-    // Advance to next round
-    sound.playSuccess();
-    const nextRound = cur.roundNumber + 1;
-    const currentUsedIds = cur.usedItemIds || (cur.currentItem ? [cur.currentItem.id] : []);
-    const { item: nextItem, updatedUsedIds } = getNextUniqueBrokerItem(currentUsedIds);
-
-    const resetBids: Record<string, ContestantBidState> = {};
-    Object.values(cur.contestantBids).forEach((c) => {
-      resetBids[c.playerId] = {
-        ...c,
-        currentBid: 0,
-        bulletsRemaining: 7,
-        bestQuote: undefined,
-        lastBidIncrease: undefined,
-        isReadyForNextRound: false,
-      };
-    });
-
-    const nextState: BrokerRoomState = {
-      ...cur,
-      phase: 'SHOWCASE',
-      roundNumber: nextRound,
-      currentItem: nextItem,
-      usedItemIds: updatedUsedIds,
-      contestantBids: resetBids,
-      announcements: [
-        ...cur.announcements,
-        {
-          id: `r_${Date.now()}`,
-          text: `بدأت الجولة ${nextRound}! معاينة: ${nextItem.name}`,
-          timestamp: Date.now(),
-        },
-      ],
-      winnerId: null,
-      winnerName: null,
-      winningBid: null,
-      winningQuote: null,
-    };
-
-    setBrokerState(nextState);
-    roomBus.broadcastBrokerSync(roomCode, nextState);
-    roomBus.broadcast(roomCode, 'BROKER_NEW_ROUND', { state: nextState });
-    roomBus.broadcast(roomCode, 'BROKER_ITEM_SYNC', { item: nextItem, roundNumber: nextRound });
+    if (cur.phase !== 'ROUND_WINNER') return;
+    pendingPitches.current.clear();
+    const { item } = getNextUniqueBrokerItem(cur.usedItemIds || []);
+    const next = nextBrokerRound(cur, item);
+    setBrokerState(next);
+    roomBus.broadcastBrokerSync(roomCode, next);
   };
 
   const handleReturnToLobby = () => {

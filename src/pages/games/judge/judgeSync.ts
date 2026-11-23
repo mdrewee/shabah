@@ -10,7 +10,7 @@ export function getPersistedJudgeState(roomCode: string): JudgeRoomState | null 
       const state = JSON.parse(raw);
       // Purge any stale legacy case that does not belong to the 40 cases pool
       if (
-        state &&
+        state && state.gameVersion === 2 &&
         state.currentPredicament &&
         state.currentPredicament.id &&
         state.currentPredicament.id.startsWith('case_')
@@ -40,12 +40,13 @@ export function createInitialJudgeState(roomCode: string, fresh = false): JudgeR
 
   const initial: JudgeRoomState = {
     roomCode,
+    gameVersion:2,
     phase: 'LOBBY',
     roundNumber: 1,
     totalRounds: 5,
     currentPredicament: initialCase,
     usedPredicamentIds: [initialCase.id],
-    timerSeconds: 60,
+    timerSeconds: 40,
     excuses: {},
     verdicts: {},
     revealState: 'anonymous',

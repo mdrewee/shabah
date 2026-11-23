@@ -11,6 +11,7 @@ export interface ContestantBidState {
   rank: number; // 1, 2, 3...
   bestQuote?: string; // best pitch text submitted
   bestPitchScore?: number;
+  lastRequestId?: string;
   lastBidIncrease?: number;
   lastBidTimestamp?: number;
   totalBankroll: number; // sum of round bids won/accumulated
@@ -52,6 +53,7 @@ export interface BrokerRoomState {
   usedItemIds?: string[]; // All items played in this session to prevent repetition
   timerSeconds: number;
   roundEndsAt?: number;
+  gameStartedAt?: number;
   contestantBids: Record<string, ContestantBidState>;
   announcements: BrokerAnnouncement[];
   winnerId?: string | null;

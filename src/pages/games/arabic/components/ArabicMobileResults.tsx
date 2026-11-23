@@ -231,6 +231,7 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
         </div>
       )}
 
+      {contestantsList.some(p => p.answers.some(a => a.needsReview)) && <p role="status" className="text-xs text-amber-300 p-2">تعذر التحقق من بعض الإجابات. لا نقاط لها حتى تقبلها المجموعة عبر المراجعة.</p>}
       {/* 5 Answers Cards List */}
       <div className="flex-1 overflow-y-auto space-y-2.5 my-1 pr-1">
         {activeContestant?.answers.map((ans, idx) => {
@@ -242,7 +243,7 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
             <div
               key={idx}
               className={`p-3 rounded-2xl border transition-all ${
-                !hasAnswer
+                ans.needsReview ? 'bg-amber-950/20 border-amber-700/60 text-white' : !hasAnswer
                   ? 'bg-zinc-950/60 border-zinc-900 text-zinc-600'
                   : isValid
                   ? 'bg-emerald-950/20 border-emerald-900/60 text-white'
@@ -262,7 +263,7 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
                       className="px-2 py-0.5 rounded-lg bg-amber-950/90 text-amber-300 border border-amber-700 hover:bg-amber-900 font-sans font-extrabold text-[11px] flex items-center gap-1 active:scale-95 transition-all shadow-[0_0_10px_rgba(245,158,11,0.2)]"
                     >
                       <AlertCircle className="w-3 h-3" />
-                      <span>اعترض!</span>
+                      <span>{ans.needsReview ? 'اطلب مراجعة' : 'اعترض!'}</span>
                     </button>
                   )}
 
@@ -280,7 +281,7 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
                         }`}
                       >
                         <Check className="w-4 h-4" />
-                        <span>{formatPoints(ans.points)}</span>
+                        <span>{ans.points === 5 ? 'مكررة +٥' : formatPoints(ans.points)}</span>
                       </span>
                     ) : (
                       <span className="flex items-center gap-0.5 text-red-400 font-sans font-bold text-sm">

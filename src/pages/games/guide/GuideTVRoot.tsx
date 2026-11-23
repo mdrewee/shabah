@@ -13,6 +13,8 @@ import {
 import {
   createInitialGuideState,
   savePersistedGuideState,
+  loadPersistedGuideState,
+  acceptsGuidePin,
   getRankedGuideContestants,
 } from './guideSync';
 import {
@@ -44,7 +46,7 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
   });
 
   const [guideState, setGuideState] = useState<GuideRoomState>(() =>
-    createInitialGuideState(roomCode)
+    loadPersistedGuideState(roomCode) ?? createInitialGuideState(roomCode)
   );
 
   const stateRef = useRef(guideState);
@@ -284,6 +286,7 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
   }, [roomCode]);
 
   const handleReturnToLobby = useCallback(() => {
+    if (!window.confirm('ترجع للوبي وتنهي الجولة الحالية؟')) return;
     sound.stopAllAudio();
     const nextState: GuideRoomState = {
       ...createInitialGuideState(roomCode),
@@ -316,17 +319,18 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       const prev = stateRef.current;
       if (prev.phase !== 'GUESSING') return;
 
-      const nextSec = prev.timerSeconds - 1;
+      const nextSec = Math.max(0, Math.ceil((prev.roundStartedAt + 60000 - Date.now()) / 1000));
 
       if (nextSec <= 0) {
         clearInterval(interval);
         const expiredState = { ...prev, timerSeconds: 0 };
         stateRef.current = expiredState;
         setGuideState(expiredState);
+        roomBus.broadcastGuideSync(roomCode, expiredState);
         // 600ms safety grace period for in-flight pin submissions arriving right at 0
         setTimeout(() => {
           evaluateRef.current();
-        }, 600);
+        }, 1500);
         return;
       }
 
@@ -371,11 +375,13 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       if (curr.phase !== 'GUESSING') return;
 
       const contestantId = String(payload.contestantId);
+      const contestant = mergedContestants.find(c => c.id === contestantId);
+      if (!contestant || !acceptsGuidePin(curr, payload, mergedContestants.map(c => c.id))) return;
       const updatedGuesses: Record<string, ContestantGuess> = {
         ...curr.guesses,
         [contestantId]: {
           contestantId,
-          contestantName: payload.contestantName || 'رحالة',
+          contestantName: contestant.name,
           lat: Number(payload.lat),
           lng: Number(payload.lng),
           submittedAt: payload.submittedAt || Date.now(),
@@ -390,10 +396,11 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       // Synchronously update stateRef.current before evaluating
       stateRef.current = updatedState;
       setGuideState(updatedState);
+      roomBus.broadcastGuideSync(roomCode, updatedState);
 
       // Early Advance Check: If all connected contestants have locked pins
       const connectedCount = Math.max(1, mergedContestants.length);
-      const lockedCount = Object.keys(updatedGuesses).length;
+      const lockedCount = mergedContestants.filter(c => updatedGuesses[c.id]).length;
 
       if (lockedCount >= connectedCount) {
         executeRoundEvaluation(updatedGuesses);
@@ -441,8 +448,8 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       return;
     }
 
-    const readyCount = (guideState.readyPlayersNextRound || []).length;
-    const requiredReady = Math.min(2, Math.max(1, mergedContestants.length));
+    const readyCount = mergedContestants.filter(c => guideState.readyPlayersNextRound?.includes(c.id)).length;
+    const requiredReady = Math.max(1, mergedContestants.length);
 
     if (readyCount >= requiredReady) {
       if (autoAdvanceCountdown === null) {

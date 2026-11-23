@@ -67,6 +67,7 @@ export const CoachMobileRoot: React.FC = () => {
       if (payload && payload.pick) {
         sound.playSuccess?.();
         setCoachState((prev) => {
+          if(payload.roundNumber!==prev.roundNumber || prev.mode!=='draft')return prev;
           const norm = normalizeFootballSearch(payload.player.name || payload.player.playerName || payload.pick.playerName);
           const updatedClaims = {
             ...prev.claimedPlayers,
@@ -306,6 +307,8 @@ export const CoachMobileRoot: React.FC = () => {
             isReadyForNextRound={isMeReadyForNext}
             onReadyForNextRound={handleToggleReadyForNextRound}
             evaluationResult={myEvaluation}
+            verificationMode={coachState.verdict?.verificationMode}
+            onRetryEvaluation={isPlayerHost?()=>roomBus.emit('COACH_MODE_SELECTED',roomCode,{action:'retryDraft'}):undefined}
             isMyTurn={true}
             turnSecondsRemaining={coachState.turnSecondsRemaining}
           />

@@ -7,7 +7,7 @@ interface ArabicFinalPodiumProps {
   rankedContestants: RankedContestant[];
   isTV?: boolean;
   onExtendRounds?: () => void;
-  onReturnToLobby: () => void;
+  onReturnToLobby?: () => void;
 }
 
 export const ArabicFinalPodium: React.FC<ArabicFinalPodiumProps> = ({
@@ -152,7 +152,7 @@ export const ArabicFinalPodium: React.FC<ArabicFinalPodiumProps> = ({
         )}
 
         <button
-          onClick={onReturnToLobby}
+          hidden={!onReturnToLobby} onClick={onReturnToLobby}
           className="w-full py-3 px-4 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 font-sans font-bold text-sm flex items-center justify-center gap-2 active:scale-98 transition-all"
         >
           <ArrowLeft className="w-4 h-4" />

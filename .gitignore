@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Local audit artifacts and tool caches
+output/
+tmp/
+supabase/.temp/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

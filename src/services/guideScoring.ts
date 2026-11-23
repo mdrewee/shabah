@@ -46,6 +46,8 @@ export function inferContinentFromCoords(
   if (lat >= 7 && lat <= 83 && lng >= -168 && lng <= -52) return 'north_america';
   // Oceania / Australia
   if (lat >= -50 && lat <= -10 && lng >= 110 && lng <= 180) return 'oceania';
+  // Arabian Peninsula is in Asia, outside the coarse Africa bounds.
+  if (lat >= 12 && lat <= 37 && lng >= 34 && lng <= 60) return 'asia';
   // Africa
   if (lat >= -35 && lat <= 37 && lng >= -18 && lng <= 52) return 'africa';
   // Europe
@@ -61,36 +63,36 @@ export function inferContinentFromCoords(
  */
 export function evaluateGuess(
   distanceKm: number,
-  isSameContinent: boolean
+  _isSameContinent: boolean
 ): GuessEvaluationResult {
   if (distanceKm <= 50) {
     return {
       points: 10,
-      label: 'نفس المعلم والمنطقة بالملي!',
+      label: 'على بعد ٥٠ كم أو أقل',
       tier: 'exact',
     };
   } else if (distanceKm <= 200) {
     return {
       points: 6,
-      label: 'نفس المدينة والمحيط القريب!',
+      label: 'على بعد ٢٠٠ كم أو أقل',
       tier: 'city',
     };
   } else if (distanceKm <= 900) {
     return {
       points: 3,
-      label: 'نفس الدولة أو قريبة جداً!',
+      label: 'على بعد ٩٠٠ كم أو أقل',
       tier: 'country',
     };
-  } else if (isSameContinent || distanceKm <= 3500) {
+  } else if (distanceKm <= 3500) {
     return {
       points: 1,
-      label: 'في نفس القارة على الأقل!',
+      label: 'على بعد ٣٥٠٠ كم أو أقل',
       tier: 'continent',
     };
   } else {
     return {
       points: 0,
-      label: 'شاطح في قارة ثانية ضايع!',
+      label: 'أبعد من ٣٥٠٠ كم',
       tier: 'miss',
     };
   }

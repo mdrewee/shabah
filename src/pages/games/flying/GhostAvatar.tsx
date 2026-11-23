@@ -1,3 +1,4 @@
+import { RarityBadge, FLYING_RARITY } from './RarityBadge';
 import React from 'react';
 import { FlyingTier } from './types';
 
@@ -138,20 +139,7 @@ export const GhostAvatar: React.FC<GhostAvatarProps> = ({
         {/* Answer & Tier Breakdown (During Reveal) */}
         {showAnswerCard && (
           <div className="w-full mt-1.5 flex flex-col items-center gap-1.5">
-            {tier && (
-              <div
-                className="px-2 py-0.5 border-2 border-black font-mono font-black text-[11px] shadow-[2px_2px_0px_#000]"
-                style={{
-                  backgroundColor: tierInfo.bgColor,
-                  color: tierInfo.textColor,
-                }}
-              >
-                <span>{tierInfo.label}</span>
-                {typeof roundMeters === 'number' && roundMeters > 0 ? (
-                  <span> (+{roundMeters}م)</span>
-                ) : null}
-              </div>
-            )}
+            {tier && <RarityBadge tier={tier} />}
 
             <span className="font-mono font-black text-xs text-amber-300 break-words max-w-full leading-tight">
               {answer ? `"${answer}"` : 'بدون إجابة'}
@@ -181,7 +169,7 @@ export const GhostAvatar: React.FC<GhostAvatarProps> = ({
           RETRO 16-BIT PIXEL GHOST SPRITE (96x108 SVG Canvas)
           Drawn on a pure pixel grid with crispEdges
           ========================================================= */}
-      <div className="relative w-20 h-24 flex items-center justify-center animate-pixel-float">
+      <div className="relative w-20 h-24 flex items-center justify-center motion-safe:animate-pixel-float" style={{ filter: showAnswerCard && tier && FLYING_RARITY[tier].power >= 3 ? `drop-shadow(0 0 ${FLYING_RARITY[tier].power * 5}px ${FLYING_RARITY[tier].color})` : undefined }}>
         <svg
           viewBox="0 0 16 18"
           className="w-full h-full"

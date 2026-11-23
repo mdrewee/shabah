@@ -100,7 +100,7 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
     // If contestant typed anything (even a word or half line), send it immediately.
     // If untouched and empty, submit "التزم الصمت ولم يقدم أي دفاع".
     const submittedContent =
-      finalDraft.length > 0 ? finalDraft : 'التزم الصمت ولم يقدم أي دفاع';
+      finalDraft;
 
     sound.playClick();
     onSubmitExcuse(submittedContent, true);
@@ -304,7 +304,7 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
       <div className="my-3 p-4 rounded-3xl bg-zinc-950 border border-zinc-800 shadow-md space-y-2">
         <div className="flex items-center justify-between">
           <div className="text-[11px] font-sans font-bold text-zinc-400">
-            القضية المرفوعة ضدك:
+            ورطة الجولة:
           </div>
           {predicament.category && (
             <span className="text-[10px] font-sans font-bold px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-700 text-zinc-400">
@@ -322,7 +322,7 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
         {predicament.keyEvidence && (
           <div className="p-3 rounded-2xl bg-red-950/40 border border-red-800/60 text-right">
             <div className="text-[11px] font-sans font-bold text-red-400 mb-0.5">
-              الدليل القاطع الذي يجب عليك تفنيده:
+              الدليل اللي ورّطك:
             </div>
             <div className="text-xs font-sans font-semibold text-red-200 leading-relaxed">
               {predicament.keyEvidence}
@@ -331,6 +331,7 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
         )}
       </div>
 
+      <p className="text-xs text-purple-300 py-2 leading-6">مع ٣ لاعبين أو أكثر: كل صوت ٣ نقاط، ومكافأة الشبح نقطتان. مع لاعبين: الشبح يحكم من ١٠. ما تقدر تصوّت لنفسك.</p>
       {/* Briefing State vs Submission State vs Input Form */}
       {isBriefing ? (
         <div className="my-auto py-8 text-center space-y-4">
@@ -339,10 +340,10 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
           </div>
           <div className="space-y-2 max-w-sm mx-auto">
             <h3 className="font-sans font-black text-xl text-white">
-              فترة تأمل وقراءة القضية
+              اقرأ الورطة وجهّز تصريفك
             </h3>
             <p className="font-sans text-sm font-bold text-amber-300/95 leading-relaxed bg-amber-950/40 border border-amber-600/50 p-4 rounded-2xl shadow-inner">
-              اقرأ القضية جيداً وجهز عذرك. على الجوال تبدأ الجلسة تلقائياً بعد القراءة، وفي وضع الشاشة يبدأها المضيف.
+              الجواب القصير الذكي يكسب. بعد القراءة عندك ٤٠ ثانية؛ ما فيه نقاط على طول الجواب أو سرعة تسليمه.
             </p>
           </div>
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-sans text-zinc-400">
@@ -359,7 +360,7 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
             تم تسليم عذرك إلى المحكمة!
           </h3>
           <p className="font-sans text-sm text-zinc-400 max-w-xs mx-auto">
-            القاضي يراجع ملفك الآن... استعد لسماع الحكم وقصف الجبهة أمام الجلسة.
+            بعد تسليم الجميع نعرض التصاريف بدون أسماء، ثم تختارون أفضل تصريف.
           </p>
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-sans text-zinc-300">
             <Clock className="w-4 h-4 text-amber-400 animate-pulse" />
@@ -371,7 +372,7 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="font-sans font-bold text-xs text-zinc-400">
-                صغ عذرك المبرر أمام القاضي:
+                وش تصريفك؟ أقنعنا أو ضحّكنا:
               </label>
               <span
                 className={`font-sans text-xs font-mono font-bold ${
@@ -386,7 +387,7 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
               ref={textareaRef}
               value={excuseText}
               onChange={handleTextChange}
-              placeholder="اكتب عذراً داهية ينجيك من السجن المؤبد..."
+              placeholder="اكتب تصريفك… أقنعنا أو ضحّكنا!"
               maxLength={maxChars}
               rows={4}
               className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-3.5 text-white font-sans font-bold text-base placeholder:text-zinc-600 focus:outline-none focus:border-purple-500 transition-colors resize-none leading-relaxed"
@@ -405,7 +406,7 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
               className="w-full py-4 px-4 rounded-2xl bg-white hover:bg-zinc-200 text-black font-sans font-black text-base flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(255,255,255,0.2)] disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] transition-all"
             >
               <Send className="w-5 h-5 fill-current" />
-              <span>اعتمد العذر يا حضرة القاضي</span>
+              <span>سلّم التصريف</span>
             </button>
           </div>
         </form>

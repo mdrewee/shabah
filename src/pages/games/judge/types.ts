@@ -1,6 +1,8 @@
 import { JudgeCase, Predicament } from '../../../data/judgePredicaments';
 
 export type JudgePhase =
+  | 'READING'
+  | 'VOTING'
   | 'LOBBY'
   | 'PREDICAMENT_REVEAL'
   | 'case_briefing'
@@ -15,6 +17,7 @@ export type JudgeVerdictType = 'innocent' | 'bail' | 'guilty';
 export type PlayerVerdictType = 'بريء' | 'مذنب' | 'مع وقف التنفيذ';
 
 export interface PlayerVerdict {
+  aiUnavailable?: boolean;
   playerId: string;
   playerName: string;
   excuse: string;
@@ -41,6 +44,7 @@ export interface JudgeVerdictResult {
 }
 
 export interface ContestantExcuse {
+  cardId?: string;
   playerId: string;
   playerName: string;
   excuse: string;
@@ -56,6 +60,25 @@ export interface WorstExcuseRecord {
 }
 
 export interface JudgeRoomState {
+  gameVersion?: number;
+  defenseEndsAt?: number;
+  submittedPlayerIds?: string[];
+  party?: {
+    participants: Array<{ id: string; name: string }>;
+    cards: Array<{ id: string; text: string }>;
+    authors?: Record<string, string>;
+    votes?: Record<string, string>;
+    votedPlayerIds?: string[];
+    eligibleVoterIds: string[];
+    mode: 'jury' | 'duel';
+    readIndex: number;
+    phaseEndsAt: number;
+    aiVerdicts?: PlayerVerdict[];
+    aiReady?: boolean;
+    aiFailed?: boolean;
+    cancelled?: boolean;
+    tallies?: Record<string, { votes: number; bonus: number }>;
+  };
   briefingEndsAt?: number;
   roomCode: string;
   phase: JudgePhase;

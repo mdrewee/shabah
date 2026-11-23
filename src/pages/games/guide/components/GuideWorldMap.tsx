@@ -168,8 +168,7 @@ export const GuideWorldMap: React.FC<GuideWorldMapProps> = ({
         typeof m.lat === 'number' &&
         typeof m.lng === 'number' &&
         !isNaN(m.lat) &&
-        !isNaN(m.lng) &&
-        (m.lat !== 0 || m.lng !== 0);
+        !isNaN(m.lng);
 
       if (!isValidCoord) return;
 
@@ -179,7 +178,7 @@ export const GuideWorldMap: React.FC<GuideWorldMapProps> = ({
         html: `
           <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%); pointer-events: none;">
             <div style="padding: 3px 8px; background: #000000; border: 1.5px solid ${pinColor}; border-radius: 9999px; box-shadow: 0 0 12px ${pinColor}88; display: flex; align-items: center; gap: 4px; margin-bottom: 3px; white-space: nowrap;">
-              <span style="color: #FFFFFF; font-size: 10px; font-weight: 800; font-family: sans-serif;">${m.name}</span>
+              <span style="color: #FFFFFF; font-size: 10px; font-weight: 800; font-family: sans-serif;">${String(m.name).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]!))}</span>
               ${m.points !== undefined ? `<span style="color: #4ADE80; font-size: 10px; font-weight: 900; font-family: sans-serif;">+${toArabicNumber(m.points)}</span>` : ''}
             </div>
             <div style="width: 20px; height: 20px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: ${pinColor}; border: 2px solid #FFFFFF; box-shadow: 0 0 10px ${pinColor}; display: flex; align-items: center; justify-content: center;">

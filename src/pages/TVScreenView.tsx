@@ -6,6 +6,7 @@ import { UnifiedShabahLobby } from '../components/lobby/UnifiedShabahLobby';
 import { isRoomHost } from '../services/roomService';
 import { SHABAH_GAMES } from '../data/shabahGames';
 import { normalizeGameId, ShabahGameCanonicalId } from '../utils/gameIds';
+import { RoomReactions } from '../components/common/RoomReactions';
 
 const CoachTVRoot = React.lazy(() => import('./games/coach/CoachTVRoot').then(({ CoachTVRoot }) => ({ default: CoachTVRoot })));
 const BrokerTVRoot = React.lazy(() => import('./games/broker/BrokerTVRoot').then(({ BrokerTVRoot }) => ({ default: BrokerTVRoot })));
@@ -19,7 +20,7 @@ export const TVScreenView: React.FC = () => {
   const [searchParams] = useSearchParams();
   const roomCode = code || searchParams.get('room') || '';
   return roomCode && isRoomHost(roomCode)
-    ? <HostTVScreen key={roomCode} />
+    ? <><RoomReactions key={roomCode} roomCode={roomCode.toUpperCase()}/><HostTVScreen key={roomCode} /></>
     : <Navigate to="/" replace />;
 };
 

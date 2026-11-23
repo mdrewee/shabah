@@ -22,7 +22,7 @@ import {
 import { getBrokerItemByIndex, ensureBrokerItem } from '../../../data/brokerItems';
 import { formatPriceArabic, toArabicDigits } from './brokerUtils';
 import { formatSecondsToTime } from '../../../utils/numberFormat';
-import { evaluateBrokerPitch } from '../../../services/brokerEngine';
+import { requestBrokerPitch } from '../../../services/brokerPitchRequest';
 import { BrokerShowcaseStage } from './components/BrokerShowcaseStage';
 import { BrokerRoundWinner } from './components/BrokerRoundWinner';
 import { BrokerFinalPodium } from './components/BrokerFinalPodium';
@@ -88,7 +88,7 @@ export const BrokerMobileRoot: React.FC = () => {
   // 1. Dynamic item & round transition refresh
   useEffect(() => {
     if (!currentAuctionItem?.id) return;
-    const itemKey = `${currentAuctionItem.id}-${currentRoundNumber}`;
+    const itemKey = `${brokerState.gameStartedAt || 0}-${currentAuctionItem.id}-${currentRoundNumber}`;
     if (lastActiveItemKeyRef.current === itemKey) return;
     lastActiveItemKeyRef.current = itemKey;
 
@@ -99,7 +99,9 @@ export const BrokerMobileRoot: React.FC = () => {
       (currentAuctionItem as any).openingGreeting ||
       `أرحبو يا الربع! اليوم جايب لكم ${currentAuctionItem.name}.. قطبة ونظيفة، عطونا فتحة باب تسوى ولا تبخسون السلعة!`;
 
-    setMessages([
+    let restoredMessages: BrokerChatMessage[] | null = null;
+    try { restoredMessages = JSON.parse(sessionStorage.getItem(`broker_chat_${roomCode}_${playerId}_${itemKey}`) || 'null'); } catch {}
+    setMessages(restoredMessages || [
       {
         id: `msg_initial_${itemKey}_${Date.now()}`,
         sender: 'broker',
@@ -107,10 +109,23 @@ export const BrokerMobileRoot: React.FC = () => {
         timestamp: Date.now(),
       },
     ]);
-    setCurrentBid(0);
-    setBulletsRemaining(7);
+    setCurrentBid(brokerState.contestantBids[playerId]?.currentBid || 0);
+    setBulletsRemaining(brokerState.contestantBids[playerId]?.bulletsRemaining ?? 7);
     setIsReadyForNext(false);
-  }, [currentAuctionItem?.id, currentAuctionItem?.name, currentAuctionItem?.flaw, currentRoundNumber]);
+  }, [currentAuctionItem?.id, currentAuctionItem?.name, currentAuctionItem?.flaw, currentRoundNumber, brokerState.gameStartedAt]);
+
+  useEffect(() => {
+    if (!messages.length || !lastActiveItemKeyRef.current) return;
+    try { sessionStorage.setItem(`broker_chat_${roomCode}_${playerId}_${lastActiveItemKeyRef.current}`, JSON.stringify(messages)); } catch {}
+  }, [messages, roomCode, playerId]);
+
+  useEffect(() => {
+    const bid = brokerState.contestantBids[playerId];
+    if (!bid || isSubmitting) return;
+    setCurrentBid(bid.currentBid);
+    setBulletsRemaining(bid.bulletsRemaining);
+    setIsReadyForNext(Boolean(bid.isReadyForNextRound));
+  }, [brokerState.contestantBids, playerId, isSubmitting]);
 
   // Synchronize with host broadcasts
   useEffect(() => {
@@ -200,7 +215,7 @@ export const BrokerMobileRoot: React.FC = () => {
   // Submit contestant pitch to Shuraiti
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting || bulletsRemaining <= 0) return;
+    if (isSubmitting || bulletsRemaining <= 0 || brokerState.phase !== 'NEGOTIATION' || Date.now() >= (brokerState.roundEndsAt || 0)) return;
 
     // Sanitize and enforce maximum character limit (DDoS / Buffer payload protection)
     const pitch = inputText.trim().slice(0, 200);
@@ -227,13 +242,7 @@ export const BrokerMobileRoot: React.FC = () => {
 
     try {
       // 2. Evaluate with Broker Engine (Local Guardrails + Opening Baseline + Gemini Flash)
-      const evaluation = await evaluateBrokerPitch({
-        item: currentAuctionItem,
-        pitch,
-        currentBid,
-        isFirstBid,
-        playerName,
-      });
+      const evaluation = await requestBrokerPitch(roomCode, playerId, currentRoundNumber, currentAuctionItem.id, pitch);
 
       if (request !== chatRequest.current || brokerStateRef.current.phase !== 'NEGOTIATION') return;
 
@@ -263,19 +272,9 @@ export const BrokerMobileRoot: React.FC = () => {
 
       setMessages((prev) => [...prev, brokerMsg]);
 
-      // 5. Notify TV Host via roomBus (STRICT PRIVACY: DO NOT SEND CHAT TEXT, ONLY ANONYMOUS STATS)
-      roomBus.broadcastBrokerBid(roomCode, {
-        playerId,
-        playerName,
-        newBid: updatedBid,
-        bidIncrease: evaluation.bidIncrease,
-        quote: evaluation.persuasionScore >= 7 ? pitch : undefined,
-        announcement: evaluation.publicAnnouncement,
-        bulletsRemaining: newBullets,
-      });
     } catch (err) {
       if (request !== chatRequest.current) return;
-      setBulletsRemaining((value) => value + 1);
+      setBulletsRemaining(brokerStateRef.current.contestantBids[playerId]?.bulletsRemaining ?? 7);
       setInputText(pitch);
       setMessages((previous) => [...previous, { id: 'error_' + Date.now(), sender: 'broker', text: 'تعذر الاتصال. محاولتك محفوظة، اضغط إرسال لإعادة المحاولة.', timestamp: Date.now() }]);
       console.warn('[BrokerMobile] Pitch evaluation failed:', err);
@@ -320,15 +319,7 @@ export const BrokerMobileRoot: React.FC = () => {
         durationSeconds={10}
         isHost={isPlayerHost}
         onComplete={() => {
-          const nextState: BrokerRoomState = {
-            ...brokerState,
-            phase: 'NEGOTIATION',
-          };
-          setBrokerState(nextState);
-          savePersistedBrokerState(roomCode, nextState);
-          if (isPlayerHost) {
-            roomBus.broadcastBrokerSync(roomCode, nextState);
-          }
+          if (isPlayerHost) roomBus.emit('BROKER_ITEM_SYNC', roomCode, { action:'startNegotiation' });
         }}
       />
     );
@@ -349,28 +340,7 @@ export const BrokerMobileRoot: React.FC = () => {
         isHost={isPlayerHost}
         onPlayerReady={handlePlayerReady}
         onNextRound={() => {
-          if (isPlayerHost) {
-            const nextRound = brokerState.roundNumber + 1;
-            if (nextRound > brokerState.totalRounds) {
-              const nextState: BrokerRoomState = {
-                ...brokerState,
-                phase: 'FINAL_PODIUM',
-              };
-              setBrokerState(nextState);
-              roomBus.broadcastBrokerSync(roomCode, nextState);
-            } else {
-              const nextItem = ensureBrokerItem(getBrokerItemByIndex(nextRound, brokerState.usedItemIds), nextRound);
-              const nextState: BrokerRoomState = {
-                ...brokerState,
-                phase: 'SHOWCASE',
-                roundNumber: nextRound,
-                currentItem: nextItem,
-                usedItemIds: [...(brokerState.usedItemIds || []), nextItem.id],
-              };
-              setBrokerState(nextState);
-              roomBus.broadcastBrokerSync(roomCode, nextState);
-            }
-          }
+          if (isPlayerHost) roomBus.emit('BROKER_ITEM_SYNC', roomCode, { action:'advanceRound' });
         }}
         onReturnToLobby={() => {
           if (isPlayerHost) {

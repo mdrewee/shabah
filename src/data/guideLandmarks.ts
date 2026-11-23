@@ -4,6 +4,8 @@
  * and 5 progressive difficulty clues (from cryptic/hardest to direct/easiest).
  */
 
+import { EXTRA_GUIDE_LANDMARKS } from './extraGuideLandmarks';
+
 export interface GuideLandmark {
   id: string;
   name: string; // اسم المعلم
@@ -15,7 +17,7 @@ export interface GuideLandmark {
   clues: [string, string, string, string, string]; // ٥ تلميحات من الأصعب للأسهل
 }
 
-export const GUIDE_LANDMARKS_POOL: GuideLandmark[] = [
+const ORIGINAL_GUIDE_LANDMARKS: GuideLandmark[] = [
   // ==========================================
   // ١. معالم المملكة العربية السعودية والخليج العربي
   // ==========================================
@@ -461,13 +463,24 @@ export const GUIDE_LANDMARKS_POOL: GuideLandmark[] = [
   }
 ];
 
+export const GUIDE_LANDMARKS_POOL: GuideLandmark[] = [
+  ...ORIGINAL_GUIDE_LANDMARKS,
+  ...EXTRA_GUIDE_LANDMARKS.filter(extra => !ORIGINAL_GUIDE_LANDMARKS.some(original =>
+    original.name === extra.name || (Math.abs(original.lat - extra.lat) < 0.015 && Math.abs(original.lng - extra.lng) < 0.015)
+  )),
+];
+
 /**
  * Returns a random selection of unique landmarks for a game match.
  */
 export function getRandomGuideLandmarks(count: number = 5, excludeIds: string[] = []): GuideLandmark[] {
   const available = GUIDE_LANDMARKS_POOL.filter((l) => !excludeIds.includes(l.id));
   const pool = available.length >= count ? available : GUIDE_LANDMARKS_POOL;
-  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  const shuffled = [...pool];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
   return shuffled.slice(0, count);
 }
 

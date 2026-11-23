@@ -6,7 +6,7 @@ import { useRoomSync } from '../../../hooks/useRoomSync';
 import { sound } from '../../../lib/audio';
 import { UnifiedShabahLobby } from '../../../components/lobby/UnifiedShabahLobby';
 import { GuideRoomState } from './types';
-import { createInitialGuideState, getRankedGuideContestants } from './guideSync';
+import { createInitialGuideState, loadPersistedGuideState, savePersistedGuideState, getRankedGuideContestants } from './guideSync';
 import {
   getOrCreatePlayerId,
   getOrCreatePlayerName,
@@ -39,12 +39,13 @@ export const GuideMobileRoot: React.FC = () => {
   const activeRoom = room || roomBus.getRoom(roomCode);
 
   const [guideState, setGuideState] = useState<GuideRoomState>(() =>
-    createInitialGuideState(roomCode)
+    loadPersistedGuideState(roomCode) ?? createInitialGuideState(roomCode)
   );
 
   const [hasSubmittedThisRound, setHasSubmittedThisRound] = useState<boolean>(false);
   const [isReadyForNextRound, setIsReadyForNextRound] = useState<boolean>(false);
 
+  useEffect(() => { savePersistedGuideState(roomCode, guideState); }, [roomCode, guideState]);
   // Synchronize with TV host state & instant game start
   useEffect(() => {
     const unsubStart = roomBus.on('GAME_STARTED', (evt: any) => {
@@ -115,7 +116,7 @@ export const GuideMobileRoot: React.FC = () => {
     const interval = setInterval(() => {
       setGuideState((prev) => {
         if (prev.phase !== 'GUESSING') return prev;
-        const nextSec = Math.max(0, prev.timerSeconds - 1);
+        const nextSec = Math.max(0, Math.ceil((prev.roundStartedAt + 60000 - Date.now()) / 1000));
         const elapsed = 60 - nextSec;
         const nextClueIdx = Math.min(4, Math.floor(elapsed / 12));
 
@@ -152,6 +153,8 @@ export const GuideMobileRoot: React.FC = () => {
       lat: coords.lat,
       lng: coords.lng,
       submittedAt: Date.now(),
+      roundNumber: guideState.roundNumber,
+      landmarkId: guideState.currentLandmark.id,
     });
   };
 
@@ -164,6 +167,7 @@ export const GuideMobileRoot: React.FC = () => {
 
   // Handle Return to Lobby
   const handleReturnToLobby = () => {
+    if (!isRoomHost(roomCode) || !window.confirm('ترجع للوبي وتنهي الجولة الحالية؟')) return;
     roomBus.broadcastReturnToLobby(roomCode);
     setGuideState((prev) => ({
       ...prev,
@@ -229,11 +233,13 @@ export const GuideMobileRoot: React.FC = () => {
         roundNumber={guideState.roundNumber}
         totalRounds={guideState.totalRounds}
         timerSeconds={guideState.timerSeconds}
+        clues={guideState.currentLandmark.clues}
+        submittedCount={Object.keys(guideState.guesses || {}).length}
         activeClueText={currentClue}
         activeClueIndex={guideState.activeClueIndex}
         hasSubmitted={hasSubmittedThisRound}
         onLockPin={handleLockPin}
-        onReturnToLobby={handleReturnToLobby}
+        onReturnToLobby={isRoomHost(roomCode) ? handleReturnToLobby : undefined}
       />
     );
   }
@@ -250,7 +256,7 @@ export const GuideMobileRoot: React.FC = () => {
         totalRounds={guideState.totalRounds}
         results={guideState.results || {}}
         cumulativeScores={guideState.cumulativeScores || {}}
-        onReturnToLobby={handleReturnToLobby}
+        onReturnToLobby={isRoomHost(roomCode) ? handleReturnToLobby : undefined}
         isReadyForNextRound={isReadyForNextRound}
         onToggleReady={handleToggleReady}
         readyCount={guideState.readyPlayersNextRound?.length || 0}
@@ -271,7 +277,7 @@ export const GuideMobileRoot: React.FC = () => {
     <GuideFinalPodium
       isTV={false}
       rankedContestants={ranked}
-      onReturnToLobby={handleReturnToLobby}
+      onReturnToLobby={isRoomHost(roomCode) ? handleReturnToLobby : undefined}
     />
   );
 };

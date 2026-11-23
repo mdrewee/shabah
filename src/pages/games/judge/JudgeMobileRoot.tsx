@@ -1,249 +1,47 @@
+import React,{useEffect,useState} from 'react';
+import { useParams,useNavigate } from 'react-router-dom';
 import { isRoomHost } from '../../../services/roomService';
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useRoom, roomBus } from '../../../lib/roomBus';
+import { useRoom,roomBus } from '../../../lib/roomBus';
 import { useRoomSync } from '../../../hooks/useRoomSync';
-import { sound } from '../../../lib/audio';
 import { UnifiedShabahLobby } from '../../../components/lobby/UnifiedShabahLobby';
-import { JudgeRoomState } from './types';
-import { createInitialJudgeState, getRankedJudgeContestants } from './judgeSync';
-import {
-  getOrCreatePlayerId,
-  getOrCreatePlayerName,
-  getPersistedPlayerName,
-} from '../../../utils/playerSession';
+import { getOrCreatePlayerId,getPersistedPlayerName,getOrCreatePlayerName } from '../../../utils/playerSession';
+import { createInitialJudgeState,getRankedJudgeContestants } from './judgeSync';
 import { JudgeMobileView } from './components/JudgeMobileView';
-import { JudgeCourtWaitingScreen } from './components/JudgeCourtWaitingScreen';
+import { JudgePartyStage } from './components/JudgePartyStage';
 import { JudgeFinalPodium } from './components/JudgeFinalPodium';
+import type { JudgeRoomState } from './types';
 
-export const JudgeMobileRoot: React.FC = () => {
-  const { code: rawCode } = useParams<{ code?: string }>();
-  const navigate = useNavigate();
-  const roomCode = (rawCode || 'SHBH').trim().toUpperCase();
-
-  const [playerId] = useState<string>(() => getOrCreatePlayerId());
-  const [playerName] = useState<string>(() => {
-    return getPersistedPlayerName() || getOrCreatePlayerName('متهم');
-  });
-
-  // Maintain Supabase Realtime channel
-  useRoomSync({
-    roomCode,
-    role: 'contestant',
-    playerId,
-    playerName,
-  });
-
-  const { room } = useRoom(roomCode);
-  const activeRoom = room || roomBus.getRoom(roomCode);
-
-  const [judgeState, setJudgeState] = useState<JudgeRoomState>(() =>
-    createInitialJudgeState(roomCode)
-  );
-
-  const [hasSubmittedThisRound, setHasSubmittedThisRound] = useState<boolean>(false);
-  const [isReadyForNextRound, setIsReadyForNextRound] = useState<boolean>(false);
-
-  // Synchronize with TV host state
-  useEffect(() => {
-    const unsubSync = roomBus.on('JUDGE_STATE_SYNC', (evt: any) => {
-      const incomingCode = evt?.roomCode;
-      const payload = evt?.data ?? evt;
-      if (incomingCode && incomingCode !== roomCode) return;
-      if (!payload) return;
-      setJudgeState(payload);
-
-      const submitted = Boolean(payload.excuses?.[playerId]);
-      if (submitted || payload.roundNumber !== judgeState.roundNumber) {
-        setHasSubmittedThisRound(submitted);
-      }
-      setIsReadyForNextRound(Boolean(payload.readyPlayersNextRound?.includes(playerId)));
-    }, roomCode);
-
-    const unsubLobby = roomBus.on('RETURN_TO_LOBBY', (evt: any) => {
-      const incomingCode = evt?.roomCode;
-      if (incomingCode && incomingCode !== roomCode) return;
-      setJudgeState((prev) => ({
-        ...prev,
-        phase: 'LOBBY',
-      }));
-      setHasSubmittedThisRound(false);
-      setIsReadyForNextRound(false);
-    });
-
-    const unsubResultsReady = roomBus.on('JUDGE_RESULTS_READY', (evt: any) => {
-      const payload = evt?.data ?? evt;
-      sound.playGavelStrike();
-      if (payload?.verdicts) {
-        const verdictsArr: any[] = Array.isArray(payload.verdicts)
-          ? payload.verdicts
-          : Object.values(payload.verdicts);
-
-        const verdictsMap: Record<string, any> = {};
-        verdictsArr.forEach((v) => {
-          if (v && v.playerId) {
-            verdictsMap[v.playerId] = v;
-          }
-        });
-
-        setJudgeState((prev) => ({
-          ...prev,
-          phase: 'COURTROOM_VERDICT',
-          verdicts: {
-            ...prev.verdicts,
-            ...verdictsMap,
-          },
-          verdictList: verdictsArr,
-        }));
-      }
-    });
-
-    const unsubNewRound = roomBus.on('JUDGE_NEW_ROUND', (evt: any) => {
-      const incomingCode = evt?.roomCode;
-      const payload = evt?.data ?? evt;
-      if (incomingCode && incomingCode !== roomCode) return;
-      if (!payload?.currentCase) return;
-
-      setJudgeState((prev) => ({
-        ...prev,
-        phase: payload.phase || 'case_briefing',
-        currentPredicament: payload.currentCase,
-        roundNumber: payload.roundNumber || prev.roundNumber,
-        timerSeconds: 60,
-        excuses: {},
-        verdicts: {},
-        verdictList: [],
-      }));
-      setHasSubmittedThisRound(false);
-      setIsReadyForNextRound(false);
-    });
-
-    const unsubStartDefense = roomBus.on('JUDGE_START_DEFENSE', (evt: any) => {
-      const incomingCode = evt?.roomCode;
-      const payload = evt?.data ?? evt;
-      if (incomingCode && incomingCode !== roomCode) return;
-      sound.playGavelStrike();
-      const duration = payload?.duration ?? 60;
-      setJudgeState((prev) => ({
-        ...prev,
-        phase: 'defending',
-        timerSeconds: duration,
-      }));
-    });
-
-    return () => {
-      unsubSync?.();
-      unsubNewRound?.();
-      unsubStartDefense?.();
-      unsubResultsReady?.();
-      unsubLobby?.();
-    };
-  }, [roomCode, judgeState.roundNumber, playerId]);
-
-  useEffect(() => {
-    roomBus.emit('REQUEST_ROOM_STATE', roomCode, {});
-  }, [roomCode]);
-
-  // Handle Excuse Submission
-  const handleSubmitExcuse = (excuse: string, wasAutoSubmitted = false) => {
-    setHasSubmittedThisRound(true);
-    sound.playClick();
-
-    const payload = {
-      playerId,
-      playerName,
-      roundNumber: judgeState.roundNumber,
-      excuse,
-      wasAutoSubmitted,
-    };
-
-    roomBus.broadcastJudgeExcuse(roomCode, payload);
+export const JudgeMobileRoot:React.FC=()=>{
+  const {code='SHBH'}=useParams<{code:string}>();const roomCode=code.trim().toUpperCase();const navigate=useNavigate();
+  const [playerId]=useState(()=>getOrCreatePlayerId());
+  const [playerName]=useState(()=>getPersistedPlayerName() || getOrCreatePlayerName('متهم'));
+  const {connectedPlayers}=useRoomSync({roomCode,role:'contestant',playerId,playerName});
+  const {room}=useRoom(roomCode);
+  const [state,setState]=useState<JudgeRoomState>(()=>createInitialJudgeState(roomCode));
+  const host=isRoomHost(roomCode);
+  const ownKey=`judge_card_${roomCode}_${state.roundNumber}_${state.currentPredicament.id}`;
+  let ownCardId='';try{ownCardId=sessionStorage.getItem(ownKey) || '';}catch{}
+  useEffect(()=>{
+    const off=roomBus.on('JUDGE_STATE_SYNC',event=>{if(event.data?.roomCode===roomCode)setState(event.data);},roomCode);
+    roomBus.emit('REQUEST_ROOM_STATE',roomCode,{});
+    return off;
+  },[roomCode]);
+  const submit=(excuse:string)=>{
+    let cardId=ownCardId;
+    if(!cardId){cardId=Array.from(crypto.getRandomValues(new Uint8Array(12)),n=>n.toString(16).padStart(2,'0')).join('');try{sessionStorage.setItem(ownKey,cardId);}catch{}}
+    roomBus.broadcastJudgeExcuse(roomCode,{playerId,playerName,roundNumber:state.roundNumber,caseId:state.currentPredicament.id,cardId,excuse});
   };
-
-  // Handle Ready Toggle for Next Round
-  const handleToggleReady = () => {
-    const nextReady = !isReadyForNextRound;
-    setIsReadyForNextRound(nextReady);
-    roomBus.broadcastPlayerReadyUpdate(roomCode, playerId, nextReady, playerName);
-  };
-
-  // Handle Return to Lobby
-  const handleReturnToLobby = () => {
-    roomBus.broadcastReturnToLobby(roomCode);
-    setJudgeState((prev) => ({
-      ...prev,
-      phase: 'LOBBY',
-    }));
-  };
-
-  // 1. Lobby Phase
-  if (judgeState.phase === 'LOBBY') {
-    return (
-      <UnifiedShabahLobby
-        roomCode={roomCode}
-        gameId="ai-judge"
-        gameTitle="الشبح القاضي"
-        role="contestant"
-        isPlayerHost={isRoomHost(roomCode)}
-        currentPlayerId={playerId}
-        onExit={() => {
-          roomBus.leavePlayer(roomCode, playerId);
-          navigate('/');
-        }}
-      />
-    );
-  }
-
-  // 2. Judging Phase - Suspicious Court Waiting Screen
-  if (judgeState.phase === 'JUDGING') {
-    return <JudgeCourtWaitingScreen isTV={false} />;
-  }
-
-  // 3. Case Briefing, Defense Input & Courtroom Verdict Phase
-  if (
-    judgeState.phase === 'case_briefing' ||
-    judgeState.phase === 'defending' ||
-    judgeState.phase === 'EXCUSE_INPUT' ||
-    judgeState.phase === 'COURTROOM_VERDICT'
-  ) {
-    const myVerdict = judgeState.verdicts ? judgeState.verdicts[playerId] : undefined;
-    const isCourtroomVerdict = judgeState.phase === 'COURTROOM_VERDICT';
-    const connectedContestantsCount = Math.max(1, activeRoom?.players?.length || 1);
-
-    return (
-      <JudgeMobileView
-        predicament={judgeState.currentPredicament}
-        roundNumber={judgeState.roundNumber}
-        totalRounds={judgeState.totalRounds}
-        phase={judgeState.phase}
-        briefingEndsAt={judgeState.briefingEndsAt}
-        timerSeconds={judgeState.timerSeconds}
-        hasSubmitted={hasSubmittedThisRound}
-        onSubmitExcuse={handleSubmitExcuse}
-        myVerdict={myVerdict}
-        isCourtroomVerdict={isCourtroomVerdict}
-        isReadyForNextRound={isReadyForNextRound}
-        onToggleReady={handleToggleReady}
-        readyCount={judgeState.readyPlayersNextRound?.length || 0}
-        totalConnectedCount={connectedContestantsCount}
-      />
-    );
-  }
-
-  // 3. Final Podium Phase
-  const ranked = getRankedJudgeContestants(
-    judgeState.cumulativeScores || {},
-    activeRoom?.players || [{ id: playerId, name: playerName }]
-  );
-
-  return (
-    <JudgeFinalPodium
-      rankedContestants={ranked}
-      worstExcuses={judgeState.worstExcuses || {}}
-      isTV={false}
-      onReturnToLobby={handleReturnToLobby}
-    />
-  );
+  if(state.phase==='LOBBY')return <UnifiedShabahLobby roomCode={roomCode} gameId="ai-judge" gameTitle="الشبح القاضي" role="contestant" isPlayerHost={host} currentPlayerId={playerId}
+    onExit={()=>{roomBus.leavePlayer(roomCode,playerId);navigate('/');}}/>;
+  if(state.phase==='PODIUM')return <JudgeFinalPodium rankedContestants={getRankedJudgeContestants(state.cumulativeScores,room?.players || [{id:playerId,name:playerName}])} worstExcuses={{}}
+    isTV={false} onReturnToLobby={()=>{if(host)roomBus.broadcastReturnToLobby(roomCode);}}/>;
+  if(['READING','VOTING','JUDGING','COURTROOM_VERDICT'].includes(state.phase))return <JudgePartyStage state={state} playerId={playerId} ownCardId={ownCardId} isHost={host} activePlayerIds={connectedPlayers.map(p=>p.id)}
+    onVote={cardId=>roomBus.emit('JUDGE_PARTY_VOTE',roomCode,{playerId,cardId,roundNumber:state.roundNumber,caseId:state.currentPredicament.id})}
+    onReady={()=>roomBus.broadcastPlayerReadyUpdate(roomCode,playerId,!state.readyPlayersNextRound.includes(playerId),playerName)}
+    onAction={action=>{if(host)roomBus.emit('JUDGE_START_DEFENSE',roomCode,{action});}}/>;
+  return <JudgeMobileView key={`${state.roundNumber}_${state.currentPredicament.id}`} predicament={state.currentPredicament} roundNumber={state.roundNumber} totalRounds={state.totalRounds}
+    phase={state.phase} briefingEndsAt={state.briefingEndsAt} timerSeconds={state.timerSeconds}
+    hasSubmitted={Boolean(state.submittedPlayerIds?.includes(playerId) || state.excuses[playerId])} onSubmitExcuse={submit}
+    isCourtroomVerdict={false} isReadyForNextRound={false} onToggleReady={()=>{}} readyCount={0} totalConnectedCount={connectedPlayers.length}/>;
 };
-
 export default JudgeMobileRoot;

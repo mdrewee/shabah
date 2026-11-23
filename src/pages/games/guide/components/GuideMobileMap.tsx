@@ -93,7 +93,7 @@ export const GuideMobileMap: React.FC<GuideMobileMapProps> = ({
       }
 
       const lat = Number(e.latlng.lat.toFixed(4));
-      const lng = Number(e.latlng.lng.toFixed(4));
+      const lng = Number(e.latlng.wrap().lng.toFixed(4));
       handleSelect(lat, lng);
     });
 
@@ -156,7 +156,10 @@ export const GuideMobileMap: React.FC<GuideMobileMapProps> = ({
   }, [userPin]);
 
   return (
-    <div className={`relative w-full h-[62vh] min-h-[360px] rounded-2xl overflow-hidden border-2 border-zinc-800 bg-zinc-950 ${className}`}>
+    <div className={`relative w-full h-full rounded-2xl overflow-hidden border-2 border-zinc-800 bg-zinc-950 ${className}`}>
+      <button type="button" className="absolute bottom-3 right-3 z-[1000] rounded-xl bg-black/90 px-3 py-2 text-xs text-white border border-zinc-600" onClick={() => mapInstanceRef.current?.fitWorld()}>
+        خريطة العالم
+      </button>
       <div
         ref={mapContainerRef}
         className="w-full h-full"

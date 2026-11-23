@@ -18,6 +18,7 @@ export interface FlyingSubmission {
 }
 
 export interface FlyingContestantResult {
+  needsReview?: boolean;
   contestantId: string;
   contestantName: string;
   answer: string;
@@ -31,6 +32,8 @@ export interface FlyingContestantResult {
 }
 
 export interface FlyingRoomState {
+  analysisFailed?: boolean;
+  questionBankExhausted?: boolean;
   roomCode: string;
   phase: FlyingPhase;
   roundNumber: number; // 1 to 5

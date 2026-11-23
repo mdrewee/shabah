@@ -25,6 +25,7 @@ interface CoachDraftTVViewProps {
   activeConditionDescription?: string;
   onNextRound?: () => void;
   onReturnToLobby?: () => void;
+  onRetryEvaluation?:()=>void;
 }
 
 export const CoachDraftTVView: React.FC<CoachDraftTVViewProps> = ({
@@ -41,6 +42,7 @@ export const CoachDraftTVView: React.FC<CoachDraftTVViewProps> = ({
   activeConditionDescription,
   onNextRound,
   onReturnToLobby,
+  onRetryEvaluation,
 }) => {
   const count = contestants.length;
 
@@ -119,11 +121,15 @@ export const CoachDraftTVView: React.FC<CoachDraftTVViewProps> = ({
           <div className="shabah-border-inner">
             <div className="shabah-surface p-4 sm:p-5 flex flex-col items-center text-center gap-3">
               <span className="px-3.5 py-1 rounded-full bg-emerald-500 text-white font-black text-xs">
-                {isFinalRound ? 'صافرة نهاية المباراة • التتويج النهائي' : `صافرة نهاية الجولة ${toArabicNumber(roundNumber)} من ${toArabicNumber(totalRounds)}`}
+                {verdict.verificationMode!=='ai'?'تقييم مبدئي • لم تكتمل المراجعة الذكية':isFinalRound ? 'صافرة نهاية المباراة • التتويج النهائي' : `صافرة نهاية الجولة ${toArabicNumber(roundNumber)} من ${toArabicNumber(totalRounds)}`}
               </span>
               <h2 className="text-xl sm:text-3xl font-black text-[#0A0A0A]">
-                {verdict.coachBanner}
+                {verdict.verificationMode==='ai'?verdict.coachBanner:'الترتيب المبدئي للتشكيلات'}
               </h2>
+              {verdict.verificationMode!=='ai' && <div role="status" className="text-sm font-bold text-amber-800">
+                {verdict.verificationMode==='mixed'?'بعض الخانات لم تُراجع بعد؛ الترتيب مؤقت.':'تعذر التحقق الذكي؛ هذا ترتيب محلي مؤقت.'}
+                {onRetryEvaluation && <button type="button" onClick={onRetryEvaluation} className="block mx-auto mt-3 rounded-xl bg-amber-300 text-black px-5 py-3">إعادة المراجعة الذكية</button>}
+              </div>}
 
               {/* Readiness / Next Round Controls on TV */}
               <div className="w-full pt-3 border-t border-neutral-200 flex flex-col sm:flex-row items-center justify-between gap-3">

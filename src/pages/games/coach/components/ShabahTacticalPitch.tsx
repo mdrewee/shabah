@@ -67,13 +67,15 @@ export const ShabahTacticalPitch: React.FC<ShabahTacticalPitchProps> = ({
               <div className="mt-1 flex items-center gap-1">
                 <span
                   className={`px-1.5 py-0.5 rounded text-[9px] font-black inline-flex items-center gap-1 ${
-                    evalData.isValidCondition
+                    evalData.needsReview && !evalData.isValidCondition
+                      ? 'bg-amber-100 text-amber-800 border border-amber-400'
+                      : evalData.isValidCondition
                       ? 'bg-emerald-100 text-emerald-800 border border-emerald-400'
                       : 'bg-red-100 text-red-800 border border-red-400'
                   }`}
                   title={evalData.conditionReason}
                 >
-                  {evalData.isValidCondition ? <Check className="w-2.5 h-2.5" /> : <X className="w-2.5 h-2.5" />}
+                  {evalData.isValidCondition ? <Check className="w-2.5 h-2.5" /> : evalData.needsReview ? '?' : <X className="w-2.5 h-2.5" />}
                   <span>شرط</span>
                 </span>
                 <span
@@ -84,7 +86,7 @@ export const ShabahTacticalPitch: React.FC<ShabahTacticalPitchProps> = ({
                   }`}
                   title={evalData.positionReason}
                 >
-                  {evalData.isValidPosition ? <Check className="w-2.5 h-2.5" /> : <X className="w-2.5 h-2.5" />}
+                  {evalData.isValidPosition ? <Check className="w-2.5 h-2.5" /> : evalData.needsReview ? '?' : <X className="w-2.5 h-2.5" />}
                   <span>مركز</span>
                 </span>
               </div>

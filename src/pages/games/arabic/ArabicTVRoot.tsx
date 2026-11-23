@@ -1,3 +1,4 @@
+import { recalculateArabicRound } from './arabicScoring';
 import { useGameState } from '../../../hooks/useGameState';
 import { ShabahThinkingScreen } from '../../../components/common/ShabahThinkingScreen';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -22,7 +23,6 @@ import {
 import {
   evaluateAllArabicAnswers,
   PlayerArabicEvaluation,
-  normalizeArabicWord,
 } from '../../../services/arabicEngine';
 import { ArabicRouletteStage } from './components/ArabicRouletteStage';
 import { ArabicTVResults } from './components/ArabicTVResults';
@@ -193,6 +193,7 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
           isUnique: r.score === 10,
           points: r.score,
           comment: r.reason,
+          needsReview: r.needsReview,
         })),
       };
     });
@@ -205,12 +206,13 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
       cumulativeScores: updatedCumulative,
       readyPlayersNextRound: [],
     };
+    Object.assign(resultsState, recalculateArabicRound({ ...curr, submissions: subs }, legacyEvals));
     stateRef.current = resultsState;
     syncState(resultsState);
 
     // Broadcast definitive ARABIC_RESULTS_READY with full batch array to mobile contestants
     roomBus.broadcastArabicResultsReady(roomCode, {
-      evaluations: playerEvals,
+      evaluations: resultsState.playerEvaluations,
       roundNumber: curr.roundNumber,
     });
 
@@ -230,6 +232,7 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
 
   const handleNextRound = useCallback(() => {
     const curr = stateRef.current;
+    if (curr.activeObjection && !curr.activeObjection.resolved) return;
     if (curr.roundNumber >= curr.totalRounds) {
       // Advance to Final Podium
       const podiumState: ArabicRoomState = {
@@ -302,6 +305,7 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
   }, [roomCode]);
 
   const handleReturnToLobby = useCallback(() => {
+    if (!window.confirm('ترجع للوبي وتنهي الجولة؟')) return;
     clearPersistedArabicState(roomCode);
     const nextState: ArabicRoomState = {
       ...createInitialArabicState(roomCode),
@@ -320,32 +324,20 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
   useEffect(() => {
     if (arabicState.phase !== 'INPUT') return;
 
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
     const interval = setInterval(() => {
-      setArabicState((prev) => {
-        if (prev.phase !== 'INPUT') return prev;
-        const nextSec = prev.timerSeconds - 1;
-
-        if (nextSec <= 0) {
-          clearInterval(interval);
-          roomBus.broadcastArabicTimeUp(roomCode);
-          setTimeout(() => {
-            executeJudging();
-          }, 800);
-          return { ...prev, timerSeconds: 0 };
-        }
-
-        if (nextSec <= 5) {
-          sound.playTick();
-        }
-
-        const updated = { ...prev, timerSeconds: nextSec };
-        roomBus.broadcastArabicSync(roomCode, updated);
-        return updated;
-      });
+      const prev = stateRef.current;
+      if (prev.phase !== 'INPUT') return;
+      const nextSec = Math.max(0, Math.ceil((prev.roundStartedAt + 60000 - Date.now()) / 1000));
+      syncState({ ...prev, timerSeconds: nextSec });
+      if (nextSec === 0) {
+        clearInterval(interval);
+        roomBus.broadcastArabicTimeUp(roomCode);
+        graceTimer = setTimeout(() => { void executeJudging(); }, 1500);
+      } else if (nextSec <= 5) sound.playTick();
     }, 1000);
-
-    return () => clearInterval(interval);
-  }, [arabicState.phase, executeJudging, roomCode]);
+    return () => { clearInterval(interval); if (graceTimer) clearTimeout(graceTimer); };
+  }, [arabicState.phase, executeJudging, roomCode, syncState]);
 
   // -------------------------------------------------------------
   // Realtime Broadcast Listeners
@@ -362,8 +354,10 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
       if (curr.phase !== 'INPUT') return;
 
       const contestantId = String(payload.contestantId || payload.playerId || '');
-      const contestantName = String(payload.contestantName || payload.playerName || 'متسابق');
-      if (!contestantId) return;
+      const contestantName = mergedContestants.find(c => c.id === contestantId)?.name || 'متسابق';
+      if (!contestantId || curr.submissions[contestantId] || !mergedContestants.some(c => c.id === contestantId)) return;
+      if (payload.roundNumber !== curr.roundNumber) return;
+      if (!payload.answers || typeof payload.answers !== 'object' || Object.values(payload.answers).some(a => typeof a !== 'string' || a.length > 160)) return;
 
       const updatedSubmissions = {
         ...curr.submissions,
@@ -372,7 +366,7 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
           contestantName,
           answers: payload.answers || {},
           finishedAt: payload.finishedAt || Date.now(),
-          submissionDurationMs: payload.durationMs || 60000,
+          submissionDurationMs: Math.max(1, Date.now() - curr.roundStartedAt),
         },
       };
 
@@ -385,7 +379,7 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
 
       // Check early advance: if all connected contestants submitted
       const connectedCount = Math.max(1, mergedContestants.length);
-      const submittedCount = Object.keys(updatedSubmissions).length;
+      const submittedCount = mergedContestants.filter(c => updatedSubmissions[c.id]).length;
 
       if (submittedCount >= connectedCount) {
         setArabicState(updatedState);
@@ -412,6 +406,8 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
       // Ignore if an objection is already active and unresolved
       if (curr.activeObjection && !curr.activeObjection.resolved) return;
 
+      if (payload.roundNumber !== curr.roundNumber) return;
+      if (!mergedContestants.some(c => c.id === payload.contestantId)) return;
       sound.playNotification?.();
 
       const catIdx =
@@ -421,13 +417,15 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
           ? curr.currentCategories.indexOf(payload.category)
           : 0;
 
+      const submittedAnswer = curr.evaluations[payload.contestantId]?.answers[catIdx];
+      if (!submittedAnswer || submittedAnswer.isValid || submittedAnswer.objected || !submittedAnswer.rawAnswer) return;
       const objection: ObjectionState = {
         id: `obj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         contestantId: payload.contestantId,
         contestantName: payload.contestantName,
         categoryIndex: catIdx >= 0 ? catIdx : 0,
         categoryName: payload.category || curr.currentCategories[catIdx] || '',
-        answer: payload.answer,
+        answer: submittedAnswer.rawAnswer,
         votesFor: [],
         votesAgainst: [],
         endsAt: Date.now() + 10500, // 10 seconds live voting window
@@ -463,6 +461,7 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
       const obj = curr.activeObjection;
       if (!obj || obj.resolved || obj.id !== payload.objectionId) return;
 
+      if (Date.now() > obj.endsAt || payload.contestantId === obj.contestantId || !mergedContestants.some(c => c.id === payload.contestantId)) return;
       const votersFor = new Set(obj.votesFor);
       const votersAgainst = new Set(obj.votesAgainst);
 
@@ -494,7 +493,7 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
       if (incomingCode !== roomCode || !payload) return;
 
       const curr = stateRef.current;
-      if (curr.phase !== 'RESULTS') return;
+      if (curr.phase !== 'RESULTS' || !mergedContestants.some(c => c.id === payload.playerId)) return;
 
       const currentReady = new Set(curr.readyPlayersNextRound || []);
       if (payload.isReady) {
@@ -509,13 +508,7 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
         readyPlayersNextRound: nextReadyList,
       };
 
-      // Auto-advance if >= 2 ready or all connected ready
-      const minRequired = Math.min(2, Math.max(1, mergedContestants.length));
-      if (nextReadyList.length >= minRequired) {
-        handleNextRound();
-      } else {
-        syncState(updatedState);
-      }
+      syncState(updatedState);
     });
 
     return () => {
@@ -527,6 +520,11 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
       unsubReady?.();
     };
   }, [roomCode, mergedContestants.length, syncState, executeJudging, handleNextRound]);
+
+  useEffect(() => {
+    if (arabicState.phase !== 'RESULTS' || (arabicState.activeObjection && !arabicState.activeObjection.resolved)) return;
+    if (mergedContestants.length && mergedContestants.every(c => arabicState.readyPlayersNextRound.includes(c.id))) handleNextRound();
+  }, [arabicState.phase, arabicState.activeObjection, arabicState.readyPlayersNextRound, mergedContestants, handleNextRound]);
 
   // -------------------------------------------------------------
   // Objection Timer & Resolution Check (10-second live voting)
@@ -551,89 +549,27 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
 
         const isOverturned = currentObj.votesFor.length > currentObj.votesAgainst.length;
 
-        const updatedEvals = { ...curr.evaluations };
-        const updatedPlayerEvals = curr.playerEvaluations ? [...curr.playerEvaluations] : [];
-        const updatedCumulative = { ...curr.cumulativeScores };
-
-        let earnedPoints = 0;
-
-        if (isOverturned) {
-          sound.playVictory();
-
-          // Check if any other contestant had this exact answer correctly in this category (for duplicate detection)
-          const normAns = normalizeArabicWord(currentObj.answer);
-          let isDuplicate = false;
-
-          Object.values(updatedEvals).forEach((ev) => {
-            if (ev.contestantId !== currentObj.contestantId) {
-              const matchedAns = ev.answers.find(
-                (a) => a.categoryIndex === currentObj.categoryIndex && a.isValid
-              );
-              if (matchedAns && normalizeArabicWord(matchedAns.rawAnswer) === normAns) {
-                isDuplicate = true;
-              }
-            }
-          });
-
-          earnedPoints = isDuplicate ? 5 : 10;
-
-          // 1. Update legacy evaluation format
-          if (updatedEvals[currentObj.contestantId]) {
-            const targetAns = updatedEvals[currentObj.contestantId].answers[currentObj.categoryIndex];
-            if (targetAns) {
-              targetAns.isValid = true;
-              targetAns.objectionOverturned = true;
-              targetAns.points = earnedPoints;
-              targetAns.isUnique = !isDuplicate;
-              targetAns.comment =
-                earnedPoints === 10
-                  ? 'تم قبول الاعتراض بتصويت الأغلبية (+١٠)'
-                  : 'تم قبول الاعتراض بتصويت الأغلبية (مكرر +٥)';
-
-              const newRoundPoints = updatedEvals[currentObj.contestantId].answers.reduce(
-                (sum, a) => sum + (a.points || 0),
-                0
-              );
-              updatedEvals[currentObj.contestantId].roundPoints = newRoundPoints;
-              updatedEvals[currentObj.contestantId].totalRoundPoints =
-                newRoundPoints + (updatedEvals[currentObj.contestantId].speedBonus || 0);
-            }
-          }
-
-          // 2. Update playerEvaluations array
-          const pIdx = updatedPlayerEvals.findIndex((pe) => pe.playerId === currentObj.contestantId);
-          if (pIdx !== -1) {
-            const pe = { ...updatedPlayerEvals[pIdx] };
-            const catRes =
-              pe.results[currentObj.categoryIndex] ||
-              pe.results.find((r) => r.category === currentObj.categoryName);
-            if (catRes) {
-              catRes.isCorrect = true;
-              catRes.score = earnedPoints;
-              catRes.reason =
-                earnedPoints === 10 ? 'تم قبول الاعتراض (+١٠)' : 'تم قبول الاعتراض (مكرر +٥)';
-            }
-            pe.totalScore = pe.results.reduce((sum, r) => sum + (r.score || 0), 0);
-            updatedPlayerEvals[pIdx] = pe;
-          }
-
-          // 3. Update cumulative score
-          updatedCumulative[currentObj.contestantId] =
-            (updatedCumulative[currentObj.contestantId] || 0) + earnedPoints;
-        } else {
-          sound.playIncorrect?.();
+        const updatedEvals = Object.fromEntries(Object.entries(curr.evaluations).map(([id, ev]) => [id, { ...ev, answers: ev.answers.map(a => ({ ...a })) }]));
+        const answer = updatedEvals[currentObj.contestantId]?.answers[currentObj.categoryIndex];
+        if (answer && isOverturned) {
+          answer.isValid = true;
+          answer.needsReview = false;
+          answer.objectionOverturned = true;
+          answer.comment = 'قبلتها المجموعة';
         }
-
+        if (answer && !isOverturned) {
+          answer.needsReview = false;
+          answer.comment = 'لم تقبلها المجموعة';
+        }
+        const rescored = recalculateArabicRound(curr, updatedEvals);
+        const earnedPoints = isOverturned ? rescored.evaluations[currentObj.contestantId]?.answers[currentObj.categoryIndex]?.points || 0 : 0;
         const resolvedState: ArabicRoomState = {
           ...curr,
           activeObjection: {
             ...currentObj,
             resolved: true,
           },
-          evaluations: updatedEvals,
-          playerEvaluations:
-            updatedPlayerEvals.length > 0 ? updatedPlayerEvals : curr.playerEvaluations,
-          cumulativeScores: updatedCumulative,
+          ...rescored,
         };
 
         stateRef.current = resolvedState;

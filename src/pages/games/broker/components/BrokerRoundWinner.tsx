@@ -39,7 +39,7 @@ export const BrokerRoundWinner: React.FC<BrokerRoundWinnerProps> = ({
   const safeItem = ensureBrokerItem(item, roundNumber);
 
   useEffect(() => {
-    sound.playVictory();
+    if (winningBid > 0) sound.playVictory();
   }, []);
 
   const isLastRound = roundNumber >= totalRounds;
@@ -52,7 +52,7 @@ export const BrokerRoundWinner: React.FC<BrokerRoundWinnerProps> = ({
   return (
     <ShabahRoundReveal entries={contestants.map((item) => ({ id: item.playerId, name: item.playerName, answer: item.bestQuote || 'السومة: ' + item.currentBid.toLocaleString('ar-SA') }))}><div
       dir="rtl"
-      className="min-h-screen w-full bg-[#000000] text-[#FFFFFF] flex flex-col items-center justify-between p-4 sm:p-8 select-none relative overflow-y-auto"
+      className="h-full min-h-0 w-full bg-[#000000] text-[#FFFFFF] flex flex-col items-center justify-between p-4 sm:p-8 select-none relative overflow-y-auto"
     >
       {/* Background glow celebration */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(74,222,128,0.12),transparent_70%)] pointer-events-none" />
@@ -68,40 +68,40 @@ export const BrokerRoundWinner: React.FC<BrokerRoundWinnerProps> = ({
       </div>
 
       {/* Main Content Area */}
-      <div className="w-full max-w-xl flex flex-col items-center my-auto z-10 py-6">
+      <div className="w-full max-w-xl flex flex-col items-center my-auto z-10 py-3 shrink-0">
         {/* Mascot with Crown SVG */}
         <div className="relative mb-5">
-          <div className="w-28 h-28 sm:w-36 sm:h-36">
-            <ShabahGhost mood="happy" className="w-full h-full" />
+          <div className="w-16 h-16 sm:w-28 sm:h-28">
+            <ShabahGhost mood={winningBid > 0 ? 'happy' : 'judging'} className="w-full h-full" />
           </div>
-          <div className="absolute -top-3 -right-2 p-2 rounded-full bg-amber-400 text-[#0A0A0A] shadow-lg animate-bounce">
+          {winningBid > 0 && <div className="absolute -top-3 -right-2 p-2 rounded-full bg-amber-400 text-[#0A0A0A] shadow-lg animate-bounce">
             <Crown className="w-6 h-6" />
-          </div>
+          </div>}
         </div>
 
         {/* Winner Announcement Card */}
         <div className="w-full shabah-border-wrap mb-6">
           <div className="shabah-border-inner">
-            <div className="shabah-surface p-6 sm:p-8 text-center flex flex-col items-center">
+            <div className="shabah-surface p-4 sm:p-6 text-center flex flex-col items-center">
               {/* Badge */}
               <div className="px-4 py-1.5 rounded-full bg-amber-500 text-white font-black text-xs sm:text-sm flex items-center gap-2 mb-3 shadow-sm">
                 <Sparkles className="w-4 h-4" />
-                <span>صيدة الجولة</span>
+                <span>{winningBid > 0 ? 'صيدة الجولة' : 'انتهى المزاد دون بيع'}</span>
               </div>
 
               {/* Winner Name */}
               <h1 className="text-3xl sm:text-4xl font-black text-[#0A0A0A] mb-1 tracking-tight">
-                {winnerName}
+                {winningBid > 0 ? winnerName : 'لا يوجد فائز'}
               </h1>
               <p className="text-xs sm:text-sm font-bold text-neutral-500 mb-5">
-                أقنع الشريطي وباع السلعة بأعلى سومة!
+                {winningBid > 0 ? 'أقنع الشريطي وباع السلعة بأعلى سومة!' : 'لم تُعتمد أي سومة؛ لم يحصل أحد على رصيد.'}
               </p>
 
               {/* Item & Winning Bid Box */}
               <div className="w-full p-4 rounded-2xl bg-neutral-100 border-2 border-neutral-300 mb-5 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div className="text-right">
                   <span className="text-xs font-bold text-neutral-500 block">
-                    السلعة المباعة:
+                    السلعة المعروضة:
                   </span>
                   <span className="text-sm font-black text-neutral-800">
                     {safeItem.name}
@@ -110,7 +110,7 @@ export const BrokerRoundWinner: React.FC<BrokerRoundWinnerProps> = ({
 
                 <div className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-right shrink-0">
                   <span className="text-[11px] font-bold block opacity-80">
-                    السومة الفائزة:
+                    أعلى سومة:
                   </span>
                   <span className="text-xl sm:text-2xl font-black">
                     {formatPriceArabic(winningBid)}
@@ -119,15 +119,15 @@ export const BrokerRoundWinner: React.FC<BrokerRoundWinnerProps> = ({
               </div>
 
               {/* Winning Pitch Card (Quoting the exact text) */}
-              <div className="w-full p-4 rounded-xl bg-white border-2 border-[#0A0A0A] shadow-[2px_2px_0px_#0A0A0A] text-right relative">
+              {winningBid > 0 && <div className="w-full p-4 rounded-xl bg-white border-2 border-[#0A0A0A] shadow-[2px_2px_0px_#0A0A0A] text-right relative">
                 <Quote className="w-5 h-5 text-neutral-300 absolute top-3 left-3" />
                 <span className="text-xs font-black text-neutral-500 block mb-1">
                   الحجة الفائزة التي أقنعت الشريطي:
                 </span>
                 <p className="text-sm sm:text-base font-bold text-[#0A0A0A] italic font-sans leading-relaxed">
-                  "{winningQuote || 'أقنع الشريطي بالذكاء والسرعة وفاز بالسومة!'}"
+                  "{winningQuote || 'أعلى سومة معتمدة في الجولة'}"
                 </p>
-              </div>
+              </div>}
             </div>
           </div>
         </div>
@@ -169,9 +169,9 @@ export const BrokerRoundWinner: React.FC<BrokerRoundWinnerProps> = ({
       </div>
 
       {/* Action Footer */}
-      <footer className="w-full max-w-xl flex flex-col gap-3 z-10 pb-4">
+      <footer className="sticky bottom-0 w-full max-w-xl flex flex-col gap-2 z-20 py-3 bg-black/95 border-t border-zinc-800 shrink-0">
         {/* Contestant "Ready" Button (Mobile) */}
-        {!isHost && onPlayerReady && !isLastRound && (
+        {onPlayerReady && currentUserId && !isLastRound && (
           <button
             type="button"
             onClick={() => {

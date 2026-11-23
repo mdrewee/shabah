@@ -15,7 +15,7 @@ export function RoomHostControls({ roomCode, syncEvent }: { roomCode: string; sy
   return <nav aria-label="تحكم المضيف" dir="rtl" className="sticky top-0 z-50 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-white/15 bg-zinc-950/95 px-3 py-2 text-xs font-bold text-white backdrop-blur">
     <span className="text-zinc-400">المضيف · <bdi>{roomCode}</bdi></span>
     <div className="flex flex-wrap gap-2">
-      {['JUDGING', 'CALCULATING', 'EVALUATING'].includes(phase) && <button type="button" onClick={() => window.location.reload()} className="min-h-10 rounded-xl border border-cyan-300/30 px-3 text-cyan-200">إعادة التحليل</button>}
+      {syncEvent !== 'JUDGE_STATE_SYNC' && ['JUDGING', 'CALCULATING', 'EVALUATING'].includes(phase) && <button type="button" onClick={() => window.location.reload()} className="min-h-10 rounded-xl border border-cyan-300/30 px-3 text-cyan-200">إعادة التحليل</button>}
       <button type="button" onClick={async () => {
         if (await confirm('ترجع الجميع للوبي وتنهي الجولة الحالية؟')) roomBus.broadcastReturnToLobby(roomCode);
       }} className="min-h-10 rounded-xl border border-white/20 px-3">العودة للوبي</button>

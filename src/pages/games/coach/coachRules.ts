@@ -2,10 +2,10 @@ import type { CoachRoomState, CoachSlotKey } from './types';
 import { COACH_SLOTS_ORDER } from './types';
 import { doesPlayerMatchBingoCell } from './coachSync';
 
-export function canClaimDraftSlot(state: CoachRoomState, playerId: string, slot: CoachSlotKey, round?: number) {
+export function canClaimDraftSlot(state: CoachRoomState, playerId: string, slot: CoachSlotKey, round?: number, now=Date.now()) {
   const existing = state.squads[playerId]?.slots[slot]?.playerName;
   return state.phase === 'DRAFTING' && !state.currentRoundSelections[playerId] &&
-    (round === undefined || round === state.roundNumber) && COACH_SLOTS_ORDER.includes(slot) &&
+    round === state.roundNumber && (!state.roundEndsAt || now < state.roundEndsAt) && COACH_SLOTS_ORDER.includes(slot) &&
     Boolean(state.squads[playerId]) && (!existing || existing.includes('خانة فارغة'));
 }
 

@@ -1,4 +1,7 @@
+import { RarityBadge } from './RarityBadge';
 import { ShabahThinkingScreen } from '../../../components/common/ShabahThinkingScreen';
+import { getSeenFlyingQuestions, rememberFlyingQuestion } from './flyingQuestionHistory';
+import { FlyingBankExhausted } from './FlyingBankExhausted';
 import { isRoomHost } from '../../../services/roomService';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -87,6 +90,18 @@ const FlyingMobilePlayer: React.FC<{
   const [flyingState, setFlyingState] = useState<FlyingRoomState>(
     () => getPersistedFlyingState(roomCode) || createInitialFlyingState(roomCode)
   );
+
+
+  useEffect(() => {
+    const announce = () => roomBus.emit('FLYING_QUESTION_HISTORY', roomCode, { ids: getSeenFlyingQuestions(), playerId });
+    announce();
+    const off = roomBus.on('presence_sync', announce, roomCode);
+    const offRequest = roomBus.on('REQUEST_ROOM_STATE', announce, roomCode);
+    return () => { off(); offRequest(); };
+  }, [roomCode, playerId]);
+  useEffect(() => {
+    if (flyingState.phase === 'QUESTION') rememberFlyingQuestion(flyingState.currentQuestion.id);
+  }, [flyingState.phase, flyingState.currentQuestion.id]);
   const stateRef = useRef<FlyingRoomState>(flyingState);
   stateRef.current = flyingState;
 
@@ -344,7 +359,10 @@ const FlyingMobilePlayer: React.FC<{
   // -------------------------------------------------------------
   // 1. Lobby Phase
   // -------------------------------------------------------------
-  if (flyingState.phase === 'CALCULATING') return <ShabahThinkingScreen title="الشبح الطائر يوازن ندرة الإجابات" />;
+  if (flyingState.phase === 'CALCULATING') return <ShabahThinkingScreen title="الشبح الطائر يوازن ندرة الإجابات"
+    failureMessage={flyingState.analysisFailed?'تعذر التحقق من الإجابات. إجابتك محفوظة ونقاطك كما هي؛ ننتظر قرار المضيف.':undefined}
+    onRetry={isPlayerHost && flyingState.analysisFailed?()=>roomBus.emit('FLYING_RESULTS_READY',roomCode,{action:'retryAnalysis',roundNumber:flyingState.roundNumber}):undefined}
+    onCancel={isPlayerHost && flyingState.analysisFailed?()=>roomBus.emit('FLYING_RESULTS_READY',roomCode,{action:'cancelAnalysis',roundNumber:flyingState.roundNumber}):undefined}/>;
 
   if (flyingState.phase === 'LOBBY') {
     return (
@@ -368,6 +386,7 @@ const FlyingMobilePlayer: React.FC<{
   // -------------------------------------------------------------
   // 2. Podium Phase (16-Bit Retro Pixel Arcade)
   // -------------------------------------------------------------
+  if (flyingState.questionBankExhausted) return <FlyingBankExhausted onExit={() => navigate('/')} />;
   if (flyingState.phase === 'PODIUM') {
     const ranked = getRankedFlyingContestants(
       flyingState.cumulativeMeters,
@@ -579,7 +598,7 @@ const FlyingMobilePlayer: React.FC<{
   return (
     <div
       dir="rtl"
-      className="h-screen max-h-screen w-full bg-[#070B14] text-white flex flex-col justify-between overflow-hidden relative select-none pixel-art"
+      className="h-full min-h-0 w-full bg-[#070B14] text-white flex flex-col justify-between overflow-hidden relative select-none pixel-art"
     >
       {/* 16-Bit Vertical Skyline World & Ghost Sprites */}
       <div className="absolute inset-0">
@@ -608,15 +627,7 @@ const FlyingMobilePlayer: React.FC<{
           <div className="pixel-box bg-[#111827] text-white border-4 border-black p-3.5 flex items-center justify-between gap-3 shadow-[4px_4px_0px_#000]">
             <div className="flex items-center gap-2.5 overflow-hidden">
               <div className="shrink-0">
-                <span
-                  className="px-2.5 py-1 border-2 border-black font-mono font-black text-xs inline-block"
-                  style={{
-                    backgroundColor: myTierInfo.bgColor,
-                    color: myTierInfo.textColor,
-                  }}
-                >
-                  {myTierInfo.label}
-                </span>
+                <RarityBadge tier={myResult.tier} />
               </div>
               <div className="truncate">
                 <div className="flex items-center gap-2">

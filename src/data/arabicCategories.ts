@@ -105,23 +105,18 @@ export function getRandomLetter(excludeLetters: string[] = []): string {
 /**
  * Checks if a word starts with the target letter, handling the 'ال' prefix.
  */
+export function normalizeArabicAnswer(word: string): string {
+  return (word || '').trim().replace(/[\u064B-\u065F\u0670ـ\u200B-\u200F\uFEFF]/g, '')
+    .replace(/^[^\p{L}]+/u, '').replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ');
+}
+
+export function arabicAnswerRoot(word: string): string {
+  const clean = normalizeArabicAnswer(word);
+  // These names start with original letters, not the definite article.
+  const originalAl = ['المانيا', 'البانيا', 'الماس', 'الهام', 'الياس', 'اليسا', 'الفريد', 'البرت'];
+  return clean.startsWith('ال') && clean.length > 3 && !originalAl.includes(clean.split(' ')[0]) ? clean.slice(2).trim() : clean;
+}
+
 export function wordStartsWithLetter(word: string, targetLetter: string): boolean {
-  if (!word || !targetLetter) return false;
-  let clean = word.trim();
-  // Strip common punctuation or symbols
-  clean = clean.replace(/^[^\p{L}\p{N}]+/u, '');
-
-  const normTarget = normalizeArabicLetter(targetLetter);
-
-  // If word starts with 'ال', strip it if necessary
-  if (clean.startsWith('ال') && clean.length > 2 && normTarget !== 'ا') {
-    const stripped = clean.slice(2).trim();
-    if (stripped.length > 0) {
-      const firstChar = normalizeArabicLetter(stripped[0]);
-      if (firstChar === normTarget) return true;
-    }
-  }
-
-  const directFirst = normalizeArabicLetter(clean[0]);
-  return directFirst === normTarget;
+  return Boolean(word && targetLetter && arabicAnswerRoot(word)[0] === normalizeArabicLetter(targetLetter));
 }

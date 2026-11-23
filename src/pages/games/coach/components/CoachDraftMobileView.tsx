@@ -1,3 +1,4 @@
+import { searchDraftPlayers } from '../draftPlayers';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   CoachSlotKey,
@@ -52,6 +53,8 @@ interface CoachDraftMobileViewProps {
   isReadyForNextRound?: boolean;
   onReadyForNextRound?: () => void;
   evaluationResult?: SquadEvaluationResult | null;
+  verificationMode?: 'local' | 'mixed' | 'ai';
+  onRetryEvaluation?:()=>void;
   isMyTurn?: boolean;
   currentTurnPlayerName?: string;
   turnSecondsRemaining?: number;
@@ -73,6 +76,8 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
   isReadyForNextRound = false,
   onReadyForNextRound,
   evaluationResult,
+  verificationMode,
+  onRetryEvaluation,
   turnSecondsRemaining,
 }) => {
   // 1. Step 1: Select Vacant Slot (Strict Slot Selection Route)
@@ -106,6 +111,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
   }, [roundNumber, turnSecondsRemaining]);
 
   // Search input & suggestions state
+  const [claimPending,setClaimPending]=useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [suggestions, setSuggestions] = useState<FootballSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -122,8 +128,9 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
   useEffect(() => {
     const unsubRejection = roomBus.on('CLAIM_PLAYER_REJECTED', (evt: any) => {
       const payload = evt?.data || evt;
-      if (payload && payload.contestantId === contestantId) {
+      if (evt.roomCode === roomCode && payload && payload.contestantId === contestantId) {
         sound.playBuzz?.();
+        setClaimPending(false);
         setErrorMessage(payload.reason || 'تعذر حجز اللاعب! سبقه شخص آخر');
       }
     });
@@ -131,7 +138,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
     return () => {
       unsubRejection();
     };
-  }, [contestantId]);
+  }, [contestantId, roomCode]);
 
   // Immediate 100% In-Memory Local Search (Zero Latency, Zero Network, Zero CORS)
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -146,7 +153,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
       return;
     }
 
-    const results = searchLocalFootballPlayers(clean, 15);
+    const results = searchDraftPlayers(clean, 15);
     setSuggestions(results);
     setIsSearching(false);
   };
@@ -162,7 +169,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
 
   // Request Claim for player (Simultaneous race with first-come first-served)
   const handleSelectSuggestedPlayer = (player: FootballSearchResult) => {
-    if (hasPickedThisRound || isSelectedSlotFilled) return;
+    if (claimPending || localSecondsLeft<=0 || hasPickedThisRound || isSelectedSlotFilled) return;
     sound.playClick();
     setErrorMessage(null);
 
@@ -170,9 +177,9 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
     const claim = claimedPlayers[norm];
 
     // Local instant lock check
-    if (claim && claim.contestantId !== contestantId) {
+    if (claim) {
       sound.playBuzz?.();
-      setErrorMessage(`اللاعب حجزه ${claim.contestantName} قبلك! اختر لاعباً آخر بسرعة`);
+      setErrorMessage(claim.contestantId === contestantId ? 'اللاعب موجود في تشكيلتك بالفعل؛ اختر لاعباً آخر.' : `اللاعب حجزه ${claim.contestantName} قبلك! اختر لاعباً آخر بسرعة`);
       return;
     }
 
@@ -184,6 +191,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
     }
 
     // Send Real-Time Claim Request to TV host (authoritative lock)
+    setClaimPending(true);
     roomBus.broadcastClaimPlayerRequest(roomCode, {
       contestantId,
       contestantName,
@@ -204,7 +212,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
   };
 
   const handleConfirmCustomName = () => {
-    if (hasPickedThisRound || isSelectedSlotFilled) return;
+    if (claimPending || localSecondsLeft<=0 || hasPickedThisRound || isSelectedSlotFilled) return;
     sound.playClick();
     setErrorMessage(null);
 
@@ -214,9 +222,9 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
     const norm = normalizeFootballSearch(clean);
     const claim = claimedPlayers[norm];
 
-    if (claim && claim.contestantId !== contestantId) {
+    if (claim) {
       sound.playBuzz?.();
-      setErrorMessage(`اللاعب حجزه ${claim.contestantName} قبلك! اختر لاعباً آخر بسرعة`);
+      setErrorMessage(claim.contestantId === contestantId ? 'اللاعب موجود في تشكيلتك بالفعل؛ اختر لاعباً آخر.' : `اللاعب حجزه ${claim.contestantName} قبلك! اختر لاعباً آخر بسرعة`);
       return;
     }
 
@@ -226,6 +234,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
       return;
     }
 
+    setClaimPending(true);
     roomBus.broadcastClaimPlayerRequest(roomCode, {
       contestantId,
       contestantName,
@@ -243,15 +252,23 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
     setSuggestions([]);
   };
 
+  useEffect(()=>{setClaimPending(false);},[roundNumber,hasPickedThisRound]);
+  useEffect(()=>{
+    if(!claimPending)return;
+    const timer=setTimeout(()=>{setClaimPending(false);setErrorMessage('لم يصل تأكيد الحجز؛ تحقق من الاتصال وحاول مجددًا.');},5000);
+    return()=>clearTimeout(timer);
+  },[claimPending]);
+
   // If match evaluation is ready, show personal evaluation card
   if (evaluationResult) {
     return (
       <div className="w-full max-w-md mx-auto flex flex-col gap-4 py-2 px-3 select-none">
+        {verificationMode!=='ai' && <div role="status" className="rounded-xl border border-amber-700 bg-amber-950/30 p-3 text-xs text-amber-200">{verificationMode==='mixed'?'بعض الخانات تحتاج مراجعة إضافية.':'النتيجة من التحقق المحلي؛ بعض الشروط التاريخية قد تحتاج مراجعة الشبح.'}{onRetryEvaluation && <button className="block w-full mt-2 rounded-lg bg-amber-300 text-black p-2 font-bold" onClick={onRetryEvaluation}>إعادة المراجعة الذكية</button>}</div>}
         {/* Personal Score Banner */}
         <div className="shabah-border-wrap">
           <div className="shabah-border-inner">
             <div className="shabah-surface p-5 flex flex-col items-center text-center gap-2">
-              <span className="text-xs font-black text-neutral-500">تقييم تشكيلتك النهائي</span>
+              <span className="text-xs font-black text-neutral-500">{verificationMode==='ai'?'تقييم تشكيلتك النهائي':'تقييم تشكيلتك المبدئي'}</span>
               <div className="text-4xl sm:text-5xl font-black text-[#0A0A0A]">
                 {formatPercent(evaluationResult.totalPercentage)}
               </div>
@@ -283,23 +300,25 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                 className="p-3 bg-neutral-900 border border-neutral-800 rounded-xl flex items-center justify-between gap-3 text-xs"
               >
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-neutral-400 font-bold">
+                  <span className="text-neutral-100 font-bold">
                     {COACH_SLOT_CONFIG[slotKey].label}: {slotEval.playerName}
                   </span>
-                  <span className="text-neutral-500 text-[11px]">
-                    {slotEval.conditionReason} • {slotEval.positionReason}
+                  <span className="text-neutral-300 text-[11px]">
+                    {slotEval.needsReview?'تحقق محلي · ':''}{slotEval.conditionReason} • {slotEval.positionReason}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <span
                     className={`px-2 py-0.5 rounded font-black text-[10px] inline-flex items-center gap-1 ${
-                      slotEval.isValidCondition
+                      slotEval.needsReview && !slotEval.isValidCondition
+                        ? 'bg-amber-950 text-amber-300 border border-amber-700'
+                        : slotEval.isValidCondition
                         ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
                         : 'bg-red-950 text-red-400 border border-red-800'
                     }`}
                   >
-                    {slotEval.isValidCondition ? <Check className="w-2.5 h-2.5" /> : <X className="w-2.5 h-2.5" />}
+                    {slotEval.isValidCondition ? <Check className="w-2.5 h-2.5" /> : slotEval.needsReview ? '?' : <X className="w-2.5 h-2.5" />}
                     <span>شرط</span>
                   </span>
                   <span
@@ -309,7 +328,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                         : 'bg-amber-950 text-amber-400 border border-amber-800'
                     }`}
                   >
-                    {slotEval.isValidPosition ? <Check className="w-2.5 h-2.5" /> : <X className="w-2.5 h-2.5" />}
+                    {slotEval.isValidPosition ? <Check className="w-2.5 h-2.5" /> : slotEval.needsReview ? '?' : <X className="w-2.5 h-2.5" />}
                     <span>مركز</span>
                   </span>
                 </div>
@@ -379,6 +398,8 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
         </div>
       </div>
 
+      <p className="text-xs text-zinc-400 leading-6 px-1">كل جولة لاعب واحد في مركز فارغ تختاره. الشرط ٤٠٪ والمركز ٢٥٪ والقوة التقديرية ٣٥٪؛ القوة تُحتسب عند صحة الشرط والمركز معًا.</p>
+      {claimPending && <p role="status" className="text-amber-300 text-sm">بانتظار تأكيد حجز اللاعب…</p>}
       {/* 2. Step 1: Select Position (Strict Selection Route) */}
       <div className="w-full flex flex-col gap-1.5 p-3 rounded-2xl bg-zinc-950 border border-zinc-800 shadow-md">
         <div className="flex items-center justify-between text-xs font-black">
@@ -490,7 +511,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                   {suggestions.map((p) => {
                     const norm = normalizeFootballSearch(p.name);
                     const claim = claimedPlayers[norm];
-                    const isClaimedByOther = claim && claim.contestantId !== contestantId;
+                    const isClaimedByOther = Boolean(claim);
                     const isUsedPrev = usedPlayersAcrossMatch && usedPlayersAcrossMatch.includes(norm);
                     const isBlocked = isClaimedByOther || isUsedPrev;
 
@@ -498,7 +519,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                       <button
                         key={p.id}
                         type="button"
-                        disabled={isBlocked}
+                        disabled={isBlocked || claimPending || localSecondsLeft<=0}
                         onClick={() => handleSelectSuggestedPlayer(p)}
                         className={`w-full p-2.5 rounded-xl text-right flex items-center justify-between border transition-all ${
                           isBlocked
@@ -510,17 +531,15 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                           {/* Position & Rating Badge */}
                           <div className="w-9 h-9 rounded-xl bg-black border border-zinc-700 flex flex-col items-center justify-center text-white shrink-0">
                             <span className="font-mono text-[9px] font-bold text-zinc-400 leading-none">
-                              {p.position || 'DEF'}
+                              {p.position || '؟'}
                             </span>
-                            <span className="font-mono text-xs font-black text-emerald-400 leading-none mt-0.5">
-                              {p.rating || 85}
-                            </span>
+                            {p.rating != null && <span className="font-mono text-xs font-black text-emerald-400 leading-none mt-0.5">{p.rating}</span>}
                           </div>
 
                           <div className="flex flex-col">
                             <span className="font-black text-xs sm:text-sm">{p.name}</span>
                             <span className="text-[10px] text-neutral-500">
-                              {p.currentClub || p.nationality || ''} • {p.position || 'لاعب'}
+                              {p.position || 'المركز يحتاج تحققًا من الشبح'}
                             </span>
                           </div>
                         </div>
@@ -545,11 +564,13 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                 </div>
               )}
 
+              <p className="text-[11px] text-neutral-500">الأسماء خارج البنك تخضع للتحقق؛ اكتب الاسم الكامل لتجنب تشابه الأسماء.</p>
               {/* Custom Name Entry Button */}
               {searchInput.trim().length >= 2 && (
                 <button
                   type="button"
                   onClick={handleConfirmCustomName}
+                  disabled={claimPending || localSecondsLeft<=0}
                   className="w-full py-3 rounded-xl bg-[#0A0A0A] hover:bg-emerald-700 text-white font-black text-xs sm:text-sm transition-transform active:scale-95 cursor-pointer shadow-[2px_2px_0px_#0A0A0A]"
                 >
                   اعتماد "{searchInput.trim()}" كـ {activeSlotConfig.label}

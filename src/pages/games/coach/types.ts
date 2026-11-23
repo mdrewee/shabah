@@ -70,6 +70,7 @@ export interface ClaimedPlayerInfo {
 }
 
 export interface SlotVerification {
+  needsReview?: boolean;
   slotKey: CoachSlotKey;
   playerName: string;
   isValidCondition: boolean;
@@ -94,6 +95,7 @@ export interface SquadEvaluationResult {
 }
 
 export interface CoachVerdict {
+  verificationMode?: 'local' | 'ai' | 'mixed';
   evaluations: SquadEvaluationResult[];
   winnerId: string;
   winnerName: string;

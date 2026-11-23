@@ -18,6 +18,7 @@ export interface ContestantAnswer {
   isUnique: boolean;
   points: number;
   comment: string;
+  needsReview?: boolean;
   objected?: boolean;
   objectionOverturned?: boolean;
 }
@@ -54,6 +55,7 @@ export interface ObjectionState {
 }
 
 export interface PlayerCategoryResult {
+  needsReview?: boolean;
   category: string;
   answer: string;
   isCorrect: boolean;
@@ -62,6 +64,7 @@ export interface PlayerCategoryResult {
 }
 
 export interface PlayerArabicEvaluation {
+  speedBonus?: number;
   playerId: string;
   playerName: string;
   totalScore: number;

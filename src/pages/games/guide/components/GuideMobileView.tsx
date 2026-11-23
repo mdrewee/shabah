@@ -18,6 +18,8 @@ interface GuideMobileViewProps {
   activeClueText: string;
   activeClueIndex: number;
   hasSubmitted: boolean;
+  clues?: string[];
+  submittedCount?: number;
   onLockPin: (coords: { lat: number; lng: number }) => void;
   onReturnToLobby?: () => void;
 }
@@ -30,6 +32,8 @@ export const GuideMobileView: React.FC<GuideMobileViewProps> = ({
   activeClueText,
   activeClueIndex,
   hasSubmitted,
+  clues,
+  submittedCount = 0,
   onLockPin,
   onReturnToLobby,
 }) => {
@@ -65,7 +69,7 @@ export const GuideMobileView: React.FC<GuideMobileViewProps> = ({
   return (
     <div
       dir="rtl"
-      className="flex-1 w-full h-full min-h-screen bg-[#000000] text-white flex flex-col justify-between p-3 select-none overflow-hidden relative"
+      className="flex-1 w-full min-h-[100dvh] bg-[#000000] text-white flex flex-col justify-between p-3 select-none overflow-y-auto relative"
     >
       {/* 1. Sticky Top Navigation & Timer */}
       <div className="flex-shrink-0 flex items-center justify-between pb-2.5 border-b border-zinc-800">
@@ -115,8 +119,12 @@ export const GuideMobileView: React.FC<GuideMobileViewProps> = ({
         </p>
       </div>
 
+      <details className="text-xs text-zinc-300 my-1">
+        <summary className="cursor-pointer">التلميحات السابقة · ثبّت إجابتهم {toArabicNumber(submittedCount)}</summary>
+        <ol className="space-y-1 p-2">{clues?.slice(0, activeClueIndex + 1).map((clue, i) => <li key={i}>{toArabicNumber(i + 1)}. {clue}</li>)}</ol>
+      </details>
       {/* 3. Center Interactive Leaflet Dark Map */}
-      <div className="w-full h-[62vh] min-h-[360px] rounded-2xl overflow-hidden border border-zinc-800 my-1 relative bg-black flex-shrink-0">
+      <div className="w-full h-[55dvh] min-h-[280px] rounded-2xl overflow-hidden border border-zinc-800 my-1 relative bg-black flex-shrink-0">
         <GuideMobileMap
           key={`${roomCode || 'guide'}-${roundNumber}`}
           userPin={selectedPin}

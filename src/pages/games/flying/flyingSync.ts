@@ -1,5 +1,5 @@
 import { FlyingRoomState, RankedFlyingContestant } from './types';
-import { getRandomFlyingQuestion } from './flyingQuestions';
+import { FLYING_QUESTIONS } from './flyingQuestions';
 
 const STORAGE_PREFIX = 'shabah_flying_state_';
 
@@ -31,7 +31,7 @@ export function createInitialFlyingState(roomCode: string): FlyingRoomState {
     return existing;
   }
 
-  const initialQuestion = getRandomFlyingQuestion([]);
+  const initialQuestion = FLYING_QUESTIONS[0];
 
   const initial: FlyingRoomState = {
     roomCode,
@@ -39,7 +39,7 @@ export function createInitialFlyingState(roomCode: string): FlyingRoomState {
     roundNumber: 1,
     totalRounds: 5,
     currentQuestion: initialQuestion,
-    usedQuestionIds: [initialQuestion.id],
+    usedQuestionIds: [],
     timerSeconds: 35,
     roundStartedAt: 0,
     submissions: {},

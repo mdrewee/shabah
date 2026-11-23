@@ -1,3 +1,6 @@
+import { EXTRA_FLYING_QUESTIONS } from './extraFlyingQuestions';
+import { getSeenFlyingQuestions, rememberFlyingQuestion, restartFlyingQuestionCycle } from './flyingQuestionHistory';
+
 export interface FlyingQuestion {
   id: string;
   title: string;
@@ -116,15 +119,28 @@ export const FLYING_QUESTIONS: FlyingQuestion[] = [
   { id: 'fq_098', title: 'اذكر لغة برمجة حاسوبية معروفة', category: 'تقنية' },
   { id: 'fq_099', title: 'اذكر مهنة يعمل صاحبها أثناء الليل فقط', category: 'مهن' },
   { id: 'fq_100', title: 'اذكر وظيفة توجد داخل طاقم الطائرة', category: 'طيران' },
+  ...EXTRA_FLYING_QUESTIONS,
 ];
 
-export function getRandomUnusedQuestion(allQuestions: FlyingQuestion[], usedIds: string[] = []): FlyingQuestion {
+export function getRandomUnusedQuestion(allQuestions: FlyingQuestion[], usedIds: string[] = []): FlyingQuestion | undefined {
   const available = allQuestions.filter((q) => !usedIds.includes(q.id));
-  const pool = available.length > 0 ? available : allQuestions;
+  const pool = available;
   const randomIndex = Math.floor(Math.random() * pool.length);
   return pool[randomIndex];
 }
 
-export function getRandomFlyingQuestion(usedIds: string[] = []): FlyingQuestion {
-  return getRandomUnusedQuestion(FLYING_QUESTIONS, usedIds);
+export function getRandomFlyingQuestion(usedIds: string[] = []): FlyingQuestion | undefined {
+  const question = getRandomUnusedQuestion(FLYING_QUESTIONS, [...usedIds, ...getSeenFlyingQuestions()]);
+  if (question) rememberFlyingQuestion(question.id);
+  return question;
+}
+
+export function drawNextFlyingQuestion(usedIds: string[] = []) {
+  let question = getRandomFlyingQuestion(usedIds);
+  const restarted = !question;
+  if (restarted) {
+    restartFlyingQuestionCycle();
+    question = getRandomFlyingQuestion();
+  }
+  return { question, restarted };
 }

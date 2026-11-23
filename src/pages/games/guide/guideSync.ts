@@ -3,6 +3,13 @@ import { getRandomGuideLandmarks, GUIDE_LANDMARKS_POOL } from '../../../data/gui
 
 const STORAGE_KEY_PREFIX = 'SHABAH_GUIDE_STATE_';
 
+export function acceptsGuidePin(state: GuideRoomState, payload: any, contestantIds: string[]): boolean {
+  return state.phase === 'GUESSING' && contestantIds.includes(payload?.contestantId) &&
+    !state.guesses[payload.contestantId] && payload.roundNumber === state.roundNumber &&
+    payload.landmarkId === state.currentLandmark.id && Number.isFinite(payload.lat) &&
+    Number.isFinite(payload.lng) && Math.abs(payload.lat) <= 90 && Math.abs(payload.lng) <= 180;
+}
+
 export function createInitialGuideState(roomCode: string): GuideRoomState {
   const initialLandmark = getRandomGuideLandmarks(1)[0] || GUIDE_LANDMARKS_POOL[0];
 
@@ -36,7 +43,9 @@ export function loadPersistedGuideState(roomCode: string): GuideRoomState | null
   try {
     const raw = sessionStorage.getItem(`${STORAGE_KEY_PREFIX}${roomCode}`);
     if (!raw) return null;
-    return JSON.parse(raw);
+    const state = JSON.parse(raw);
+    if (state.roomCode !== roomCode || !['LOBBY','INTRO','GUESSING','RESULTS','PODIUM'].includes(state.phase) || !state.currentLandmark?.id || !Number.isFinite(state.roundNumber)) return null;
+    return state;
   } catch (e) {
     console.warn('[guideSync] Failed to load persisted guide state:', e);
     return null;

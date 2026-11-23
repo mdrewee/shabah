@@ -1,4 +1,6 @@
 import { useGameState } from '../../../hooks/useGameState';
+import { hasAllFlyingAnswers } from './flyingRound';
+import { FlyingBankExhausted } from './FlyingBankExhausted';
 import { ShabahThinkingScreen } from '../../../components/common/ShabahThinkingScreen';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -17,7 +19,7 @@ import {
   clearPersistedFlyingState,
   getRankedFlyingContestants,
 } from './flyingSync';
-import { getRandomFlyingQuestion } from './flyingQuestions';
+import { FLYING_QUESTIONS, drawNextFlyingQuestion } from './flyingQuestions';
 import { evaluateFlyingAnswers, stripEmojis } from './flyingEngine';
 import { FlyingSkyWorld } from './FlyingSkyWorld';
 import { GhostAvatar, getGhostColor } from './GhostAvatar';
@@ -51,6 +53,11 @@ export const FlyingTVRoot: React.FC<{
     createInitialFlyingState(roomCode)
   );
   const analysisGeneration = useRef(0);
+  const roomQuestionHistory = useRef(new Set<string>());
+  useEffect(() => roomBus.on('FLYING_QUESTION_HISTORY', (event: any) => {
+    const ids = event?.data?.ids;
+    if (Array.isArray(ids)) ids.slice(0, FLYING_QUESTIONS.length).filter((id): id is string => typeof id === 'string' && FLYING_QUESTIONS.some((question) => question.id === id)).forEach((id) => roomQuestionHistory.current.add(id));
+  }, roomCode), [roomCode]);
 
   useEffect(() => roomBus.on('REQUEST_ROOM_STATE', () => {
     roomBus.broadcastFlyingSync(roomCode, stateRef.current);
@@ -83,12 +90,19 @@ export const FlyingTVRoot: React.FC<{
   const startQuestionRound = useCallback(
     (roundNum: number, usedIds: string[]) => {
       sound.playClick();
-      const question = getRandomFlyingQuestion(usedIds);
-      const nextUsed = [...usedIds, question.id];
+      const { question, restarted } = drawNextFlyingQuestion([...usedIds, ...roomQuestionHistory.current]);
+      if (restarted) roomQuestionHistory.current.clear();
+      if (!question) {
+        syncState({ ...stateRef.current, phase: 'PODIUM', questionBankExhausted: true });
+        return;
+      }
+      const nextUsed = [...(restarted ? [] : usedIds), question.id];
 
       const nextState: FlyingRoomState = {
         ...stateRef.current,
         phase: 'QUESTION',
+        questionBankExhausted: false,
+        analysisFailed: false,
         roundNumber: roundNum,
         totalRounds: 5,
         currentQuestion: question,
@@ -146,9 +160,10 @@ export const FlyingTVRoot: React.FC<{
   }, [roomCode]);
 
   // Exclusive AI Evaluation (Runs solely on TV Host)
-  const executeEvaluation = useCallback(async (resume = false) => {
+  const executeEvaluation = useCallback(async (resume = false, cancel = false) => {
     const curr = stateRef.current;
     if (curr.phase !== 'QUESTION' && !(resume && curr.phase === 'CALCULATING')) return;
+    if(cancel && !curr.analysisFailed)return;
     const generation = ++analysisGeneration.current;
 
     sound.playTick();
@@ -156,6 +171,7 @@ export const FlyingTVRoot: React.FC<{
     const calcState: FlyingRoomState = {
       ...curr,
       phase: 'CALCULATING',
+      analysisFailed: false,
       submissions: subs,
     };
     stateRef.current = calcState;
@@ -209,13 +225,20 @@ export const FlyingTVRoot: React.FC<{
       });
     }
 
-    const evaluatedResults = await evaluateFlyingAnswers(
+    const evaluatedResults: FlyingContestantResult[] = cancel ? submissionsList.map(sub=>({
+      ...sub,isValid:false,isDuplicated:false,roundMeters:0,tier:'failed',comment:'ألغى المضيف الجولة؛ لم تُحتسب نقاط',
+      previousTotalMeters:curr.cumulativeMeters[sub.contestantId] || 0,newTotalMeters:curr.cumulativeMeters[sub.contestantId] || 0,
+    })) : await evaluateFlyingAnswers(
       curr.currentQuestion,
       submissionsList,
       curr.cumulativeMeters
     );
 
     if (generation !== analysisGeneration.current) return;
+    if(evaluatedResults.some(result=>result.needsReview)){
+      syncState({...calcState,analysisFailed:true});
+      return;
+    }
     const nextCumulative = { ...(curr.cumulativeMeters || {}) };
     const resultMap: Record<string, FlyingContestantResult> = {};
 
@@ -227,6 +250,7 @@ export const FlyingTVRoot: React.FC<{
     const revealingState: FlyingRoomState = {
       ...curr,
       phase: 'REVEALING',
+      analysisFailed: false,
       submissions: subs,
       results: resultMap,
       cumulativeMeters: nextCumulative,
@@ -249,6 +273,13 @@ export const FlyingTVRoot: React.FC<{
     roomBus.broadcast('FLYING_RESULTS_READY', resultsPayload);
   }, [mergedContestants, roomCode, syncState]);
 
+  useEffect(()=>roomBus.on('FLYING_RESULTS_READY',event=>{
+    const p=event.data,cur=stateRef.current;
+    if(cur.phase!=='CALCULATING' || !cur.analysisFailed || p?.roundNumber!==cur.roundNumber)return;
+    if(p.action==='retryAnalysis')void executeEvaluation(true);
+    if(p.action==='cancelAnalysis')void executeEvaluation(true,true);
+  },roomCode),[roomCode,executeEvaluation]);
+
   const resumedAnalysis = useRef(flyingState.phase === 'CALCULATING');
   useEffect(() => {
     if (!resumedAnalysis.current) return;
@@ -267,19 +298,21 @@ export const FlyingTVRoot: React.FC<{
     if (flyingState.phase !== 'QUESTION') return;
 
     const timer = setInterval(() => {
-      setFlyingState((prev) => {
-        if (prev.phase !== 'QUESTION') return prev;
-        if (prev.timerSeconds <= 1) {
-          clearInterval(timer);
-          executeEvaluation();
-          return { ...prev, timerSeconds: 0 };
-        }
-        return { ...prev, timerSeconds: prev.timerSeconds - 1 };
-      });
+      const current = stateRef.current;
+      if (current.phase !== 'QUESTION') return;
+      const remaining = Math.max(0, current.timerSeconds - 1);
+      syncState({ ...current, timerSeconds: remaining });
+      if (remaining === 0) { clearInterval(timer); void executeEvaluation(); }
     }, 1000);
 
     return () => clearInterval(timer);
   }, [flyingState.phase, executeEvaluation]);
+
+  useEffect(() => {
+    if (flyingState.phase !== 'QUESTION' || !hasAllFlyingAnswers(mergedContestants, flyingState.submissions)) return;
+    const timer = window.setTimeout(() => { void executeEvaluation(); }, 80);
+    return () => window.clearTimeout(timer);
+  }, [flyingState.phase, flyingState.submissions, mergedContestants, executeEvaluation]);
 
   // -------------------------------------------------------------
   // Sequenced Spotlight Camera Progression -> Global Zoom-Out
@@ -450,6 +483,7 @@ export const FlyingTVRoot: React.FC<{
   }, [roomCode, handleStartGame, syncState]);
 
   if (mobileContestants) return null;
+  if (flyingState.questionBankExhausted) return <FlyingBankExhausted onExit={() => navigate('/')} />;
 
   // Contestant list resolution
   const contestantsList =
@@ -474,7 +508,11 @@ export const FlyingTVRoot: React.FC<{
   // -------------------------------------------------------------
   // 1. Lobby Phase
   // -------------------------------------------------------------
-  if (flyingState.phase === 'CALCULATING') return <ShabahThinkingScreen title="الشبح الطائر يوازن ندرة الإجابات" />;
+  if (flyingState.phase === 'CALCULATING') return <ShabahThinkingScreen title="الشبح الطائر يوازن ندرة الإجابات"
+    failureMessage={flyingState.analysisFailed?'تعذر التحقق من الإجابات. حفظناها ولم نغيّر نقاط أحد؛ أعد المحاولة أو ألغِ الجولة دون نقاط.':undefined}
+    onRetry={flyingState.analysisFailed?()=>void executeEvaluation(true):undefined}
+    onCancel={flyingState.analysisFailed?()=>void executeEvaluation(true,true):undefined}
+    onReturnToLobby={handleReturnToLobby}/>;
 
   if (flyingState.phase === 'LOBBY') {
     return (

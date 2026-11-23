@@ -19,16 +19,17 @@ export const BrokerFinalPodium: React.FC<BrokerFinalPodiumProps> = ({
   isHost = false,
 }) => {
   useEffect(() => {
-    sound.playVictory();
+    if (contestants.some(c => c.totalBankroll > 0)) sound.playVictory();
   }, []);
 
   // Sort contestants descending by cumulative bankroll
   const sorted = [...contestants].sort((a, b) => (b.totalBankroll || 0) - (a.totalBankroll || 0));
 
-  const firstPlace = sorted[0];
-  const secondPlace = sorted[1];
-  const thirdPlace = sorted[2];
-  const rest = sorted.slice(3);
+  const hasSales = sorted.some(c => c.totalBankroll > 0);
+  const firstPlace = hasSales ? sorted[0] : undefined;
+  const secondPlace = hasSales ? sorted[1] : undefined;
+  const thirdPlace = hasSales ? sorted[2] : undefined;
+  const rest = hasSales ? sorted.slice(3) : [];
 
   return (
     <div
@@ -53,6 +54,7 @@ export const BrokerFinalPodium: React.FC<BrokerFinalPodiumProps> = ({
 
       {/* Main Podium & Champion Showcase */}
       <main className="w-full max-w-4xl my-auto z-10 py-6 flex flex-col items-center">
+        {!hasSales && <p className="text-center text-xl font-bold text-zinc-200 py-8">انتهت اللعبة دون مبيعات معتمدة؛ لا يوجد فائز.</p>}
         {/* Grand Champion Hero Card */}
         {firstPlace && (
           <div className="w-full max-w-xl shabah-border-wrap mb-8">

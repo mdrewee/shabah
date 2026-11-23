@@ -46,8 +46,7 @@ export function cleanAndParseJSON<T = any>(rawText: string): T {
 }
 
 /**
- * Offline Heuristic Fallback in case of total network outage or API downtime
- * Guarantees every non-empty answer gets altitude and the game never freezes.
+ * Preserve answers and scores until unavailable or incomplete AI verdicts can be retried.
  */
 function evaluateOfflineSubmissions(
   submissions: FlyingSubmission[],
@@ -88,31 +87,18 @@ function evaluateOfflineSubmissions(
       };
     }
 
-    let earned = 240;
-    let tier: FlyingTier = 'uncommon';
-    let comment = 'إجابة مسجلة، استمر بالتحليق';
-
-    if (clean.length > 7) {
-      earned = 500;
-      tier = 'rare';
-      comment = 'إجابة نادرة ومميزة';
-    } else if (clean.length <= 3) {
-      earned = 90;
-      tier = 'common';
-      comment = 'إجابة شائعة ومعروفة';
-    }
-
     return {
       contestantId: sub.contestantId,
       contestantName: sub.contestantName,
       answer: clean,
-      isValid: true,
+      isValid: false,
       isDuplicated: false,
-      roundMeters: earned,
-      tier,
-      comment,
+      needsReview: true,
+      roundMeters: 0,
+      tier: 'failed' as FlyingTier,
+      comment: 'تعذر التحقق؛ الإجابة محفوظة للمراجعة',
       previousTotalMeters: prev,
-      newTotalMeters: prev + earned,
+      newTotalMeters: prev,
     };
   });
 }
@@ -149,6 +135,8 @@ export async function evaluateFlyingAnswers(
       ids.forEach((id) => exactDupeIds.add(id));
     }
   });
+  const unverified=evaluateOfflineSubmissions(submissions,exactDupeIds,previousMeters);
+  if(unverified.every(result=>!result.needsReview))return unverified;
 
   const SYSTEM_INSTRUCTION = `أنت "حكم الشبح الطائر"؛ قاضٍ صارم جداً، دقيق لغوياً وواقعياً، ولا يقبل المجاملة أو الإجابات التقريبية.
 مهمتك تقييم إجابات المتسابقين على السؤال المطروح وتحديد الارتفاع بالأمتار وفق قواعد ندرة صارمة.
@@ -220,11 +208,12 @@ ${JSON.stringify(
     const aiMap = new Map<string, any>();
     parsed.results.forEach((item: any) => {
       if (item && item.contestantId) {
-        aiMap.set(String(item.contestantId), item);
+        const id=String(item.contestantId);
+        aiMap.set(id,aiMap.has(id)?null:item);
       }
     });
 
-    return submissions.map((sub) => {
+    return submissions.map((sub,index) => {
       const prev = previousMeters[sub.contestantId] || 0;
       const aiItem = aiMap.get(sub.contestantId);
       const cleanAnswer = stripEmojis(sub.answer || '').trim();
@@ -261,22 +250,8 @@ ${JSON.stringify(
         };
       }
 
-      // If AI didn't include this contestant, award safe fallback
-      if (!aiItem) {
-        const fallbackEarned = cleanAnswer.length > 6 ? 420 : 200;
-        return {
-          contestantId: sub.contestantId,
-          contestantName: sub.contestantName,
-          answer: cleanAnswer,
-          isValid: true,
-          isDuplicated: false,
-          roundMeters: fallbackEarned,
-          tier: (cleanAnswer.length > 6 ? 'rare' : 'uncommon') as FlyingTier,
-          comment: 'إجابة مسجلة، استمر بالتحليق',
-          previousTotalMeters: prev,
-          newTotalMeters: prev + fallbackEarned,
-        };
-      }
+      if (!aiItem || typeof aiItem.isValid!=='boolean' || typeof aiItem.isDuplicated!=='boolean' ||
+          (aiItem.isValid && !aiItem.isDuplicated && (typeof aiItem.roundMeters!=='number' || !Number.isFinite(aiItem.roundMeters) || aiItem.roundMeters<=0))) return unverified[index];
 
       const isDuplicated = Boolean(aiItem.isDuplicated);
       const isAIValid = Boolean(aiItem.isValid);
@@ -292,15 +267,7 @@ ${JSON.stringify(
         roundMeters = 0;
         tier = 'failed';
       } else {
-        const parsedMeters = Number(aiItem.roundMeters);
-        const rawMeters =
-          !isNaN(parsedMeters) && parsedMeters > 0
-            ? parsedMeters
-            : cleanAnswer.length > 6
-            ? 450
-            : 200;
-
-        roundMeters = Math.max(60, Math.min(1000, Math.round(rawMeters)));
+        roundMeters = Math.max(60, Math.min(1000, Math.round(aiItem.roundMeters)));
 
         if (roundMeters >= 750) tier = 'legendary';
         else if (roundMeters >= 400) tier = 'rare';
@@ -328,7 +295,7 @@ ${JSON.stringify(
     });
   } catch (err) {
     console.error(
-      '[FLYING_ENGINE] Gemini unavailable, applying safe heuristic fallback:',
+      '[FLYING_ENGINE] Verification unavailable; preserving answers without awarding points:',
       err
     );
     return evaluateOfflineSubmissions(submissions, exactDupeIds, previousMeters);
