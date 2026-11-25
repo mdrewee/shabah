@@ -206,3 +206,7 @@
 }
 
 
+
+@keyframes shabah-confetti {from {transform:translateY(-8px) rotate(0);opacity:1;}to {transform:translateY(110px) rotate(220deg);opacity:0;}}
+.shabah-confetti {animation:shabah-confetti 1.4s ease-out both;}
+@media (prefers-reduced-motion: reduce) {.shabah-confetti {display:none;}}

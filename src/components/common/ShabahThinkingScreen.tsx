@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ShabahGhost } from '../mascot/ShabahGhost';
 import { useConfirmation } from './ConfirmationProvider';
+import { WaitingChase } from './WaitingChase';
 
 const remarks = [
   'لحظة… الشبح يجمع الخيوط',
@@ -24,16 +25,17 @@ export function ShabahThinkingScreen({ title = 'الشبح يحلّل الإجا
   }, []);
 
   return (
-    <section dir="rtl" role="status" aria-live="polite"
-      className="grid min-h-[100dvh] w-full place-content-center overflow-hidden bg-[#080811] px-6 py-12 text-center text-white">
-      <div className="relative mx-auto mb-7 grid h-52 w-52 place-items-center">
+    <section dir="rtl"
+      className="flex min-h-[100dvh] w-full flex-col items-center justify-center bg-[#080811] px-4 py-5 text-center text-white">
+      <div className="relative mx-auto mb-3 grid h-16 w-16 place-items-center">
         <div aria-hidden="true" className="absolute inset-0 rounded-full bg-gradient-to-tr from-purple-600/25 via-cyan-400/15 to-green-400/20 blur-2xl motion-safe:animate-pulse" />
-        <ShabahGhost mood="judging" className="relative h-44 w-44" trackPointer={false} />
+        <ShabahGhost mood="judging" className="relative h-16 w-16" trackPointer={false} />
       </div>
-      <h2 className="text-2xl font-black sm:text-4xl">{title}</h2>
-      <p className="mt-4 min-h-12 max-w-md text-sm leading-7 text-zinc-300">
+      <h2 className="text-xl font-black sm:text-2xl">{title}</h2>
+      <p role="status" className="mt-2 max-w-md text-xs leading-6 text-zinc-300">
         {failureMessage || (seconds >= 35 ? 'التحليل أخذ وقت أطول من المعتاد. ننتظر النتيجة، ويمكن للمضيف إعادة المحاولة أو الرجوع للوبي.' : remarks[Math.floor(seconds / 6) % remarks.length])}
       </p>
+      {!failureMessage && <WaitingChase/>}
       <div aria-hidden="true" className="mt-6 flex justify-center gap-2">
         {[0, 1, 2].map((index) => <span key={index}
           className="h-2 w-2 rounded-full bg-cyan-200 motion-safe:animate-pulse"

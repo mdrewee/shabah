@@ -60,6 +60,7 @@ export interface WorstExcuseRecord {
 }
 
 export interface JudgeRoomState {
+  roundTransition?: {key:string;endsAt:number};
   gameVersion?: number;
   defenseEndsAt?: number;
   submittedPlayerIds?: string[];

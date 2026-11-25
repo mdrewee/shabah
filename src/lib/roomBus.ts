@@ -1148,6 +1148,13 @@ class RoomBus {
     return this.supabaseChannels.get(clean) || null;
   }
 
+  public retryConnection(roomCode:string):void {
+    const code=cleanRoomCode(roomCode);
+    if(!code || this.isIntentionalLeave.get(code))return;
+    if(this.isChannelSubscribed(code)){this.emit('REQUEST_ROOM_STATE',code,{});return;}
+    this.scheduleReconnect(code,this.latestPresence.get(code));
+  }
+
   public isChannelSubscribed(roomCode?: string): boolean {
     const clean = cleanRoomCode(roomCode || this.currentRoomCode || '');
     if (!clean) return false;
@@ -1534,6 +1541,7 @@ class RoomBus {
 
           // (Re)connected: hosts push their state, clients ask for the latest one
           if (this.isHosting(cleanCode)) {
+            this.dispatchLocal({roomCode:cleanCode,type:'REQUEST_ROOM_STATE',data:{},timestamp:Date.now()});
             const local = this.getRoom(cleanCode);
             if (local) this.broadcastState(local);
           } else {

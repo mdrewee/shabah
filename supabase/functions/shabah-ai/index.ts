@@ -32,9 +32,12 @@ Deno.serve(async (request) => {
     if(!/^[a-zA-Z0-9._-]+$/.test(model))return reply({error:'Invalid AI model configuration',code:'AI_MODEL_UNAVAILABLE',retryable:false},503);
     const maxOutputTokens = Math.min(8192, Math.max(128, Number(options.maxOutputTokens) || 1500));
     const controller = new AbortController();
+    const deadline = Date.now() + 35000;
     const timeout = setTimeout(() => controller.abort(), 35000);
     try {
-      const response = await fetch(
+      let response: Response | undefined;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
           method: 'POST',
@@ -50,6 +53,14 @@ Deno.serve(async (request) => {
           }),
         },
       );
+        if (response.ok || ![408, 500, 502, 503, 504].includes(response.status) || attempt === 2) break;
+        const delay = 1000 * 2 ** attempt + Math.floor(Math.random() * 500);
+        if (Date.now() + delay + 2000 >= deadline) break;
+        console.warn('Gemini transient retry', response.status, attempt + 1);
+        try { await response.body?.cancel(); } catch {}
+        await new Promise<void>((resolve) => setTimeout(resolve, delay));
+      }
+      if (!response) throw new Error('No AI response');
       if (!response.ok) {
         console.warn('Gemini upstream HTTP', response.status);
         const status=response.status;

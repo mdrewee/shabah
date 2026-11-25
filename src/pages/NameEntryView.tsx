@@ -227,7 +227,7 @@ export const NameEntryView: React.FC = () => {
                 اكتب اسمك عشان تدخل
               </h1>
               <p className="text-xs sm:text-sm font-bold text-neutral-600 mt-1">
-                بيظهر اسمك لكل الموجودين في اللوبي
+                بيظهر اسمك لكل الموجودين في اللوبي · الدخول بالكود مجاني للمشاركين
               </p>
             </div>
 

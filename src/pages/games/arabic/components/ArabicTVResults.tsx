@@ -1,3 +1,5 @@
+import {RoundCelebration,roundLeaders} from '../../../../components/common/RoundCelebration';
+import {ResultNavigator,resultCardId} from '../../../../components/common/ResultNavigator';
 import { ShabahRoundReveal } from '../../../../components/common/ShabahRoundReveal';
 import React, { useState, useEffect } from 'react';
 import {
@@ -56,25 +58,16 @@ export const ArabicTVResults: React.FC<ArabicTVResultsProps> = ({
 
   const count = playerEvals.length;
 
-  const gridContainerClass =
-    count <= 1
-      ? 'max-w-md mx-auto w-full grid grid-cols-1 gap-6'
-      : count === 2
-      ? 'grid grid-cols-2 gap-6'
-      : count === 3
-      ? 'grid grid-cols-3 gap-5'
-      : count === 4
-      ? 'grid grid-cols-4 gap-4'
-      : count === 5
-      ? 'grid grid-cols-5 gap-3'
-      : 'grid grid-flow-col auto-cols-[280px] gap-4 overflow-x-auto pb-2';
+  const gridContainerClass = 'grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 w-full';
 
   return (
     <ShabahRoundReveal entries={playerEvals.map((item) => ({ id: item.playerId, name: item.playerName, answer: item.results.map((result) => result.category + ': ' + result.answer).join(' · ') }))}><div
       dir="rtl"
-      className="w-full h-screen max-h-screen overflow-hidden bg-black text-white p-5 flex flex-col justify-between select-none"
+      className="w-full min-h-screen overflow-y-auto bg-black text-white p-5 flex flex-col justify-between select-none"
     >
       {Object.values(state.evaluations).some(p => p.answers.some(a => a.needsReview)) && <p role="status" className="text-amber-300 text-sm p-2">تعذر التحقق من بعض الإجابات؛ اطلبوا مراجعة المجموعة قبل الجولة التالية.</p>}
+      <RoundCelebration award="نجم الحروف" names={roundLeaders(playerEvals.map(p=>({name:p.playerName,score:p.totalScore,eligible:!p.results.some(r=>r.needsReview)})))}/>
+      <ResultNavigator scope="arabic-tv" players={playerEvals.map(p=>({id:p.playerId,name:p.playerName}))}/>
       {/* Top Header Bar */}
       <div className="flex-shrink-0 flex items-center justify-between pb-3 border-b border-zinc-800">
         <div className="flex items-center gap-4">
@@ -139,20 +132,21 @@ export const ArabicTVResults: React.FC<ArabicTVResultsProps> = ({
       </div>
 
       {/* Multi-Player Side-by-Side Horizontal Grid */}
-      <div className="flex-1 my-3 flex flex-col justify-center overflow-hidden">
+      <div className="flex-1 my-3 flex flex-col justify-start">
         {playerEvals.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-zinc-500 font-sans">
             <Clock className="w-8 h-8 mb-2 animate-spin text-zinc-600" />
             <span>جاري استلام وتحكيم الإجابات...</span>
           </div>
         ) : (
-          <div className={`w-full h-full max-h-[calc(100vh-140px)] overflow-hidden ${gridContainerClass}`}>
+          <div className={`w-full ${gridContainerClass}`}>
             {playerEvals.map((player) => {
               const totalPoints = player.totalScore || 0;
               const cumulative = state.cumulativeScores?.[player.playerId] || totalPoints;
 
               return (
                 <div
+                  id={resultCardId('arabic-tv',player.playerId)}
                   key={player.playerId}
                   className="h-full flex flex-col justify-between bg-zinc-950 border-2 border-zinc-800 rounded-2xl p-3.5 shadow-xl overflow-hidden"
                 >

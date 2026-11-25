@@ -1,3 +1,5 @@
+import {RoundCelebration,roundLeaders} from '../../../../components/common/RoundCelebration';
+import {ResultNavigator,resultCardId} from '../../../../components/common/ResultNavigator';
 import React, { useEffect, useState } from 'react';
 import type { JudgeRoomState } from '../types';
 import { ShabahGhost } from '../../../../components/mascot/ShabahGhost';
@@ -49,14 +51,17 @@ export function JudgePartyStage({state,playerId,ownCardId,isHost=false,activePla
         <p className="text-zinc-500 text-xs">كل صوت ٣ نقاط · لا تصويت للنفس · مكافأة الشبح نقطتان لأفضل تقييم.</p>
       </>}
       {state.phase==='JUDGING' && <div className="text-center py-8 space-y-4">
+        {!party.aiFailed && <WaitingChase/>}
         <h2 className="font-black text-2xl">{party.aiFailed?'تعذر حكم الشبح':'الشبح يجهّز التعليق الأخير…'}</h2>
         <p className="text-zinc-400">{party.aiFailed?'لم نخترع درجات. المضيف يقدر يعيد المحاولة أو يلغي الجولة دون نقاط.':'الأصوات محفوظة، والأسماء ما انكشفت.'}</p>
         {isHost && party.aiFailed && <><button className={button} onClick={()=>onAction?.('retry')}>إعادة محاولة الحكم</button><button className="text-zinc-400 underline" onClick={()=>onAction?.('cancel')}>إلغاء الجولة دون نقاط</button></>}
       </div>}
       {result && <>
+        <RoundCelebration award="نجم التصريف" names={party.cancelled?[]:roundLeaders((state.verdictList || []).map(v=>({name:v.playerName,score:v.score})))}/>
+        <ResultNavigator scope="judge" players={(state.verdictList || []).map(v=>({id:v.playerId,name:v.playerName}))} currentId={playerId}/>
         <h2 className="font-black text-xl">{party.cancelled?'أُلغيت الجولة':'انكشفت التصاريف!'}</h2>
         {party.aiFailed && party.mode==='jury' && !party.cancelled && <p role="status" className="text-amber-300 text-sm">تعذر تعليق الشبح؛ النقاط من أصوات المجموعة فقط.</p>}
-        {[...(state.verdictList || [])].sort((a,b)=>b.score-a.score).map(v=><article key={v.playerId} className="rounded-2xl border border-zinc-700 bg-zinc-950 p-4 space-y-2">
+        {[...(state.verdictList || [])].sort((a,b)=>b.score-a.score).map(v=><article id={resultCardId('judge',v.playerId)} style={{borderColor:v.playerId===playerId?'#6ee7b7':undefined}} key={v.playerId} className="rounded-2xl border border-zinc-700 bg-zinc-950 p-4 space-y-2">
           <div className="flex justify-between gap-3"><h3 className="font-black">{v.playerName}{v.playerId===playerId?' · أنت':''}</h3><span className="text-emerald-300 font-black">+{toArabicNumber(v.score)}</span></div>
           <p className="text-lg font-bold break-words">{v.excuse || 'لم يرسل تصريفًا'}</p>
           <p className="text-xs text-purple-300">{party.mode==='jury'?`${toArabicNumber(party.tallies?.[v.playerId]?.votes || 0)} أصوات · مكافأة الشبح +${toArabicNumber(party.tallies?.[v.playerId]?.bonus || 0)}`:v.aiUnavailable?'لا يوجد حكم معتمد':`حكم الشبح: ${v.verdict}`}</p>
@@ -71,3 +76,4 @@ export function JudgePartyStage({state,playerId,ownCardId,isHost=false,activePla
     </footer>
   </section>;
 }
+import {WaitingChase} from '../../../../components/common/WaitingChase';

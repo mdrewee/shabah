@@ -72,6 +72,7 @@ export interface PlayerArabicEvaluation {
 }
 
 export interface ArabicRoomState {
+  roundTransition?: {key:string;endsAt:number};
   roomCode: string;
   phase: ArabicPhase;
   roundNumber: number;

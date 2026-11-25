@@ -1,3 +1,6 @@
+import {RoundCelebration,roundLeaders} from '../../../../components/common/RoundCelebration';
+import {ResultNavigator,resultCardId} from '../../../../components/common/ResultNavigator';
+import {WaitingChase} from '../../../../components/common/WaitingChase';
 import { searchDraftPlayers } from '../draftPlayers';
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -264,6 +267,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
     return (
       <div className="w-full max-w-md mx-auto flex flex-col gap-4 py-2 px-3 select-none">
         {verificationMode!=='ai' && <div role="status" className="rounded-xl border border-amber-700 bg-amber-950/30 p-3 text-xs text-amber-200">{verificationMode==='mixed'?'بعض الخانات تحتاج مراجعة إضافية.':'النتيجة من التحقق المحلي؛ بعض الشروط التاريخية قد تحتاج مراجعة الشبح.'}{onRetryEvaluation && <button className="block w-full mt-2 rounded-lg bg-amber-300 text-black p-2 font-bold" onClick={onRetryEvaluation}>إعادة المراجعة الذكية</button>}</div>}
+        <RoundCelebration award="مهندس التشكيلة" names={verificationMode==='ai' && evaluationResult.rank===1?[contestantName]:[]}/>
         {/* Personal Score Banner */}
         <div className="shabah-border-wrap">
           <div className="shabah-border-inner">
@@ -332,6 +336,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                     <span>مركز</span>
                   </span>
                 </div>
+                <p className="mt-2 text-xs leading-6 text-zinc-300">الشرط: {slotEval.conditionReason}</p><p className="text-xs leading-6 text-zinc-300">المركز: {slotEval.positionReason}</p>
               </div>
             );
           })}
@@ -398,7 +403,6 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
         </div>
       </div>
 
-      <p className="text-xs text-zinc-400 leading-6 px-1">كل جولة لاعب واحد في مركز فارغ تختاره. الشرط ٤٠٪ والمركز ٢٥٪ والقوة التقديرية ٣٥٪؛ القوة تُحتسب عند صحة الشرط والمركز معًا.</p>
       {claimPending && <p role="status" className="text-amber-300 text-sm">بانتظار تأكيد حجز اللاعب…</p>}
       {/* 2. Step 1: Select Position (Strict Selection Route) */}
       <div className="w-full flex flex-col gap-1.5 p-3 rounded-2xl bg-zinc-950 border border-zinc-800 shadow-md">
@@ -472,6 +476,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
           <p className="text-xs font-bold text-zinc-400 mt-1">
             تم اعتماد اختيارك. انتظر الجولة التالية لاختيار لاعب جديد.
           </p>
+          {hasPickedThisRound && <WaitingChase/>}
         </div>
       ) : (
         /* Active Search & Claim State */

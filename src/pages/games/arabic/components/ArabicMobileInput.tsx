@@ -1,3 +1,4 @@
+import {WaitingChase} from '../../../../components/common/WaitingChase';
 import { useConfirmation } from '../../../../components/common/ConfirmationProvider';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { toArabicNumber, formatSecondsToTime } from '../../../../utils/numberFormat';
@@ -124,6 +125,7 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
           وقتك مسجل للمنافسة على بونص السرعة (+٥ نقاط). بانتظار باقي المتسابقين...
         </p>
 
+        <WaitingChase/>
         {/* Live Timer Indicator */}
         <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-300 font-sans font-bold text-lg">
           <Clock className="w-5 h-5 text-amber-400 animate-pulse" />

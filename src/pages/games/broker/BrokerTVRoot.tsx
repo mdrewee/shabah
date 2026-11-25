@@ -1,3 +1,4 @@
+import {useRoundTransition} from '../../../hooks/useRoundTransition';
 import { beginBrokerNegotiation, nextBrokerRound, finishBrokerRound, acceptsBrokerPitch } from './brokerRound';
 import { evaluateBrokerPitch } from '../../../services/brokerEngine';
 import { useGameState } from '../../../hooks/useGameState';
@@ -329,6 +330,8 @@ export const BrokerTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
     return () => clearTimeout(timer);
   }, [mobileContestants, brokerState.phase]);
 
+  useRoundTransition(brokerState.phase==='ROUND_WINNER'?'ROUND_WINNER:'+brokerState.roundNumber:null,brokerState.roundTransition,
+    roundTransition=>{const next={...brokerStateRef.current,roundTransition};setBrokerState(next);roomBus.broadcastBrokerSync(roomCode,next);},handleAdvanceFromRound);
   if (mobileContestants) return null;
 
   if (brokerState.phase === 'LOBBY') {

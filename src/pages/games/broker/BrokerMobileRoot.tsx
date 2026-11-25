@@ -1,3 +1,4 @@
+import {WaitingChase} from '../../../components/common/WaitingChase';
 import { isRoomHost } from '../../../services/roomService';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -419,7 +420,7 @@ export const BrokerMobileRoot: React.FC = () => {
               : 'bg-white text-[#0A0A0A] border-[#0A0A0A] shadow-[2px_2px_0px_#0A0A0A]'
           }`}
         >
-          <span className="text-xs font-black text-neutral-600">سومتك الحالية للشريطي:</span>
+          <span className="text-xs font-black text-neutral-600">سومة الشريطي لسلعتك:</span>
           <div className="flex items-center gap-1.5">
             <Coins className="w-5 h-5 text-amber-500" />
             <span className="text-lg sm:text-xl font-black text-[#0A0A0A]">
@@ -487,6 +488,7 @@ export const BrokerMobileRoot: React.FC = () => {
           </div>
         )}
 
+        {bulletsRemaining<=0 && !isSubmitting && <WaitingChase/>}
         <div ref={chatBottomRef} />
       </main>
 
@@ -504,7 +506,7 @@ export const BrokerMobileRoot: React.FC = () => {
                   : isSubmitting
                   ? 'الشريطي يرد عليك...'
                   : currentBid === 0
-                  ? 'اكتب أول رسالة لافتتاح السوم...'
+                  ? 'أنت البائع؛ اعرض سلعتك وأقنع المشتري...'
                   : 'أقنع الشريطي يرفع السومة...'
               }
               maxLength={140}

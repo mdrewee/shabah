@@ -3,7 +3,7 @@
 
 class SoundEngine {
   private ctx: AudioContext | null = null;
-  private isMuted: boolean = false;
+  private isMuted: boolean = (()=>{try{return typeof localStorage!=='undefined' && localStorage.getItem('shabah_sound_muted')==='true';}catch{return false;}})();
   private activeOscillators: Set<OscillatorNode> = new Set();
   private activeAudios: Set<HTMLAudioElement> = new Set();
 
@@ -25,6 +25,7 @@ class SoundEngine {
 
   public setMuted(muted: boolean) {
     this.isMuted = muted;
+    try{localStorage.setItem('shabah_sound_muted',String(muted));}catch{}
     if (muted) {
       this.stopAllAudio();
     }

@@ -1,3 +1,4 @@
+import {useRoundTransition} from '../../../hooks/useRoundTransition';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useRoom, roomBus } from '../../../lib/roomBus';
@@ -65,7 +66,6 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       ? realtimeContestants
       : (activeRoom?.players || []).filter((p) => p.id !== 'host_tv'));
 
-  const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null);
 
   // The room bus coalesces outgoing snapshots.
   const syncState = useCallback(
@@ -159,6 +159,7 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
         computedResults[c.id] = {
           contestantId: c.id,
           contestantName: c.name || g.contestantName,
+          hasGuess: true,
           lat: g.lat,
           lng: g.lng,
           distanceKm: dist,
@@ -184,6 +185,7 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
         computedResults[c.id] = {
           contestantId: c.id,
           contestantName: c.name,
+          hasGuess: false,
           lat: 0,
           lng: 0,
           distanceKm: 20000,
@@ -207,6 +209,7 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       computedResults[cId] = {
         contestantId: cId,
         contestantName: cName,
+        hasGuess: true,
         lat: g.lat,
         lng: g.lng,
         distanceKm: dist,
@@ -242,8 +245,8 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
   }, [mergedContestants, syncState]);
 
   const handleNextRound = useCallback(() => {
-    setAutoAdvanceCountdown(null);
     const curr = stateRef.current;
+    if(curr.phase!=='RESULTS')return;
 
     // After 5 rounds, transition to final podium
     if (curr.roundNumber >= curr.totalRounds) {
@@ -440,43 +443,6 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
   }, [roomCode, mergedContestants.length, syncState, executeRoundEvaluation]);
 
   // -------------------------------------------------------------
-  // 3-Second Auto-Advance Countdown when readyCount >= 2 in RESULTS
-  // -------------------------------------------------------------
-  useEffect(() => {
-    if (guideState.phase !== 'RESULTS') {
-      setAutoAdvanceCountdown(null);
-      return;
-    }
-
-    const readyCount = mergedContestants.filter(c => guideState.readyPlayersNextRound?.includes(c.id)).length;
-    const requiredReady = Math.max(1, mergedContestants.length);
-
-    if (readyCount >= requiredReady) {
-      if (autoAdvanceCountdown === null) {
-        setAutoAdvanceCountdown(3);
-      }
-    } else {
-      setAutoAdvanceCountdown(null);
-    }
-  }, [guideState.phase, guideState.readyPlayersNextRound, mergedContestants.length, autoAdvanceCountdown]);
-
-  useEffect(() => {
-    if (autoAdvanceCountdown === null) return;
-
-    if (autoAdvanceCountdown <= 0) {
-      handleNextRound();
-      return;
-    }
-
-    sound.playTick();
-    const timer = setTimeout(() => {
-      setAutoAdvanceCountdown((prev) => (prev !== null ? prev - 1 : null));
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [autoAdvanceCountdown, handleNextRound]);
-
-  // -------------------------------------------------------------
   // View Rendering
   // -------------------------------------------------------------
 
@@ -492,11 +458,12 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
   }, [mobileContestants, guideState.phase, startGuessingRound]);
 
   useEffect(() => roomBus.on('RETURN_TO_LOBBY', () => {
-    setAutoAdvanceCountdown(null);
     const fresh = createInitialGuideState(roomCode);
     syncState(fresh);
   }, roomCode), [roomCode, syncState]);
 
+  useRoundTransition(guideState.phase==='RESULTS'?'RESULTS:'+guideState.roundNumber:null,guideState.roundTransition,
+    roundTransition=>syncState({...stateRef.current,roundTransition}),handleNextRound);
   if (mobileContestants) return null;
 
   if (guideState.phase === 'LOBBY') {
@@ -570,6 +537,7 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
     <GuideFinalPodium
       isTV={true}
       rankedContestants={ranked}
+      onExit={handleEndGame}
       onReturnToLobby={handleReturnToLobby}
     />
   );

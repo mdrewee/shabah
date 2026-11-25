@@ -1,3 +1,5 @@
+import {RoundCelebration,roundLeaders} from '../../../../components/common/RoundCelebration';
+import {ResultNavigator,resultCardId} from '../../../../components/common/ResultNavigator';
 import { ShabahRoundReveal } from '../../../../components/common/ShabahRoundReveal';
 import React from 'react';
 import { GuideLandmark } from '../../../../data/guideLandmarks';
@@ -59,10 +61,12 @@ export const GuideResultsStage: React.FC<GuideResultsStageProps> = ({
     '#EAB308', // Amber Gold
     '#06B6D4', // Cyan
     '#8B5CF6', // Violet
+    '#FB7185',
+    '#A3E635',
   ];
 
   // Convert results to map markers with assigned colors
-  const markers: MapMarker[] = resultsList.map((r, idx) => ({
+  const markers: MapMarker[] = resultsList.filter(r=>r.hasGuess!==false).map((r, idx) => ({
     id: r.contestantId,
     name: r.contestantName,
     lat: r.lat,
@@ -83,7 +87,8 @@ export const GuideResultsStage: React.FC<GuideResultsStageProps> = ({
         dir="rtl"
         className="w-full h-screen max-h-screen bg-[#000000] text-white flex flex-col justify-between p-6 select-none overflow-hidden"
       >
-        {/* Top Header */}
+        <RoundCelebration award="نجم الرحلة" names={roundLeaders(resultsList.map(r=>({name:r.contestantName,score:r.points,eligible:r.hasGuess!==false})))}/>
+      {/* Top Header */}
         <header className="flex items-center justify-between pb-4 border-b border-zinc-800 flex-shrink-0">
           <div className="flex items-center gap-4">
             <div className="p-1 rounded-2xl bg-gradient-to-tr from-[#B56BFF] via-[#38BDF8] to-[#4ADE80] shadow-[0_0_20px_rgba(56,189,248,0.3)]">
@@ -155,6 +160,7 @@ export const GuideResultsStage: React.FC<GuideResultsStageProps> = ({
           {/* Right Area (32%): Round Scores & Feedback Cards */}
           <div className="w-[34%] bg-zinc-950 border border-zinc-800 rounded-3xl p-5 flex flex-col justify-between overflow-hidden shadow-xl">
             <div>
+              <ResultNavigator scope="guide-tv" players={resultsList.map(r=>({id:r.contestantId,name:r.contestantName}))}/>
               <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
                 <span className="font-sans font-black text-sm text-zinc-200 flex items-center gap-1.5">
                   <Trophy className="w-4 h-4 text-amber-400" />
@@ -173,6 +179,7 @@ export const GuideResultsStage: React.FC<GuideResultsStageProps> = ({
 
                   return (
                     <div
+                      id={resultCardId('guide-tv',res.contestantId)}
                       key={res.contestantId}
                       className="bg-black border border-zinc-800 rounded-2xl p-3 flex flex-col gap-1.5 transition-colors hover:border-zinc-700"
                     >
@@ -246,6 +253,7 @@ export const GuideResultsStage: React.FC<GuideResultsStageProps> = ({
       dir="rtl"
       className="flex-1 w-full min-h-screen bg-[#000000] text-white flex flex-col justify-between p-4 select-none overflow-y-auto"
     >
+      <RoundCelebration award="نجم الرحلة" names={roundLeaders(resultsList.map(r=>({name:r.contestantName,score:r.points,eligible:r.hasGuess!==false})))}/>
       {/* Top Header */}
       <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
         <div>
@@ -300,12 +308,14 @@ export const GuideResultsStage: React.FC<GuideResultsStageProps> = ({
 
       {/* Bottom Ready Toggle Button */}
       <div className="my-4">
-        <p className="mb-2 text-sm font-bold text-zinc-300">الموقع الصحيح وتخمينك</p>
+        <p className="mb-2 text-sm font-bold text-zinc-300">الموقع الصحيح ودبابيس المشاركين</p>
         <div className="h-64 overflow-hidden rounded-2xl border border-zinc-700 bg-black">
           <GuideWorldMap interactive={true} targetLandmark={landmark}
-            markers={markers.filter((marker) => marker.id === currentContestantId)}
+            markers={markers}
             showDistanceLines={true} autoCenterOnTarget={true} className="h-full w-full" />
         </div>
+        <ResultNavigator scope="guide" players={markers.map(m=>({id:m.id,name:m.name}))} currentId={currentContestantId}/>
+        <ul className="mt-3 grid grid-cols-1 gap-2 text-sm text-zinc-300 sm:grid-cols-2">{markers.map(marker=><li id={resultCardId('guide',marker.id)} key={marker.id} style={{borderColor:marker.id===currentContestantId?'#6ee7b7':undefined}} className="flex items-center gap-2 rounded-xl border border-zinc-800 p-3"><span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full" style={{backgroundColor:marker.color}}/><span>{marker.name}{marker.id===currentContestantId?' (أنت)':''} · {toArabicNumber(Math.round(marker.distanceKm || 0))} كم</span></li>)}</ul>
       </div>
       <div className="pt-2 border-t border-zinc-900">
         {onToggleReady && (

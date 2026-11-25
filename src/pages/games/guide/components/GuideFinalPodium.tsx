@@ -16,12 +16,14 @@ interface GuideFinalPodiumProps {
   isTV?: boolean;
   rankedContestants: RankedGuideContestant[];
   onReturnToLobby?: () => void;
+  onExit?: () => void;
 }
 
 export const GuideFinalPodium: React.FC<GuideFinalPodiumProps> = ({
   isTV = true,
   rankedContestants,
   onReturnToLobby,
+  onExit,
 }) => {
   const winner = rankedContestants[0];
   const runnerUp = rankedContestants[1];
@@ -57,18 +59,6 @@ export const GuideFinalPodium: React.FC<GuideFinalPodiumProps> = ({
           </div>
         </div>
 
-        <button
-          type="button"
-          hidden={!onReturnToLobby}
-          onClick={() => {
-            sound.playClick();
-            onReturnToLobby?.();
-          }}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white hover:bg-zinc-200 text-black font-sans font-black text-sm shadow-[0_0_20px_rgba(255,255,255,0.3)] active:scale-95 transition-all cursor-pointer"
-        >
-          <RotateCcw className="w-4 h-4" />
-          <span>إعادة اللعب بنفس المجموعة</span>
-        </button>
       </header>
 
       {/* Main Center Podium Arena */}
@@ -179,19 +169,9 @@ export const GuideFinalPodium: React.FC<GuideFinalPodiumProps> = ({
         )}
       </div>
 
-      {/* Footer Return Action */}
-      <footer className="pt-4 border-t border-zinc-800 text-center flex flex-col items-center">
-        <button
-          type="button"
-          hidden={!onReturnToLobby}
-          onClick={() => {
-            sound.playClick();
-            onReturnToLobby?.();
-          }}
-          className="w-full max-w-md py-3.5 px-4 rounded-2xl bg-white hover:bg-zinc-200 text-black font-sans font-black text-base shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-98 transition-all cursor-pointer"
-        >
-          إعادة اللعب بنفس المجموعة
-        </button>
+      <footer className="mx-auto flex w-full max-w-md flex-wrap gap-3 border-t border-zinc-800 pt-4">
+        {onReturnToLobby && <button type="button" onClick={()=>{sound.playClick();onReturnToLobby();}} className="min-h-12 flex-1 rounded-2xl bg-white px-5 py-3 font-black text-black">العودة للوبي</button>}
+        {onExit && <button type="button" onClick={onExit} className="min-h-12 flex-1 rounded-2xl border border-zinc-600 px-5 py-3 font-black text-white">خروج</button>}
       </footer>
     </div>
   );

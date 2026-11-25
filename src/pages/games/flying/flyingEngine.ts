@@ -185,7 +185,7 @@ ${JSON.stringify(
       "isDuplicated": boolean,
       "roundMeters": number,
       "tier": "common" | "uncommon" | "rare" | "legendary" | "failed" | "duplicated",
-      "comment": "تعليق صارم ومقتضب أقل من 5 كلمات بدون إيموجي"
+      "comment": "سبب مختصر حتى 12 كلمة يوضح مطابقة السؤال أو سبب الرفض والندرة، بدون إيموجي"
     }
   ]
 }`;
@@ -275,7 +275,7 @@ ${JSON.stringify(
         else tier = 'common';
       }
 
-      const rawComment = stripEmojis(String(aiItem.comment || '')).trim();
+      const rawComment = stripEmojis(String(aiItem.comment || '').slice(0,180)).trim();
       const finalComment = isDuplicated
         ? 'احترقت الإجابة بالتكرار'
         : rawComment || (roundMeters > 0 ? 'إجابة صحيحة وموفقة' : 'إجابة خاطئة، صفر متر');

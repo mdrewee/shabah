@@ -1,3 +1,5 @@
+import {RoundCelebration,roundLeaders} from '../../../../components/common/RoundCelebration';
+import {ResultNavigator,resultCardId} from '../../../../components/common/ResultNavigator';
 import { ShabahRoundReveal } from '../../../../components/common/ShabahRoundReveal';
 import React from 'react';
 import { CoachSquad, CoachVerdict, CoachPlayerPick, ClaimedPlayerInfo } from '../types';
@@ -22,6 +24,7 @@ interface CoachDraftTVViewProps {
   claimedPlayers?: Record<string, ClaimedPlayerInfo>;
   currentRoundSelections?: Record<string, CoachPlayerPick>;
   turnSecondsRemaining?: number;
+  activeConditionTitle?: string;
   activeConditionDescription?: string;
   onNextRound?: () => void;
   onReturnToLobby?: () => void;
@@ -39,6 +42,7 @@ export const CoachDraftTVView: React.FC<CoachDraftTVViewProps> = ({
   claimedPlayers = {},
   currentRoundSelections = {},
   turnSecondsRemaining,
+  activeConditionTitle,
   activeConditionDescription,
   onNextRound,
   onReturnToLobby,
@@ -80,6 +84,7 @@ export const CoachDraftTVView: React.FC<CoachDraftTVViewProps> = ({
                     <Flame className="w-4 h-4 text-amber-500" />
                     سباق متزامن: الجميع يبحث ويخطف لاعبه في نفس اللحظة!
                   </span>
+                  <strong className="text-base text-black">{activeConditionTitle}</strong>
                   {activeConditionDescription && (
                     <span className="text-xs font-bold text-neutral-600">
                       {activeConditionDescription}
@@ -115,6 +120,7 @@ export const CoachDraftTVView: React.FC<CoachDraftTVViewProps> = ({
         </div>
       )}
 
+      {verdict && <><RoundCelebration award="مهندس التشكيلة" names={verdict.verificationMode==='ai'?verdict.evaluations.filter(e=>e.rank===1 && e.totalPercentage>0).map(e=>e.playerName):[]}/><ResultNavigator scope="coach" players={contestants}/></>}
       {/* 2. Verdict Banner if round ended */}
       {verdict && (
         <div className="w-full max-w-4xl shabah-border-wrap animate-in zoom-in-95 duration-300">
@@ -183,7 +189,7 @@ export const CoachDraftTVView: React.FC<CoachDraftTVViewProps> = ({
           const isReady = readyPlayers.includes(c.id);
 
           return (
-            <div key={c.id} className="flex flex-col items-center gap-2 w-full">
+            <div id={resultCardId('coach',c.id)} key={c.id} className="flex flex-col items-center gap-2 w-full">
               {/* Pitch */}
               <div className="relative w-full">
                 <ShabahTacticalPitch
@@ -225,9 +231,10 @@ export const CoachDraftTVView: React.FC<CoachDraftTVViewProps> = ({
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] font-bold text-neutral-300 leading-snug line-clamp-2">
+                  <p className="text-sm font-bold text-neutral-300 leading-7">
                     "{evalItem.critique}"
                   </p>
+                  <details className="w-full text-right text-xs leading-6"><summary className="min-h-11 cursor-pointer text-emerald-200">سبب تقييم الخانات</summary>{Object.values(evalItem.slots).map(slot=><p key={slot.slotKey} className="border-t border-white/10 py-2">{slot.playerName} · {slot.conditionReason} · {slot.positionReason}</p>)}</details>
                 </div>
               )}
             </div>

@@ -1,3 +1,4 @@
+import {RoundCelebration} from '../../../../components/common/RoundCelebration';
 import { BingoCellVisual } from './BingoCellVisual';
 import React, { useState, useEffect } from 'react';
 import { BingoCard, BingoRoulettePlayer } from '../types';
@@ -127,6 +128,7 @@ export const CoachBingoMobileView: React.FC<CoachBingoMobileViewProps> = ({
   if (winnerName) {
     return (
       <div className="w-full max-w-md mx-auto flex flex-col items-center justify-center py-10 px-3 text-center select-none">
+        <RoundCelebration award="عين الصقر" names={[winnerName]}/>
         <div className="shabah-border-wrap w-full mb-4">
           <div className="shabah-border-inner">
             <div className="shabah-surface p-8 flex flex-col items-center gap-3">

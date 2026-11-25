@@ -1,3 +1,4 @@
+import {useRoundTransition} from '../../../hooks/useRoundTransition';
 import { resolveDraftPlayer, canonicalDraftName, isAmbiguousDraftName } from './draftPlayers';
 import { fillMissedDraftPicks } from './draftRound';
 import { applyBingoAttempt, canClaimDraftSlot } from './coachRules';
@@ -662,6 +663,7 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
   // Advance from VERDICT to Next Round (Round 1..5)
   const handleAdvanceToNextRound = () => {
     const cur = coachStateRef.current;
+    if (cur.phase !== 'VERDICT') return;
     if (cur.roundNumber >= cur.totalRounds) {
       // Final round completed: return to lobby
       handleReturnToLobby();
@@ -774,6 +776,7 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
   };
 
   const handleRestartBingoRound = () => {
+    if(coachStateRef.current.phase!=='BINGO_WON')return;
     sound.playRouletteTick();
     generatePreloadedBingoPool();
     const firstPlayer = getRandomRoulettePlayer();
@@ -829,6 +832,9 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
     roomBus.broadcastCoachSync(roomCode, fresh);
   }, roomCode), [roomCode]);
 
+  useRoundTransition(coachState.phase==='BINGO_WON' || (coachState.phase==='VERDICT' && coachState.roundNumber<coachState.totalRounds)?coachState.phase+':'+coachState.roundNumber:null,coachState.roundTransition,
+    roundTransition=>{const next={...coachStateRef.current,roundTransition};setCoachState(next);savePersistedCoachState(roomCode,next);roomBus.broadcastCoachSync(roomCode,next);},
+    ()=>coachStateRef.current.phase==='BINGO_WON'?handleRestartBingoRound():handleAdvanceToNextRound());
   if (mobileContestants) return null;
 
   if (coachState.phase === 'EVALUATING') return <ShabahThinkingScreen title="الشبح يراجع التشكيلات" />;
@@ -870,7 +876,6 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
         mode={coachState.mode}
         roundNumber={coachState.roundNumber}
         timerSeconds={coachState.phase === 'DRAFTING' ? timerSeconds : undefined}
-        conditionTitle={coachState.phase === 'DRAFTING' ? currentCondition.title : undefined}
         mood={coachState.verdict ? 'happy' : timerSeconds <= 10 ? 'angry' : 'judging'}
         remark={
           coachState.phase === 'VERDICT'
@@ -899,6 +904,7 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
             claimedPlayers={coachState.claimedPlayers}
             currentRoundSelections={coachState.currentRoundSelections || {}}
             turnSecondsRemaining={timerSeconds}
+            activeConditionTitle={currentCondition.title}
             activeConditionDescription={'description' in currentCondition ? currentCondition.description : undefined}
             onNextRound={advanceSimultaneousRound}
             onReturnToLobby={handleReturnToLobby}

@@ -1,3 +1,4 @@
+import {WaitingChase} from '../../../../components/common/WaitingChase';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Predicament } from '../../../../data/judgePredicaments';
 import { JudgeVerdictResult, PlayerVerdict } from '../types';
@@ -366,6 +367,7 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
             <Clock className="w-4 h-4 text-amber-400 animate-pulse" />
             <span>متبقي على قفل المرافعات: {toArabicNumber(timerSeconds)} ثانية</span>
           </div>
+          <WaitingChase/>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col justify-between my-2">

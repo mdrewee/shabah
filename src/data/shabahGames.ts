@@ -40,7 +40,7 @@ export const SHABAH_GAMES: ShabahGame[] = [
     id: 'ai-broker',
     title: 'الشبح الشريطي',
     badgeText: 'تثمين وصيدة',
-    shortExplanation: 'سلعة خردة وفيها عيب قاتل للجميع؛ فاوض الشريطي في شات مباشر وأقنعه يرفع السوم لأعلى سعر!',
+    shortExplanation: 'أنت البائع والشريطي المشتري؛ سوّق سلعتك بعيوبها وأقنعه يرفع عرض الشراء لأعلى سعر!',
     cardImage: '/images/games/broker-card-v2.jpg',
     glowColor: 'orange',
     minPlayers: 2,

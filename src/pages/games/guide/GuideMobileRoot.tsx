@@ -277,6 +277,11 @@ export const GuideMobileRoot: React.FC = () => {
     <GuideFinalPodium
       isTV={false}
       rankedContestants={ranked}
+      onExit={async()=>{
+        if(isRoomHost(roomCode)){if(!await roomBus.terminateRoom(roomCode)){alert('تعذر إنهاء الغرفة، حاول مرة أخرى');return;}}
+        else roomBus.leavePlayer(roomCode,playerId);
+        navigate('/');
+      }}
       onReturnToLobby={isRoomHost(roomCode) ? handleReturnToLobby : undefined}
     />
   );

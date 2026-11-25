@@ -1,0 +1,17 @@
+import React,{useState} from 'react';
+import {Link} from 'react-router-dom';
+import {Check,CalendarDays} from 'lucide-react';
+import {SHABAH_GAMES} from '../data/shabahGames';
+import {ShabahPage} from '../components/common/ShabahPage';
+export const SHABAH_PLANS=[{id:'day',title:'اشتراك يوم',days:1,description:'لسهرة اليوم ولمّة الربع.'},{id:'week',title:'اشتراك أسبوع',days:7,description:'أسبوع من التحديات والسهرات.'},{id:'month',title:'اشتراك شهر',days:30,description:'كل الوناسة، طول الشهر.'}] as const;
+export default function ShabahGamesPage(){
+  const [selected,setSelected]=useState('');
+  return <ShabahPage><div className="mb-9 text-center"><p className="text-xs font-bold text-emerald-300">اشتراك المضيف… والربع يدخلون بالكود</p><h1 className="mt-3 text-4xl font-black">اختر مدة الوناسة</h1><p className="mt-4 text-sm leading-7 text-zinc-400">يوم، أسبوع أو شهر للمضيف. المشاركون يدخلون بكود الغرفة مجانًا، بدون اشتراك أو حساب مدفوع.</p></div>
+    <p role="status" className="mb-7 rounded-2xl border border-amber-300/20 bg-amber-300/5 p-4 text-center text-sm text-amber-100">الاشتراكات قريبًا. لم تُعلن الأسعار بعد، والدفع غير متاح حاليًا.</p>
+    <div className="grid gap-5 md:grid-cols-3">{SHABAH_PLANS.map(plan=><article key={plan.id} className={`flex flex-col rounded-3xl border p-6 ${selected===plan.id?'border-emerald-300 bg-emerald-300/10':'border-white/15 bg-white/[.035]'}`}><CalendarDays className="mb-5 text-purple-300" size={28}/><h2 className="text-2xl font-black">{plan.title}</h2><p className="mt-2 text-sm text-zinc-400">{plan.description}</p><p className="my-7 text-4xl font-black">{plan.days}<span className="mr-2 text-sm font-normal text-zinc-400">{plan.days===1?'يوم':'يومًا'}</span></p><ul className="flex-1 space-y-3 text-sm text-zinc-300">{['جميع ألعاب شبح','اشتراك واحد للمضيف، والمشاركون مجانًا','الدخول من الجوال أو شاشة العرض'].map(text=><li key={text} className="flex gap-2"><Check size={17} className="shrink-0 text-emerald-300"/>{text}</li>)}</ul><p className="mt-7 text-xs text-zinc-500">السعر يُعلن قريبًا</p><button type="button" aria-pressed={selected===plan.id} onClick={()=>setSelected(plan.id)} className="mt-3 min-h-12 rounded-xl bg-white font-black text-black hover:bg-emerald-100">{selected===plan.id?'تم اختيار الباقة':`اختيار ${plan.title}`}</button></article>)}</div>
+    {selected&&<p role="status" className="mt-5 rounded-xl border border-emerald-300/20 p-4 text-center text-sm text-emerald-200">اخترت {SHABAH_PLANS.find(p=>p.id===selected)?.title}. الدفع غير متاح حاليًا؛ لم يُخصم مبلغ ولم يُفعّل اشتراك.</p>}
+    <Link to="/join" className="mt-6 block text-center text-sm font-bold text-emerald-200">معك كود؟ انضم مجانًا</Link>
+    <p className="mt-6 text-center text-xs text-zinc-500">تُعرض شروط البداية والانتهاء والتجديد عند إتاحة الدفع.</p>
+    <section className="mt-14"><h2 className="text-xl font-black">كل هالألعاب ضمن اشتراكك</h2><div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">{SHABAH_GAMES.map(game=><article key={game.id} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[.025]"><img src={game.cardImage} alt="" loading="lazy" className="aspect-square w-full object-cover"/><h3 className="p-3 text-center text-xs font-bold">{game.title}</h3></article>)}</div></section><Link to="/account" className="mx-auto mt-9 block w-fit rounded-xl border border-white/15 px-6 py-3 text-sm font-bold">الدخول إلى حسابي</Link>
+  </ShabahPage>;
+}

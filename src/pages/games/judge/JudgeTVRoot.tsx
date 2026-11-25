@@ -1,3 +1,4 @@
+import {useRoundTransition} from '../../../hooks/useRoundTransition';
 import React, { useCallback, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useRoom, roomBus } from '../../../lib/roomBus';
@@ -41,6 +42,8 @@ export const JudgeTVRoot:React.FC<{mobileContestants?:Array<{id:string;name:stri
       party:undefined,revealState:'anonymous',readyPlayersNextRound:[]});
   },[sync,snapshot]);
 
+  useRoundTransition(state.phase==='COURTROOM_VERDICT'?'COURTROOM_VERDICT:'+state.roundNumber:null,state.roundTransition,
+    roundTransition=>sync({...snapshot.current,roundTransition}),()=>startRound());
   const startWriting=useCallback(()=>{
     const cur=snapshot.current;if(cur.phase!=='case_briefing') return;
     sync({...cur,phase:'defending',timerSeconds:40,defenseEndsAt:Date.now()+40000});

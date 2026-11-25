@@ -18,6 +18,7 @@ export interface ContestantGuess {
 }
 
 export interface ContestantRoundResult {
+  hasGuess?: boolean;
   contestantId: string;
   contestantName: string;
   lat: number;
@@ -36,6 +37,7 @@ export interface BiggestMissRecord {
 }
 
 export interface GuideRoomState {
+  roundTransition?: {key:string;endsAt:number};
   roomCode: string;
   phase: GuidePhase;
   roundNumber: number;

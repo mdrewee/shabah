@@ -19,7 +19,7 @@ import { ArabicMobileResults } from './components/ArabicMobileResults';
 import { ArabicFinalPodium } from './components/ArabicFinalPodium';
 import { Clock } from 'lucide-react';
 
-export const ArabicMobileRoot: React.FC = () => {
+export const ArabicMobileRoot: React.FC<{onNextRound?:()=>void}> = ({onNextRound}) => {
   const { code: rawCode } = useParams<{ code?: string }>();
   const navigate = useNavigate();
   const roomCode = (rawCode || 'SHBH').trim().toUpperCase();
@@ -262,6 +262,7 @@ export const ArabicMobileRoot: React.FC = () => {
 
     return (
       <ArabicMobileResults
+        onNextRound={isRoomHost(roomCode)?onNextRound:undefined}
         currentContestantId={playerId}
         evaluations={arabicState.evaluations || {}}
         categories={arabicState.currentCategories || []}

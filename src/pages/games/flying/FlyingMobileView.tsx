@@ -1,3 +1,6 @@
+import {RoundCelebration,roundLeaders} from '../../../components/common/RoundCelebration';
+import {ResultNavigator,resultCardId} from '../../../components/common/ResultNavigator';
+import {WaitingChase} from '../../../components/common/WaitingChase';
 import { RarityBadge } from './RarityBadge';
 import { ShabahThinkingScreen } from '../../../components/common/ShabahThinkingScreen';
 import { getSeenFlyingQuestions, rememberFlyingQuestion } from './flyingQuestionHistory';
@@ -565,6 +568,7 @@ const FlyingMobilePlayer: React.FC<{
                   <div className="px-4 py-2 bg-[#070B14] border-2 border-black text-white font-mono font-bold text-sm mt-1 max-w-full truncate">
                     "{submittedAnswer}"
                   </div>
+                  <WaitingChase/>
                 </div>
               )}
             </div>
@@ -623,22 +627,27 @@ const FlyingMobilePlayer: React.FC<{
 
       {/* Bottom Personal Summary Card */}
       <footer className="relative z-30 w-full max-w-md mx-auto p-3">
+        {flyingState.cameraMode==='global_overview' && <RoundCelebration award="أندر إجابة" names={roundLeaders(Object.values(flyingState.results).map(r=>({name:r.contestantName,score:r.roundMeters,eligible:!r.needsReview})))}/>}
+        <details className="mb-2 max-h-[35dvh] overflow-y-auto rounded-xl border border-white/20 bg-zinc-950/95 p-3 text-sm"><summary className="min-h-11 cursor-pointer font-bold">نتائج جميع المتسابقين</summary>
+          <ResultNavigator scope="flying" players={Object.values(flyingState.results).map(r=>({id:r.contestantId,name:r.contestantName}))} currentId={playerId}/>
+          {Object.values(flyingState.results).sort((a,b)=>b.roundMeters-a.roundMeters).map(r=><article key={r.contestantId} id={resultCardId('flying',r.contestantId)} style={{borderColor:r.contestantId===playerId?'#6ee7b7':undefined}} className="my-2 rounded-xl border border-zinc-700 p-3"><p className="font-bold">{r.contestantName}{r.contestantId===playerId?' (أنت)':''} · +{r.roundMeters}م</p><p className="my-1 break-words">{r.answer || 'بدون إجابة'}</p><p className="text-xs leading-6 text-zinc-300">{r.comment}</p></article>)}
+        </details>
         {myResult && (
           <div className="pixel-box bg-[#111827] text-white border-4 border-black p-3.5 flex items-center justify-between gap-3 shadow-[4px_4px_0px_#000]">
             <div className="flex items-center gap-2.5 overflow-hidden">
               <div className="shrink-0">
                 <RarityBadge tier={myResult.tier} />
               </div>
-              <div className="truncate">
+              <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono font-black text-sm text-white truncate">
+                  <span className="font-mono font-black text-sm text-white break-words">
                     "{myResult.answer || 'بدون إجابة'}"
                   </span>
                   <span className="font-mono text-xs font-black text-black bg-amber-400 px-2 py-0.5 border border-black shrink-0">
                     +{myResult.roundMeters}م
                   </span>
                 </div>
-                <p className="text-[11px] font-mono text-zinc-400 truncate">
+                <p className="text-[11px] font-mono text-zinc-300 leading-6 break-words">
                   {myResult.comment}
                 </p>
               </div>

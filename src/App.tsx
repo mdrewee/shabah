@@ -1,3 +1,5 @@
+import {RoomSessionTools} from './components/common/RoomSessionTools';
+import {RoundTransitionNotice} from './components/common/RoundTransitionNotice';
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { LandingPage } from './pages/LandingPage';
@@ -17,10 +19,15 @@ const PropertyView = React.lazy(() => import('./pages/PropertyView'));
 const LoginPage = React.lazy(() => import('./pages/LoginPage'));
 const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
 const SubscriptionPage = React.lazy(() => import('./pages/SubscriptionPage'));
+const ShabahAccountPage=React.lazy(()=>import('./pages/ShabahAccountPage'));
+const ShabahGamesPage=React.lazy(()=>import('./pages/ShabahGamesPage'));
+const ShabahPolicyPage=React.lazy(()=>import('./pages/ShabahPolicyPage'));
 
 export function App() {
   return (
     <Router>
+      <RoundTransitionNotice/>
+      <RoomSessionTools/>
       <RouteScrollReset />
       <React.Suspense fallback={<p role="status" dir="rtl">جاري التحميل…</p>}>
         <Routes>
@@ -35,6 +42,11 @@ export function App() {
 
           {/* 1. Home View (Shabah Hero + Coverflow 5 Games + Room Code Box) */}
           <Route path="/" element={<LandingPage />} />
+          <Route path="/account" element={<ShabahAccountPage/>}/>
+          <Route path="/games" element={<ShabahGamesPage/>}/>
+          <Route path="/privacy" element={<ShabahPolicyPage kind="privacy"/>}/>
+          <Route path="/terms" element={<ShabahPolicyPage kind="terms"/>}/>
+          <Route path="/rights" element={<ShabahPolicyPage kind="rights"/>}/>
 
           {/* 2. Dedicated Name Entry Page (/enter-name?room=XXXX or /enter-name?game=YYYY) */}
           <Route path="/enter-name" element={<NameEntryView />} />

@@ -145,6 +145,7 @@ export interface BingoRoulettePlayer {
 // -------------------------------------------------------------
 
 export interface CoachRoomState {
+  roundTransition?: {key:string;endsAt:number};
   roomCode: string;
   mode: CoachGameMode;
   phase: CoachGamePhase;

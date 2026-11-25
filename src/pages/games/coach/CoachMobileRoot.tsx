@@ -275,7 +275,6 @@ export const CoachMobileRoot: React.FC = () => {
         roomCode={roomCode}
         mode={coachState.mode}
         roundNumber={coachState.roundNumber}
-        conditionTitle={coachState.phase === 'DRAFTING' ? coachState.activeConditionTitle : undefined}
         mood={myEvaluation ? 'happy' : 'judging'}
         remark={
           coachState.phase === 'VERDICT'

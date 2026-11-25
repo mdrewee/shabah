@@ -1,3 +1,4 @@
+import {RoundCelebration} from '../../../../components/common/RoundCelebration';
 import React from 'react';
 import { BingoRoulettePlayer, BingoCard } from '../types';
 import { toArabicNumber } from '../../../../utils/numberFormat';
@@ -34,6 +35,7 @@ export const CoachBingoTVView: React.FC<CoachBingoTVViewProps> = ({
   if (winnerName) {
     return (
       <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center py-12 px-4 select-none">
+        <RoundCelebration award="عين الصقر" names={[winnerName]}/>
         <div className="w-full shabah-border-wrap animate-in zoom-in-95 duration-300">
           <div className="shabah-border-inner">
             <div className="shabah-surface p-8 sm:p-12 flex flex-col items-center text-center gap-4">

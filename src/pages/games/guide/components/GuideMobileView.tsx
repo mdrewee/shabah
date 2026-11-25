@@ -1,3 +1,4 @@
+import {WaitingChase} from '../../../../components/common/WaitingChase';
 import React, { useState, useRef, useEffect } from 'react';
 import { GuideMobileMap } from './GuideMobileMap';
 import { toArabicNumber } from '../../../../utils/numberFormat';
@@ -142,8 +143,8 @@ export const GuideMobileView: React.FC<GuideMobileViewProps> = ({
 
         {/* Waiting Overlay after submitting */}
         {hasSubmitted && (
-          <div className="absolute inset-0 z-[1001] bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
-            <div className="w-16 h-16 rounded-full bg-emerald-950/80 border-2 border-emerald-500 flex items-center justify-center text-emerald-400 mb-4 shadow-[0_0_20px_rgba(16,185,129,0.3)]">
+          <div className="absolute inset-0 z-[1001] overflow-y-auto bg-black/95 flex flex-col items-center p-3 text-center animate-in fade-in duration-300">
+            <div className="w-9 h-9 shrink-0 rounded-full bg-emerald-950/80 border-2 border-emerald-500 flex items-center justify-center text-emerald-400 mb-4 shadow-[0_0_20px_rgba(16,185,129,0.3)]">
               <CheckCircle2 className="w-8 h-8" />
             </div>
             <h3 className="font-sans font-black text-xl text-white mb-2">
@@ -152,6 +153,7 @@ export const GuideMobileView: React.FC<GuideMobileViewProps> = ({
             <p className="font-sans text-xs text-zinc-400 max-w-xs leading-relaxed mb-4">
               ننتظر انتهاء باقي الرحالة أو نفاذ الوقت لكشف المعلم ورصد النقاط على شاشة العرض!
             </p>
+            <WaitingChase/>
             {selectedPin && (
               <div className="inline-block px-3 py-1 rounded-xl bg-zinc-900 border border-zinc-800 text-[11px] font-sans text-purple-300">
                 إحداثياتك: ({toArabicNumber(selectedPin.lat)}°, {toArabicNumber(selectedPin.lng)}°)

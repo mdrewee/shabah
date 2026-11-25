@@ -1,3 +1,5 @@
+import {RoundCelebration,roundLeaders} from '../../../../components/common/RoundCelebration';
+import {ResultNavigator,resultCardId} from '../../../../components/common/ResultNavigator';
 import React, { useState, useEffect } from 'react';
 import {
   ContestantEvaluation,
@@ -32,6 +34,7 @@ interface ArabicMobileResultsProps {
   readyContestantsCount: number;
   totalContestantsCount: number;
   onReturnToLobby?: () => void;
+  onNextRound?: () => void;
 }
 
 export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
@@ -47,6 +50,7 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
   readyContestantsCount,
   totalContestantsCount,
   onReturnToLobby,
+  onNextRound,
 }) => {
   const contestantsList = Object.values(evaluations);
 
@@ -159,16 +163,18 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
         </div>
       )}
 
+      <RoundCelebration award="نجم الحروف" names={roundLeaders(contestantsList.map(c=>({name:c.contestantName,score:c.totalRoundPoints,eligible:!c.answers?.some(a=>a.needsReview)})))}/>
+      <ResultNavigator scope="arabic" players={contestantsList.map(c=>({id:c.contestantId,name:c.contestantName}))} currentId={currentContestantId} selectedId={activeContestant?.contestantId} onSelect={id=>setActiveIndex(contestantsList.findIndex(c=>c.contestantId===id))}/>
       {/* Top Carousel Navigation Tabs */}
       <div className="flex-shrink-0 flex items-center justify-between pb-3 border-b border-zinc-800">
         <button
           onClick={handlePrev}
-          className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+          className="min-h-11 min-w-11 grid place-items-center rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
         >
           <ChevronRight className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-1.5 overflow-x-auto max-w-[220px] py-1 px-1">
+        <div className="flex items-center gap-1.5 overflow-x-auto max-w-full flex-1 py-1 px-1">
           {contestantsList.map((c, idx) => {
             const isSelected = idx === activeIndex;
             const isSelf = c.contestantId === currentContestantId;
@@ -194,7 +200,7 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
 
         <button
           onClick={handleNext}
-          className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+          className="min-h-11 min-w-11 grid place-items-center rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
         >
           <ChevronLeft className="w-5 h-5" />
         </button>
@@ -202,7 +208,7 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
 
       {/* Contestant Header Summary */}
       {activeContestant && (
-        <div className="flex-shrink-0 my-3 bg-zinc-950 border border-zinc-800 rounded-2xl p-3 flex items-center justify-between">
+        <div className="flex-shrink-0 my-3 bg-zinc-950 border border-emerald-400/40 rounded-2xl p-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-9 h-9 rounded-xl bg-zinc-800 flex items-center justify-center font-sans font-black text-emerald-400">
               {activeContestant.contestantName.slice(0, 1)}
@@ -294,13 +300,13 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
               </div>
 
               {/* The Answer text */}
-              <div className="font-sans font-bold text-base text-white">
+              <div className="font-sans font-bold text-base leading-8 break-words text-white">
                 {ans.rawAnswer || <span className="text-zinc-600 font-normal">لم تتم الإجابة</span>}
               </div>
 
               {/* Shabah Roast / Comment */}
               {ans.comment && (
-                <div className="mt-1 text-[11px] font-sans text-zinc-400 border-t border-white/5 pt-1">
+                <div className="mt-1 text-sm leading-7 font-sans text-zinc-300 border-t border-white/5 pt-2">
                   {ans.comment}
                 </div>
               )}
@@ -309,6 +315,7 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
         })}
       </div>
 
+      {onNextRound && <button type="button" disabled={Boolean(activeObjection && !activeObjection.resolved)} onClick={onNextRound} className="my-3 min-h-12 w-full rounded-2xl bg-white px-4 py-3 font-black text-black disabled:opacity-40">المتابعة للجولة التالية</button>}
       {/* Bottom Readiness Action Bar */}
       <div className="flex-shrink-0 pt-2 border-t border-zinc-900">
         <button

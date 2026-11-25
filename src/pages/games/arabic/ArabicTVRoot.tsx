@@ -29,7 +29,7 @@ import { ArabicTVResults } from './components/ArabicTVResults';
 import { ArabicFinalPodium } from './components/ArabicFinalPodium';
 import { Clock } from 'lucide-react';
 
-export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; name: string }> }> = ({ mobileContestants }) => {
+export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; name: string }>; onNextRoundReady?:(advance:()=>void)=>void }> = ({ mobileContestants,onNextRoundReady }) => {
   const { code: rawCode } = useParams<{ code?: string }>();
   const navigate = useNavigate();
   const roomCode = (rawCode || 'SHBH').trim().toUpperCase();
@@ -232,6 +232,7 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
 
   const handleNextRound = useCallback(() => {
     const curr = stateRef.current;
+    if(curr.phase!=='RESULTS')return;
     if (curr.activeObjection && !curr.activeObjection.resolved) return;
     if (curr.roundNumber >= curr.totalRounds) {
       // Advance to Final Podium
@@ -615,6 +616,8 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
     syncState(fresh);
   }, roomCode), [roomCode, syncState]);
 
+  useEffect(()=>{if(arabicState.roundTransition)syncState({...stateRef.current,roundTransition:undefined});},[arabicState.roundTransition,syncState]);
+  useEffect(()=>{onNextRoundReady?.(handleNextRound);return()=>onNextRoundReady?.(()=>{});},[onNextRoundReady,handleNextRound]);
   if (mobileContestants) return null;
 
   if (arabicState.phase === 'LOBBY') {

@@ -1,5 +1,5 @@
 import { checkRoomExists, isRoomHost } from '../services/roomService';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { roomBus } from '../lib/roomBus';
 import {
@@ -57,6 +57,7 @@ const ActivePlayView: React.FC<{ roomCode: string; initialGameId: ShabahGameCano
   roomCode,
   initialGameId,
 }) => {
+  const arabicNextRound=useRef<()=>void>(()=>{});
   const [playerId] = useState<string>(() => getOrCreatePlayerId());
   const [playerName] = useState<string>(() => {
     return getPersistedPlayerName() || getOrCreatePlayerName('متسابق');
@@ -97,7 +98,7 @@ const ActivePlayView: React.FC<{ roomCode: string; initialGameId: ShabahGameCano
         <div className="min-h-0 flex-1 overflow-y-auto"><BrokerMobileRoot /></div>
       </div>;
     case 'ai-arabic':
-      return <>{isRoomHost(roomCode) && <ArabicTVRoot mobileContestants={connectedPlayers} />}<ArabicMobileRoot /></>;
+      return <>{isRoomHost(roomCode) && <ArabicTVRoot mobileContestants={connectedPlayers} onNextRoundReady={advance=>{arabicNextRound.current=advance;}} />}<ArabicMobileRoot onNextRound={()=>arabicNextRound.current()} /></>;
     case 'ai-guide':
       return <>{isRoomHost(roomCode) && <GuideTVRoot mobileContestants={connectedPlayers} />}<GuideMobileRoot /></>;
     case 'ai-flying':

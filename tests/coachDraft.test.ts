@@ -81,3 +81,38 @@ test('equal percentages share ranks and rewards; zero-score squads do not get a 
   const empty=rankDraftEvaluations([base]);
   expect(empty.winnerId).toBe('');expect(empty.evaluations[0].matchPointsAwarded).toBe(0);
 });
+
+test('verified known players use AI strength and exact power breaks a rounded score tie',async()=>{
+  const squads={a:{playerId:'a',playerName:'a',slots:{FWD:pick('ميسي')}},b:{playerId:'b',playerName:'b',slots:{FWD:pick('محمد صلاح')}}};
+  ai.mockResolvedValue(JSON.stringify({evaluations:Object.keys(squads).map((playerId,index)=>({playerId,slots:[{slotKey:'FWD',isRealPlayer:true,isValidCondition:true,isValidPosition:true,playerPower:99-index}]}))}));
+  const verdict=await evaluateAllSquadsWithAI(squads);
+  expect(verdict.evaluations[0].slots.FWD.playerPower).toBe(99);
+  expect(verdict.evaluations[1].slots.FWD.playerPower).toBe(98);
+  expect(verdict.evaluations[0].totalPercentage).toBe(verdict.evaluations[1].totalPercentage);
+  expect(verdict.isTie).toBe(false);expect(verdict.winnerId).toBe('a');
+  expect(verdict.evaluations.map(e=>e.rank)).toEqual([1,2]);
+});
+
+test('fully valid formations are decided by football strength across all five positions',async()=>{
+  const slots={GK:pick('نوير'),DEF_1:pick('راموس'),DEF_2:pick('مالديني'),MID:pick('مودريتش'),FWD:pick('ميسي')};
+  const squads={a:{playerId:'a',playerName:'a',slots},b:{playerId:'b',playerName:'b',slots:{...slots,FWD:pick('محمد صلاح')}}};
+  ai.mockResolvedValue(JSON.stringify({evaluations:Object.keys(squads).map((playerId,index)=>({playerId,slots:Object.keys(slots).map(slotKey=>({slotKey,isRealPlayer:true,isValidCondition:true,isValidPosition:true,playerPower:index?85:95}))}))}));
+  const verdict=await evaluateAllSquadsWithAI(squads);
+  expect(ai).toHaveBeenLastCalledWith(expect.any(String),expect.objectContaining({temperature:0.1}));
+  expect(verdict.verificationMode).toBe('ai');
+  for(const evaluation of verdict.evaluations){expect(evaluation.conditionPoints).toBe(40);expect(evaluation.positionPoints).toBe(25);}
+  expect(verdict.winnerId).toBe('a');expect(verdict.isTie).toBe(false);
+  expect(verdict.evaluations[0].powerPoints).toBeGreaterThan(verdict.evaluations[1].powerPoints);
+});
+
+test('compact judgments cover fifty slots and reject invented identities without weakening validation',async()=>{
+  const slots={GK:pick('نوير'),DEF_1:pick('راموس'),DEF_2:pick('مالديني'),MID:pick('مودريتش'),FWD:pick('ميسي')};
+  const squads=Object.fromEntries(Array.from({length:10},(_,i)=>['p'+i,{playerId:'p'+i,playerName:'p'+i,slots}]));
+  ai.mockResolvedValue(JSON.stringify({evaluations:Object.keys(squads).map(playerId=>({playerId,slots:Object.keys(slots).map(slotKey=>({slotKey,r:playerId!=='p9',c:true,p:true,w:95,cWhy:'مطابق',pWhy:'مركز صحيح'}))}))}));
+  const verdict=await evaluateAllSquadsWithAI(squads);
+  expect(verdict.verificationMode).toBe('ai');
+  expect(verdict.evaluations.flatMap(e=>Object.values(e.slots)).filter(s=>!s.needsReview)).toHaveLength(50);
+  expect(verdict.evaluations.find(e=>e.playerId==='p9')?.totalPercentage).toBe(0);
+  ai.mockResolvedValue(JSON.stringify({evaluations:[{playerId:'p0',slots:[{slotKey:'GK',r:'true',c:true,p:true,w:99}]}]}));
+  expect((await evaluateAllSquadsWithAI(squads)).evaluations.find(e=>e.playerId==='p0')?.slots.GK.needsReview).toBe(true);
+});

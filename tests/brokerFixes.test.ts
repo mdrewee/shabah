@@ -1,6 +1,6 @@
 import { beforeEach, expect, jest, test } from '@jest/globals';
 import { generateWithGemini } from '../src/config/gemini';
-import { evaluateBrokerPitch } from '../src/services/brokerEngine';
+import { evaluateBrokerPitch,calculateBrokerIncrement } from '../src/services/brokerEngine';
 import { BROKER_ITEMS } from '../src/data/brokerItems';
 import { beginBrokerNegotiation, nextBrokerRound, finishBrokerRound, acceptsBrokerPitch } from '../src/pages/games/broker/brokerRound';
 import type { BrokerRoomState, ContestantBidState } from '../src/pages/games/broker/types';
@@ -31,7 +31,7 @@ test('prices and increments are bounded even with an excessive AI proposal', asy
   expect((await evaluateBrokerPitch(pitch())).newBid).toBe(item.estimatedValue);
   ai.mockResolvedValue(JSON.stringify({bidIncrease:99999999}));
   const result=await evaluateBrokerPitch({...pitch(), currentBid:100,isFirstBid:false});
-  expect(result.bidIncrease).toBeLessThanOrEqual(Math.max(5,Math.round(item.estimatedValue*0.15)));
+  expect(result.bidIncrease).toBeLessThanOrEqual(Math.max(1,Math.round(item.estimatedValue*0.30)));
   expect(result.newBid).toBeLessThanOrEqual(item.estimatedValue);
 });
 
@@ -41,6 +41,27 @@ test('unavailable or invalid AI never invents a valuation', async () => {
   ai.mockResolvedValue(JSON.stringify({accepted:'false',finalOpeningPrice:100}));
   const log=jest.spyOn(console,'warn').mockImplementation(()=>{});
   try { await expect(evaluateBrokerPitch(pitch())).rejects.toThrow(); } finally { log.mockRestore(); }
+});
+
+test('ordinary and creative persuasion receive increasing rewards with a firm value ceiling',async()=>{
+  expect(calculateBrokerIncrement(2,1000)).toBe(0);
+  expect([3,5,7,9].map(score=>calculateBrokerIncrement(score,1000))).toEqual([60,120,200,300]);
+  ai.mockResolvedValue(JSON.stringify({persuasionScore:5,bidIncrease:0,brokerReply:'أشتريها منك للاستخدام اليومي.',persuasionReason:'وضحت منفعة الاستخدام اليومي'}));
+  const ordinary=await evaluateBrokerPitch({...pitch(),currentBid:100,isFirstBid:false});
+  expect(ordinary.bidIncrease).toBe(calculateBrokerIncrement(5,item.estimatedValue));
+  expect(ai.mock.calls[0][1]).toEqual(expect.objectContaining({systemPrompt:expect.stringContaining('المتسابق هو البائع')}));
+  expect(ordinary.reply).toContain('سومتي');
+  expect(ordinary.reply).toContain('وضحت منفعة الاستخدام اليومي');
+  expect(ordinary.publicAnnouncement).not.toContain('قفزة قوية');
+  ai.mockResolvedValue(JSON.stringify({persuasionScore:10}));
+  expect((await evaluateBrokerPitch({...pitch(),currentBid:item.estimatedValue-1,isFirstBid:false})).newBid).toBe(item.estimatedValue);
+  expect((await evaluateBrokerPitch({...pitch(),currentBid:item.estimatedValue,isFirstBid:false})).bidIncrease).toBe(0);
+});
+
+test('small requested price increases are evaluated as seller arguments rather than rejected as tiny buyer bids',async()=>{
+  ai.mockResolvedValue(JSON.stringify({persuasionScore:3}));
+  const result=await evaluateBrokerPitch({...pitch('زدني ريالين، الجهاز يوفر عليك مصاريف الكهرباء'),currentBid:100,isFirstBid:false});
+  expect(ai).toHaveBeenCalledTimes(1);expect(result.bidIncrease).toBeGreaterThan(0);
 });
 
 function bidder(id:string, currentBid:number):ContestantBidState {

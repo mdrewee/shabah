@@ -1,3 +1,5 @@
+import {RoundCelebration,roundLeaders} from '../../../../components/common/RoundCelebration';
+import {ResultNavigator,resultCardId} from '../../../../components/common/ResultNavigator';
 import { ShabahRoundReveal } from '../../../../components/common/ShabahRoundReveal';
 import React, { useEffect } from 'react';
 import { ShabahGhost } from '../../../../components/mascot/ShabahGhost';
@@ -57,6 +59,8 @@ export const BrokerRoundWinner: React.FC<BrokerRoundWinnerProps> = ({
       {/* Background glow celebration */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(74,222,128,0.12),transparent_70%)] pointer-events-none" />
 
+      <RoundCelebration award="أذكى بيعة" names={winningBid>0?[winnerName]:[]}/>
+      <ResultNavigator scope="broker" players={contestants.map(c=>({id:c.playerId,name:c.playerName}))} currentId={currentUserId}/>
       {/* Header Info */}
       <div className="w-full max-w-2xl flex items-center justify-between z-10 pt-2">
         <span className="px-3.5 py-1 rounded-full bg-neutral-900 border border-neutral-700 text-neutral-300 text-xs font-black">
@@ -148,6 +152,7 @@ export const BrokerRoundWinner: React.FC<BrokerRoundWinnerProps> = ({
             <div className="flex flex-wrap gap-2">
               {contestants.map((c) => (
                 <div
+                  id={resultCardId('broker',c.playerId)}
                   key={c.playerId}
                   className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors ${
                     c.isReadyForNextRound

@@ -12,6 +12,7 @@ import { sound } from '../lib/audio';
 import { roomBus } from '../lib/roomBus';
 import { getPersistedPlayerName, setPersistedPlayerName, getOrCreatePlayerId } from '../utils/playerSession';
 import { createRoom, checkRoomExists, normalizeRoomCode } from '../services/roomService';
+import { ShabahFooter } from '../components/common/ShabahFooter';
 
 const HERO_PHRASES: Array<{
   text: string;
@@ -59,10 +60,6 @@ export const HomeView: React.FC = () => {
   const [joinModalGame, setJoinModalGame] = useState<ShabahGame | null>(null);
   const [playerNameInput, setPlayerNameInput] = useState(() => getPersistedPlayerName());
   const [joinError, setJoinError] = useState<string | null>(null);
-
-  // Account Modal state ([حسابي])
-  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
-  const [accountName, setAccountName] = useState(() => getPersistedPlayerName());
 
   // Compact Room Code state
   const [roomCode, setRoomCode] = useState('');
@@ -216,20 +213,10 @@ export const HomeView: React.FC = () => {
     }
   };
 
-  const scrollToGames = () => {
-    sound.playClick();
-    if (gamesSectionRef.current) {
-      gamesSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else {
-      window.scrollTo({ top: window.innerHeight * 0.85, behavior: 'smooth' });
-    }
-  };
-
-
   return (
     <div
       dir="rtl"
-      className="min-h-screen w-full bg-[#000000] text-[#FFFFFF] flex flex-col items-center pb-24 selection:bg-white selection:text-black overflow-x-hidden relative font-home-panorama"
+      className="min-h-screen w-full bg-[#000000] text-[#FFFFFF] flex flex-col items-center selection:bg-white selection:text-black overflow-x-hidden relative font-home-panorama"
     >
       {/* Matrix Code Wall Spotlight Canvas */}
       <MatrixSpotlightCanvas />
@@ -243,8 +230,7 @@ export const HomeView: React.FC = () => {
               type="button"
               onClick={() => {
                 sound.playClick();
-                setAccountName(getPersistedPlayerName());
-                setIsAccountModalOpen(true);
+                navigate('/account');
               }}
               className="shabah-pill-surface px-4 sm:px-5 py-1.5 text-xs sm:text-sm font-black text-[#0A0A0A] hover:bg-neutral-100 transition-transform active:scale-95 cursor-pointer block"
             >
@@ -283,7 +269,7 @@ export const HomeView: React.FC = () => {
           <div className="shabah-pill-inner">
             <button
               type="button"
-              onClick={scrollToGames}
+              onClick={()=>navigate('/games')}
               className="shabah-pill-surface px-4 sm:px-5 py-1.5 text-xs sm:text-sm font-black text-[#0A0A0A] hover:bg-neutral-100 transition-transform active:scale-95 cursor-pointer block"
             >
               ألعابي
@@ -383,6 +369,7 @@ export const HomeView: React.FC = () => {
       </div>
 
       {/* Game Entry Modal (مودال كتابة الاسم + زر وضع الشاشة النقي) */}
+      <div className="w-full"><ShabahFooter/></div>
       <GameEntryModal
         isOpen={!!joinModalGame}
         game={joinModalGame}
@@ -438,59 +425,6 @@ export const HomeView: React.FC = () => {
         </div>
       )}
 
-      {/* Account Modal ([حسابي]) */}
-      {isAccountModalOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
-          onClick={() => setIsAccountModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-sm shabah-border-wrap"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="shabah-border-inner">
-              <div className="shabah-surface p-6 flex flex-col items-center text-center gap-4">
-                <h3 className="text-2xl font-black text-[#0A0A0A]">حسابي في شبح</h3>
-                <p className="text-xs font-bold text-neutral-600">
-                  اسمك المحفوظ للدخول السريع في جميع الغرف
-                </p>
-
-                <input
-                  type="text"
-                  value={accountName}
-                  onChange={(e) => setAccountName(e.target.value)}
-                  placeholder="اكتب اسمك المفضل..."
-                  maxLength={18}
-                  className="w-full h-12 px-4 rounded-xl border-2 border-[#0A0A0A] text-[#0A0A0A] text-center font-black focus:outline-none"
-                />
-
-                <div className="flex items-center gap-2 w-full">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (accountName.trim()) {
-                        setPersistedPlayerName(accountName.trim());
-                      }
-                      sound.playClick();
-                      setIsAccountModalOpen(false);
-                    }}
-                    className="flex-1 py-3 rounded-xl text-white font-black text-sm shabah-btn-black cursor-pointer"
-                  >
-                    حفظ الاسم
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsAccountModalOpen(false)}
-                    className="px-4 py-3 rounded-xl border-2 border-[#0A0A0A] text-[#0A0A0A] font-black text-sm cursor-pointer hover:bg-neutral-100"
-                  >
-                    إغلاق
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

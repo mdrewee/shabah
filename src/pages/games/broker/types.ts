@@ -45,6 +45,7 @@ export interface BrokerRoundResult {
 }
 
 export interface BrokerRoomState {
+  roundTransition?: {key:string;endsAt:number};
   roomCode: string;
   phase: BrokerGamePhase;
   roundNumber: number;

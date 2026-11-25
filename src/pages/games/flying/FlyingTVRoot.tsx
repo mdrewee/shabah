@@ -1,3 +1,4 @@
+import {RoundCelebration,roundLeaders} from '../../../components/common/RoundCelebration';
 import { useGameState } from '../../../hooks/useGameState';
 import { hasAllFlyingAnswers } from './flyingRound';
 import { FlyingBankExhausted } from './FlyingBankExhausted';
@@ -709,7 +710,8 @@ export const FlyingTVRoot: React.FC<{
             </div>
           </div>
 
-          {/* Question Text in Prominent 16-Bit Font */}
+          {isRevealingPhase && flyingState.cameraMode==='global_overview' && <div className="relative z-30 mx-auto w-full max-w-lg px-3"><RoundCelebration award="أندر إجابة" names={roundLeaders(Object.values(flyingState.results).map(r=>({name:r.contestantName,score:r.roundMeters,eligible:!r.needsReview})))}/></div>}
+      {/* Question Text in Prominent 16-Bit Font */}
           <div className="text-center py-1">
             <h1 className="font-mono font-black text-xl sm:text-3xl text-white leading-snug tracking-wide">
               {q.title}
