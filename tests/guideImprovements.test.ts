@@ -46,7 +46,7 @@ test('pins require current member, current round, finite bounded coords and a fi
 });
 
 test('points depend on distance consistently across continent boundaries', () => {
-  for (const [distance, points] of [[50,10],[51,6],[200,6],[201,3],[900,3],[901,1],[3500,1],[3501,0]]) {
+  for (const [distance, points] of [[50,10],[51,8],[200,8],[201,6],[900,6],[901,3],[3379,3],[3500,3],[3501,1],[6000,1],[6001,0]]) {
     expect(evaluateGuess(distance, true).points).toBe(points);
     expect(evaluateGuess(distance, false).points).toBe(points);
   }

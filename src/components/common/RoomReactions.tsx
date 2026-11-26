@@ -9,7 +9,7 @@ export function GhostReactionImage({reaction,className=''}:{reaction:GhostReacti
   return <span aria-hidden="true" className={`ghost-reaction-image ${className}`} style={{backgroundPosition:`${item.x}% ${item.y}%`}}/>;
 }
 
-export function RoomReactions({roomCode,playerId}:{roomCode:string;playerId?:string}){
+export function RoomReactions({roomCode,playerId,inline=false}:{roomCode:string;playerId?:string;inline?:boolean}){
   const [open,setOpen]=useState(false);
   const [items,setItems]=useState<Array<RoomReaction & {playerName:string}>>([]);
   const [remaining,setRemaining]=useState(0);
@@ -57,7 +57,7 @@ export function RoomReactions({roomCode,playerId}:{roomCode:string;playerId?:str
         <span className="min-w-0"><b className="block truncate text-xs text-white">{item.playerName}</b><span className="text-[10px] text-zinc-300">{GHOST_REACTIONS.find(r=>r.id===item.reaction)?.label}</span></span>
       </div>)}
     </div>
-    {playerId && <div ref={panel} className="ghost-reaction-controls" dir="rtl">
+    {playerId && <div ref={panel} className={`ghost-reaction-controls${inline?' ghost-reaction-inline':''}`} dir="rtl">
       {open && <div role="group" aria-label="اختر تفاعل الشبح" className="ghost-reaction-picker">
         <div className="col-span-3 flex items-center justify-between px-1 text-xs font-bold text-white"><span>وش ردة فعلك؟</span><button type="button" aria-label="إغلاق التفاعلات" onClick={()=>setOpen(false)} className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/10"><X size={16}/></button></div>
         {GHOST_REACTIONS.map(item=><button key={item.id} type="button" aria-label={`إرسال تفاعل ${item.label}`} disabled={remaining>0} onClick={()=>send(item.id)} className="ghost-reaction-option"><GhostReactionImage reaction={item.id}/><span>{item.label}</span></button>)}

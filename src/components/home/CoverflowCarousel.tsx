@@ -225,7 +225,9 @@ export const CoverflowCarousel: React.FC<CoverflowCarouselProps> = ({
                 <div className="w-full flex-1 my-3 rounded-2xl bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center relative">
                   <img
                     src={game.cardImage}
-                    alt=""
+                    alt={game.title}
+                    loading={isCenter ? 'eager' : 'lazy'}
+                    decoding="async"
                     draggable={false}
                     className="absolute inset-0 w-full h-full object-cover select-none"
                   />
@@ -240,11 +242,10 @@ export const CoverflowCarousel: React.FC<CoverflowCarouselProps> = ({
                       e.stopPropagation();
                       if (!isCenter) {
                         selectCardIndex(idx);
-                        return;
                       }
                       onPlayGame(game);
                     }}
-                    className="flex-1 py-3.5 rounded-xl bg-white text-[#0A0A0A] font-black text-lg transition-all duration-300 hover:bg-gradient-to-r hover:from-[#B56BFF] hover:via-[#38BDF8] hover:to-[#BEF264] hover:text-[#0A0A0A] hover:shadow-[0_0_20px_rgba(181,107,255,0.45)] active:scale-[0.98] cursor-pointer"
+                    className="flex-1 min-h-12 rounded-xl bg-gradient-to-r from-[#B56BFF] via-[#38BDF8] to-[#BEF264] text-[#0A0A0A] font-black text-lg shadow-[0_0_14px_rgba(181,107,255,0.25)] active:scale-[0.98] cursor-pointer"
                   >
                     العب
                   </button>
@@ -257,7 +258,7 @@ export const CoverflowCarousel: React.FC<CoverflowCarouselProps> = ({
                       sound.playClick();
                       onExplainGame(game);
                     }}
-                    className="px-4 py-3.5 rounded-xl border border-white/20 bg-white/10 text-white font-black text-sm hover:bg-white/20 active:scale-[0.98] transition-colors cursor-pointer"
+                    className="min-h-12 px-4 rounded-xl border border-white/35 bg-transparent text-white font-black text-sm hover:bg-white/10 active:scale-[0.98] transition-colors cursor-pointer"
                   >
                     شرح
                   </button>
@@ -278,7 +279,7 @@ export const CoverflowCarousel: React.FC<CoverflowCarouselProps> = ({
               type="button"
               aria-label={game.title}
               onClick={() => selectCardIndex(idx)}
-              className={`h-2.5 rounded-full transition-all duration-200 cursor-pointer ${
+              className={`h-4 rounded-full transition-all duration-200 cursor-pointer ${
                 isActive ? 'w-8 bg-white' : 'w-2.5 bg-neutral-700 hover:bg-neutral-500'
               }`}
             />

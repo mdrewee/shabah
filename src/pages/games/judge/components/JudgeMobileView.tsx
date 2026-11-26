@@ -50,6 +50,12 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
   totalConnectedCount,
 }) => {
   const isBriefing = phase === 'case_briefing';
+  useEffect(() => {
+    if (phase === 'defending') sound.playRoundStart();
+  }, [phase, roundNumber]);
+  useEffect(() => {
+    if (phase === 'defending' && timerSeconds > 0 && timerSeconds <= 5) sound.playTick();
+  }, [phase, timerSeconds]);
   const [briefingSeconds, setBriefingSeconds] = useState(5);
   useEffect(() => {
     if (!isBriefing) return;
@@ -287,15 +293,10 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
               <span>قراءة القضية</span>
             </div>
           ) : (
-            <div
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-xl border text-xs font-sans font-bold ${
-                timerSeconds <= 10
-                  ? 'bg-red-950/80 border-red-700 text-red-300 animate-pulse'
-                  : 'bg-zinc-900 border-zinc-700 text-zinc-300'
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5 text-amber-400" />
-              <span>{toArabicNumber(timerSeconds)} ث</span>
+            <div role="timer" aria-label={`${timerSeconds} ثانية`}
+              className={`grid size-16 place-items-center rounded-full font-black ${timerSeconds <= 10 ? 'text-red-300 motion-safe:animate-pulse' : 'text-purple-200'}`}
+              style={{background: `conic-gradient(${timerSeconds <= 10 ? '#f87171' : '#a78bfa'} ${Math.min(100, timerSeconds * 2.5)}%, #27272a 0)`}}>
+              <span className="grid size-14 place-items-center rounded-full bg-zinc-950">{toArabicNumber(timerSeconds)} ث</span>
             </div>
           )}
         </div>

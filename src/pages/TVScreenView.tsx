@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useRoom, roomBus } from '../lib/roomBus';
-import { supabase } from '../lib/supabase';
 import { UnifiedShabahLobby } from '../components/lobby/UnifiedShabahLobby';
-import { isRoomHost } from '../services/roomService';
+import { checkRoomExists, isRoomHost } from '../services/roomService';
 import { SHABAH_GAMES } from '../data/shabahGames';
 import { normalizeGameId, ShabahGameCanonicalId } from '../utils/gameIds';
 import { RoomReactions } from '../components/common/RoomReactions';
@@ -20,11 +19,12 @@ export const TVScreenView: React.FC = () => {
   const [searchParams] = useSearchParams();
   const roomCode = code || searchParams.get('room') || '';
   return roomCode && isRoomHost(roomCode)
-    ? <><RoomReactions key={roomCode} roomCode={roomCode.toUpperCase()}/><HostTVScreen key={roomCode} /></>
+    ? <React.Fragment key={roomCode}><RoomReactions roomCode={roomCode.toUpperCase()}/><HostTVScreen /></React.Fragment>
     : <Navigate to="/" replace />;
 };
 
 const HostTVScreen: React.FC = () => {
+  const navigate = useNavigate();
   const params = useParams<{ code?: string; roomId?: string; id?: string; gameId?: string }>();
   const [searchParams] = useSearchParams();
 
@@ -67,14 +67,10 @@ const HostTVScreen: React.FC = () => {
 
     async function fetchInitialRoom() {
       try {
-        const { data } = await supabase
-          .from('rooms')
-          .select('game_id, status')
-          .eq('room_code', cleanCode)
-          .maybeSingle();
+        const result = await checkRoomExists(cleanCode);
 
-        if (isMounted && data?.game_id) {
-          const canon = normalizeGameId(data.game_id);
+        if (isMounted && result.gameId) {
+          const canon = normalizeGameId(result.gameId);
           if (canon) {
             setLoadedGameId(canon);
             const r = roomBus.getRoom(cleanCode);
@@ -93,17 +89,18 @@ const HostTVScreen: React.FC = () => {
 
     fetchInitialRoom();
 
-    const unsubTerminated = roomBus.on('ROOM_TERMINATED', () => {
-      sessionStorage.clear();
-      localStorage.removeItem('current_room_code');
-      window.location.href = '/';
+    const off = roomBus.on('SHABAH_GAME_CHANGED', ({data}) => {
+      const gameId = normalizeGameId(data?.gameId);
+      if (!gameId) return;
+      setLoadedGameId(gameId);
+      navigate(`/game/${gameId}/${cleanCode}`, {replace:true});
     }, cleanCode);
 
     return () => {
       isMounted = false;
-      unsubTerminated();
+      off();
     };
-  }, [roomCode]);
+  }, [roomCode, navigate]);
 
   if (loading && !loadedGameId) {
     return (

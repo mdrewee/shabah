@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import { useRoom, roomBus } from '../../../lib/roomBus';
 import { useRoomSync } from '../../../hooks/useRoomSync';
 import { useGameState } from '../../../hooks/useGameState';
+import { useSafeCountdown } from '../../../hooks/useSafeCountdown';
 import { UnifiedShabahLobby } from '../../../components/lobby/UnifiedShabahLobby';
 import { getNextUnplayedJudgeCase } from '../../../data/judgePredicaments';
 import { evaluateAllExcuses } from '../../../services/judgeEngine';
@@ -21,6 +22,7 @@ export const JudgeTVRoot:React.FC<{mobileContestants?:Array<{id:string;name:stri
   const members=mobileContestants ?? (hasPresenceSnapshot?connectedPlayers:(room?.players || []).filter(p=>p.id!=='host_tv'));
   const membersRef=useRef(members);membersRef.current=members;
   const [state,setState,snapshot]=useGameState<JudgeRoomState>(()=>createInitialJudgeState(roomCode));
+  const defenseSeconds=useSafeCountdown(state.phase==='defending' ? state.defenseEndsAt : undefined);
   const analysisKey=useRef('');
   const generation=useRef(0);
   const sync=useCallback((next:JudgeRoomState)=>{
@@ -64,7 +66,7 @@ export const JudgeTVRoot:React.FC<{mobileContestants?:Array<{id:string;name:stri
     if(party.readIndex+1<party.cards.length) {
       sync({...cur,party:{...party,readIndex:party.readIndex+1,phaseEndsAt:Date.now()+8000}});
     } else sync({...cur,phase:party.mode==='jury' && party.cards.length>1?'VOTING':party.mode==='jury' && party.eligibleVoterIds.length?'VOTING':'JUDGING',
-      party:{...party,phaseEndsAt:Date.now()+20000}});
+      party:{...party,phaseEndsAt:Date.now()+28000}});
   },[sync,snapshot]);
 
   useEffect(()=>{
@@ -122,7 +124,6 @@ export const JudgeTVRoot:React.FC<{mobileContestants?:Array<{id:string;name:stri
       if(cur.phase==='case_briefing' && Date.now()>=(cur.briefingEndsAt || 0)) startWriting();
       if(cur.phase==='defending') {
         const seconds=Math.max(0,Math.ceil(((cur.defenseEndsAt || Date.now())-Date.now())/1000));
-        if(cur.timerSeconds!==seconds) sync({...cur,timerSeconds:seconds});
         if(seconds===0 && !grace) {
           roomBus.emit('JUDGE_TIME_UP',roomCode,{});
           grace=setTimeout(closeWriting,1200);
@@ -163,7 +164,7 @@ export const JudgeTVRoot:React.FC<{mobileContestants?:Array<{id:string;name:stri
     <p className="text-purple-300">محكمة التصريف · الجولة {state.roundNumber}</p>
     <h1 className="text-3xl font-black">{state.currentPredicament.title}</h1><p className="text-2xl max-w-3xl text-center">{state.currentPredicament.description}</p>
     <p className="text-amber-300">الدليل: {state.currentPredicament.keyEvidence}</p>
-    <p>{state.phase==='case_briefing'?'اقرأوا الورطة… الكتابة تبدأ بعد قليل':`${state.timerSeconds} ثانية · وصل ${Object.keys(state.excuses).length} من ${members.length}`}</p>
+    <p>{state.phase==='case_briefing'?'اقرأوا الورطة… الكتابة تبدأ بعد قليل':`${defenseSeconds} ثانية · وصل ${Object.keys(state.excuses).length} من ${members.length}`}</p>
     <p className="text-zinc-400">أقنعنا أو ضحّكنا. الجواب القصير الذكي يكسب.</p>
   </section>;
 };

@@ -115,7 +115,7 @@ export const GuideMobileView: React.FC<GuideMobileViewProps> = ({
           </span>
           <span className="text-zinc-500 text-[10px]">تلميح جديد كل ١٢ث</span>
         </div>
-        <p className="font-sans font-extrabold text-sm sm:text-base text-zinc-100 leading-relaxed">
+        <p className="h-16 overflow-y-auto font-sans font-extrabold text-sm sm:text-base text-zinc-100 leading-relaxed">
           "{activeClueText}"
         </p>
       </div>

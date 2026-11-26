@@ -283,9 +283,6 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       alert('تعذر إنهاء الغرفة، حاول مرة أخرى');
       return;
     }
-    sessionStorage.clear();
-    localStorage.removeItem('current_room_code');
-    window.location.href = '/';
   }, [roomCode]);
 
   const handleReturnToLobby = useCallback(() => {

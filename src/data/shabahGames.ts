@@ -16,7 +16,7 @@ export const SHABAH_GAMES: ShabahGame[] = [
     id: 'ai-judge',
     title: 'الشبح القاضي',
     badgeText: 'ورطات وأعذار',
-    shortExplanation: 'محكمة التصريف: ورطة قصيرة، عذر ذكي أو مضحك، ثم تصويت مجهول وكشف الأسماء. كل صوت ٣ نقاط ومكافأة الشبح نقطتان؛ مع لاعبين يحكم الشبح من ١٠.',
+    shortExplanation: 'محكمة التصريف: ورطة قصيرة، عذر ذكي أو مضحك، ثم تصويت مجهول وكشف الأسماء. كل صوت ٣ نقاط ومكافأة الشبح نقطتان. مع لاعبين اثنين: الشبح يحكم من ١٠.',
     cardImage: '/images/games/judge-card-v2.jpg',
     glowColor: 'purple',
     minPlayers: 2,

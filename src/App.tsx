@@ -1,8 +1,7 @@
-import {RoomSessionTools} from './components/common/RoomSessionTools';
-import {RoundTransitionNotice} from './components/common/RoundTransitionNotice';
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { LandingPage } from './pages/LandingPage';
+import { useAuth } from './context/AuthContext';
 
 function RouteScrollReset() {
   const { pathname } = useLocation();
@@ -22,19 +21,35 @@ const SubscriptionPage = React.lazy(() => import('./pages/SubscriptionPage'));
 const ShabahAccountPage=React.lazy(()=>import('./pages/ShabahAccountPage'));
 const ShabahGamesPage=React.lazy(()=>import('./pages/ShabahGamesPage'));
 const ShabahPolicyPage=React.lazy(()=>import('./pages/ShabahPolicyPage'));
+const RoomSessionTools = React.lazy(() => import('./components/common/RoomSessionTools').then(module => ({ default: module.RoomSessionTools })));
+const RoundTransitionNotice = React.lazy(() => import('./components/common/RoundTransitionNotice').then(module => ({ default: module.RoundTransitionNotice })));
+
+function RoomChrome() {
+  const { pathname } = useLocation();
+  if (!/^\/(?:room\/[^/]+\/.+|game\/[^/]+\/[a-z0-9]{4}(?:\/.*)?)$/i.test(pathname)) return null;
+  return <React.Suspense fallback={null}><RoundTransitionNotice /><RoomSessionTools /></React.Suspense>;
+}
+
+function AdminRoute() {
+  const { isAuthenticated, role } = useAuth();
+  if (isAuthenticated && role === 'admin') return <AdminDashboard />;
+  return <main dir="rtl" className="mx-auto max-w-[720px] p-8 text-center">
+    <h1>الإدارة تتطلب حساب مسؤول</h1>
+    <Link to="/login">تسجيل الدخول</Link>
+  </main>;
+}
 
 export function App() {
   return (
     <Router>
-      <RoundTransitionNotice/>
-      <RoomSessionTools/>
+      <RoomChrome />
       <RouteScrollReset />
       <React.Suspense fallback={<p role="status" dir="rtl">جاري التحميل…</p>}>
         <Routes>
           {/* Mayyaz Real Estate Routes */}
           <Route path="/office" element={<OfficeDashboard />} />
           <Route path="/dashboard" element={<OfficeDashboard />} />
-          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin" element={<AdminRoute />} />
           <Route path="/view/:propertyId" element={<PropertyView />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/profile" element={<ProfilePage />} />
@@ -62,7 +77,7 @@ export function App() {
           <Route path="/game/:gameId/:code/play" element={<PlayerMobileView />} />
 
           {/* 4. Room Host / TV Views for the 5 Games */}
-          <Route path="/room/:code" element={<TVScreenView />} />
+          <Route path="/room/:code" element={<NameEntryView />} />
           <Route path="/room/:code/tv" element={<TVScreenView />} />
           <Route path="/room/:code/board" element={<TVScreenView />} />
           <Route path="/room/:code/ai/ai-lawyer-tv" element={<TVScreenView />} />
@@ -87,7 +102,7 @@ export function App() {
           <Route path="/room/:code/flying-play" element={<PlayerMobileView />} />
 
           {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<main dir="rtl" className="p-8 text-center text-white"><h1>الصفحة غير موجودة</h1><Link to="/">العودة للرئيسية</Link></main>} />
         </Routes>
       </React.Suspense>
     </Router>

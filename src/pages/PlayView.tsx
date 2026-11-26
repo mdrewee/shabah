@@ -37,24 +37,39 @@ export const PlayView: React.FC = () => {
 const VerifiedPlayView: React.FC<{ roomCode: string; createdGame: ShabahGameCanonicalId | null }> = ({ roomCode, createdGame }) => {
   const [game, setGame] = useState<ShabahGameCanonicalId | null | undefined>(createdGame ?? undefined);
   const [error, setError] = useState<string>();
+  const [attempt, setAttempt] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (createdGame) return;
     let active = true;
-    checkRoomExists(roomCode).then((result) => {
+    async function enterRoom() {
+      if (createdGame) return;
+      const result = await checkRoomExists(roomCode);
       if (!active) return;
-      setGame(result.exists ? normalizeGameId(result.gameId) : null);
-      setError(result.error);
-    });
-    return () => { active = false; };
-  }, [roomCode, createdGame]);
+      const gameId = result.exists ? normalizeGameId(result.gameId) : null;
+      if (!gameId) {
+        setGame(null);
+        setError(result?.error);
+        return;
+      }
+      setGame(gameId);
+    }
+    void enterRoom();
+    const off = roomBus.on('SHABAH_GAME_CHANGED', ({data}) => {
+      const chosenGame = normalizeGameId(data?.gameId);
+      if (chosenGame) setGame(chosenGame);
+    }, roomCode);
+    return () => { active = false; off(); };
+  }, [roomCode, createdGame, attempt]);
 
-  if (game) return <ActivePlayView roomCode={roomCode.toUpperCase()} initialGameId={game} />;
+  if (game) return <ActivePlayView key={game} roomCode={roomCode.toUpperCase()} initialGameId={game} />;
   return (
     <main dir="rtl" className="grid min-h-screen place-content-center gap-4 bg-black px-4 text-center text-white">
       <p role="status">{game === undefined ? 'جاري تحضير الغرفة…' : (error || 'هذه اللعبة غير متاحة')}</p>
-      {game === null && <button type="button" onClick={() => navigate('/')}>العودة للرئيسية</button>}
+      {game === null && <>
+        <button type="button" onClick={() => { setGame(undefined); setAttempt(previous => previous + 1); }}>إعادة المحاولة</button>
+        <button type="button" onClick={() => navigate('/')}>العودة للرئيسية</button>
+      </>}
     </main>
   );
 };
@@ -114,7 +129,7 @@ const ActivePlayView: React.FC<{ roomCode: string; initialGameId: ShabahGameCano
       </div>;
   }
   };
-  return <><RoomReactions roomCode={roomCode} playerId={playerId}/>{renderGame()}</>;
+  return <><RoomReactions roomCode={roomCode} playerId={playerId} inline={initialGameId === 'ai-guide' || initialGameId === 'ai-coach'}/>{renderGame()}</>;
 };
 
 export default PlayView;

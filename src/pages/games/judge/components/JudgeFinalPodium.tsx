@@ -4,7 +4,7 @@ import type { WorstExcuseRecord } from '../types';
 import { ShabahGhost } from '../../../../components/mascot/ShabahGhost';
 import { toArabicNumber } from '../../../../utils/numberFormat';
 export function JudgeFinalPodium({rankedContestants,onReturnToLobby,isTV=false}: {
- rankedContestants:RankedJudgeContestant[];worstExcuses:Record<string,WorstExcuseRecord>;isTV?:boolean;onReturnToLobby:()=>void;
+ rankedContestants:RankedJudgeContestant[];worstExcuses:Record<string,WorstExcuseRecord>;isTV?:boolean;onReturnToLobby?:()=>void;
 }) {
  const best=rankedContestants[0]?.score || 0;
  const winners=rankedContestants.filter(p=>p.score===best && best>0);
@@ -17,6 +17,6 @@ export function JudgeFinalPodium({rankedContestants,onReturnToLobby,isTV=false}:
   <div className="w-full max-w-2xl space-y-3">{rankedContestants.map((p,index)=><article key={p.id} className="flex justify-between items-center rounded-2xl bg-zinc-950 border border-zinc-800 p-4">
    <span className="font-bold">{toArabicNumber(rankedContestants.findIndex(c=>c.score===p.score)+1)} · {p.name}</span><span className="text-emerald-300 font-black">{toArabicNumber(p.score)} نقطة</span>
   </article>)}</div>
-  <button className="w-full max-w-md bg-purple-500 rounded-2xl p-4 font-bold mt-4" onClick={onReturnToLobby}>العودة للوبي</button>
+  {onReturnToLobby && <button className="w-full max-w-md bg-purple-500 rounded-2xl p-4 font-bold mt-4" onClick={onReturnToLobby}>إعادة اللعب بنفس الغرفة</button>}
  </section>;
 }

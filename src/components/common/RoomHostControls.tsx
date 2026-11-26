@@ -7,6 +7,7 @@ export function RoomHostControls({ roomCode, syncEvent }: { roomCode: string; sy
   const confirm = useConfirmation();
   const navigate = useNavigate();
   const [phase, setPhase] = useState('LOBBY');
+  const [error, setError] = useState('');
   useEffect(() => roomBus.on(syncEvent, (event: any) => {
     const state = event?.data ?? event;
     if (state?.phase) setPhase(state.phase);
@@ -17,11 +18,17 @@ export function RoomHostControls({ roomCode, syncEvent }: { roomCode: string; sy
     <div className="flex flex-wrap gap-2">
       {syncEvent !== 'JUDGE_STATE_SYNC' && ['JUDGING', 'CALCULATING', 'EVALUATING'].includes(phase) && <button type="button" onClick={() => window.location.reload()} className="min-h-10 rounded-xl border border-cyan-300/30 px-3 text-cyan-200">إعادة التحليل</button>}
       <button type="button" onClick={async () => {
-        if (await confirm('ترجع الجميع للوبي وتنهي الجولة الحالية؟')) roomBus.broadcastReturnToLobby(roomCode);
+        if (!await confirm('ترجع الجميع للوبي وتنهي الجولة الحالية؟')) return;
+        setError('');
+        if (!await roomBus.broadcastReturnToLobby(roomCode)) setError('تعذر الرجوع للوبي. جرّب مرة ثانية.');
       }} className="min-h-10 rounded-xl border border-white/20 px-3">العودة للوبي</button>
       <button type="button" onClick={async () => {
-        if (await confirm('تنهي الغرفة وتخرج جميع اللاعبين؟') && await roomBus.terminateRoom(roomCode)) navigate('/');
+        if (!await confirm('تنهي الغرفة وتخرج جميع اللاعبين؟')) return;
+        setError('');
+        if (await roomBus.terminateRoom(roomCode)) navigate('/');
+        else setError('تعذر إنهاء الغرفة. جرّب مرة ثانية.');
       }} className="min-h-10 rounded-xl border border-red-300/30 px-3 text-red-200">إنهاء الغرفة</button>
     </div>
+    {error && <p role="alert" className="w-full text-amber-200">{error}</p>}
   </nav>;
 }

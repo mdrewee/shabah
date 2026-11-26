@@ -13,6 +13,7 @@ import { generateHexGrid, checkWinCondition, getRandomQuestionForCell } from './
 import { sound } from './audio';
 import { worldFlagsCatalog } from '../data/flags';
 import { supabase } from './supabaseClient';
+import { normalizeGameId } from '../utils/gameIds';
 import { calculateColorCloseness } from './colorMath';
 import { LandmarkScope, LandmarkRoomState, LandmarkPlayer } from '../types/landmarkGame';
 import { calculateHaversineDistance, getLandmarksByScope } from '../data/landmarks';
@@ -26,7 +27,7 @@ const CHANNEL_NAME = 'taghesi_bus_v3';
 const HOST_COMMAND_EVENTS = new Set([
   'GAME_STARTED', 'HOST_START_GAME', 'GAME_ENDED', 'ROOM_TERMINATED', 'TERMINATE_ROOM',
   'FORCE_PLAYER_KICK', 'PLAYER_KICKED', 'KICK_PLAYER',
-  'RETURN_TO_LOBBY', 'AI_RESPONSE',
+  'RETURN_TO_LOBBY', 'AI_RESPONSE', 'SHABAH_GAME_CHANGED',
   'COACH_STATE_SYNC', 'BROKER_STATE_SYNC', 'ARABIC_STATE_SYNC',
   'JUDGE_STATE_SYNC', 'GUIDE_STATE_SYNC', 'FLYING_STATE_SYNC',
   'JUDGE_NEW_ROUND', 'JUDGE_START_DEFENSE', 'JUDGE_RESULTS_READY', 'JUDGE_TIME_UP',
@@ -423,6 +424,37 @@ class RoomBus {
   private seenHostCommands = new Map<string, number>();
   private hostSequence = Date.now() * 1000;
   private receivedHostSequences = new Map<string, number>();
+  private lobbySequence = new Map<string, number>();
+
+  public async changeLobbyGame(roomCode: string, gameId: string): Promise<boolean> {
+    const code = cleanRoomCode(roomCode);
+    const game = normalizeGameId(gameId);
+    const secret = localStorage.getItem('shabah_host_' + code);
+    if (!game || !secret) return false;
+    try {
+      const sequence = ++this.hostSequence;
+      const { data, error } = await supabase.rpc('change_shabah_room_game', { code, secret, game, sequence });
+      if (error || typeof data !== 'string') return false;
+      this.seenHostCommands.set(data, Date.now());
+      this.safeBroadcast(code, 'HOST_COMMAND', { id: data });
+      this.applyHostCommand(code, 'SHABAH_GAME_CHANGED', {gameId: game, _hostSequence: sequence});
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async restoreRoomSnapshot(roomCode: string, channel: unknown): Promise<void> {
+    try {
+      const { data, error } = await supabase.rpc('read_shabah_room_snapshot', { code: roomCode });
+      if (error || !data || this.supabaseChannels.get(roomCode) !== channel) return;
+      if (['COACH_STATE_SYNC','BROKER_STATE_SYNC','ARABIC_STATE_SYNC','JUDGE_STATE_SYNC','GUIDE_STATE_SYNC','FLYING_STATE_SYNC'].includes(data.event)) {
+        this.applyHostCommand(roomCode, data.event, data.payload);
+      }
+    } catch {
+      // A live host can still answer REQUEST_ROOM_STATE.
+    }
+  }
 
   private async sendHostCommand(roomCode: string, event: string, payload: object): Promise<boolean> {
     const code = cleanRoomCode(roomCode);
@@ -430,13 +462,29 @@ class RoomBus {
     if (!secret) return false;
 
     try {
+      const commandBody = { ...payload, _hostSequence: ++this.hostSequence };
       const { data: id, error } = await supabase.rpc('issue_shabah_room_command', {
-        code, secret, command: event, body: { ...payload, _hostSequence: ++this.hostSequence },
+        code, secret, command: event, body: commandBody,
       });
       if (error || !id) throw error;
       this.seenHostCommands.set(id, Date.now());
-      this.safeBroadcast(code, 'HOST_COMMAND', { id });
-      if (event === 'GAME_STARTED' || event === 'ROOM_TERMINATED') this.applyHostCommand(code, event, payload);
+      if (event === 'ROOM_TERMINATED') {
+        // Let the server receive the notification before tearing down the room's socket.
+        const channel = this.supabaseChannels.get(code);
+        if (channel) {
+          try {
+            await channel.send({ type: 'broadcast', event: 'HOST_COMMAND',
+              payload: { id, _clientId: this.clientId } }, { timeout: 4000 });
+          } catch (error) {
+            console.warn('[roomBus] Room closed, but live delivery failed:', error);
+          }
+        }
+      } else {
+        this.safeBroadcast(code, 'HOST_COMMAND', { id });
+      }
+      if (event === 'GAME_STARTED' || event === 'ROOM_TERMINATED' || event === 'RETURN_TO_LOBBY') {
+        this.applyHostCommand(code, event, commandBody);
+      }
       return true;
     } catch (err) {
       console.warn('[roomBus] Host command failed:', err);
@@ -452,6 +500,7 @@ class RoomBus {
       dispatch('GAME_STARTED');
     } else if (event === 'ROOM_TERMINATED') {
       this.removeLocalRoom(roomCode);
+      this.leaveRoom(roomCode);
       dispatch('ROOM_TERMINATED');
     } else if (event === 'FORCE_PLAYER_KICK' && typeof payload.targetPlayerId === 'string') {
       this.rememberKick(roomCode, payload.targetPlayerId);
@@ -465,7 +514,24 @@ class RoomBus {
       const key = roomCode + ':' + event;
       const sequence = payload?._hostSequence;
       if (event !== 'AI_RESPONSE' && (!Number.isSafeInteger(sequence) || sequence <= (this.receivedHostSequences.get(key) ?? 0))) return;
+      if (event.endsWith('_STATE_SYNC') && sequence <= (this.lobbySequence.get(roomCode) ?? 0)) return;
       this.receivedHostSequences.set(key, sequence);
+      if (event === 'RETURN_TO_LOBBY' || event === 'SHABAH_GAME_CHANGED') {
+        const gameId = event === 'SHABAH_GAME_CHANGED' && typeof payload?.gameId === 'string' ? normalizeGameId(payload.gameId) : null;
+        if (event === 'SHABAH_GAME_CHANGED' && !gameId) return;
+        if (sequence <= (this.lobbySequence.get(roomCode) ?? 0)) return;
+        this.lobbySequence.set(roomCode, sequence);
+        const room = this.getRoom(roomCode);
+        if (room) {
+          room.players.forEach(player => { player.isReady = false; });
+          if (gameId) room.selectedGameId = gameId;
+          this.writeLocal(room);
+        }
+        if (gameId) {
+          this.removeGameSession(roomCode);
+          this.dispatchLocal({roomCode, type:'RETURN_TO_LOBBY', data:{}, timestamp: Date.now()});
+        }
+      }
       dispatch(event);
     }
   }
@@ -474,45 +540,27 @@ class RoomBus {
     return this.sendHostCommand(roomCode, 'GAME_STARTED', payload);
   }
 
-  private isBroadcastingLobbyReturn = false;
+  private returningRooms = new Set<string>();
 
-  public broadcastReturnToLobby(roomCode: string): void {
-    if (this.isBroadcastingLobbyReturn || !localStorage.getItem('shabah_host_' + cleanRoomCode(roomCode))) return;
-    this.isBroadcastingLobbyReturn = true;
-
+  public async broadcastReturnToLobby(roomCode: string): Promise<boolean> {
+    const code = cleanRoomCode(roomCode);
+    if (this.returningRooms.has(code)) return false;
+    this.returningRooms.add(code);
     try {
-      const clean = cleanRoomCode(roomCode);
-      const room = this.getRoom(clean);
-      if (room) {
-        room.players.forEach((p) => {
-          p.isReady = false;
-        });
-        this.saveRoom(room);
-      }
-      const payload = {
-        roomCode: clean,
-        _senderId: this.localPlayerId || this.clientId,
-        _clientId: this.clientId,
-      };
-      this.emit('RETURN_TO_LOBBY', clean, payload);
-      this.safeBroadcast(clean, 'RETURN_TO_LOBBY', payload);
+      return await this.sendHostCommand(code, 'RETURN_TO_LOBBY', {});
     } finally {
-      setTimeout(() => {
-        this.isBroadcastingLobbyReturn = false;
-      }, 500);
+      this.returningRooms.delete(code);
     }
   }
 
   public broadcastCoachSync(roomCode: string, state: any): void {
     const clean = cleanRoomCode(roomCode);
     this.emit('COACH_STATE_SYNC', clean, state);
-    this.safeBroadcast(clean, 'COACH_STATE_SYNC', state);
   }
 
   public broadcastBrokerSync(roomCode: string, state: any): void {
     const clean = cleanRoomCode(roomCode);
     this.emit('BROKER_STATE_SYNC', clean, state);
-    this.safeBroadcast(clean, 'BROKER_STATE_SYNC', state);
   }
 
   public broadcastBrokerBid(roomCode: string, payload: any): void {
@@ -548,7 +596,6 @@ class RoomBus {
   public broadcastArabicSync(roomCode: string, state: any): void {
     const clean = cleanRoomCode(roomCode);
     this.emit('ARABIC_STATE_SYNC', clean, state);
-    this.safeBroadcast(clean, 'ARABIC_STATE_SYNC', state);
   }
 
   public broadcastArabicAnswers(roomCode: string, payload: any): void {
@@ -592,7 +639,6 @@ class RoomBus {
   public broadcastJudgeSync(roomCode: string, state: any): void {
     const clean = cleanRoomCode(roomCode);
     this.emit('JUDGE_STATE_SYNC', clean, state);
-    this.safeBroadcast(clean, 'JUDGE_STATE_SYNC', state);
   }
 
   public broadcastJudgeExcuse(roomCode: string, payload: any): void {
@@ -604,7 +650,6 @@ class RoomBus {
   public broadcastGuideSync(roomCode: string, state: any): void {
     const clean = cleanRoomCode(roomCode);
     this.emit('GUIDE_STATE_SYNC', clean, state);
-    this.safeBroadcast(clean, 'GUIDE_STATE_SYNC', state);
   }
 
   public broadcastGuidePin(roomCode: string, payload: any): void {
@@ -637,7 +682,6 @@ class RoomBus {
   public broadcastFlyingSync(roomCode: string, state: any): void {
     const clean = cleanRoomCode(roomCode);
     this.emit('FLYING_STATE_SYNC', clean, state);
-    this.safeBroadcast(clean, 'FLYING_STATE_SYNC', state);
   }
 
   public broadcastFlyingAnswer(roomCode: string, payload: any): void {
@@ -687,6 +731,7 @@ class RoomBus {
     this.initRequestListener();
     this.initIntentListener();
     const requests = new Map<string, number>();
+    const recentRequestsByPlayer = new Map<string, number[]>();
     this.on('AI_REQUEST', async (event) => {
       const code = cleanRoomCode(event.roomCode);
       if (!localStorage.getItem('shabah_host_' + code)) return;
@@ -694,9 +739,20 @@ class RoomBus {
       if (typeof data?.requestId !== 'string' || !/^[a-f0-9-]{36}$/.test(data.requestId) ||
           typeof data.prompt !== 'string' || data.prompt.length > 90000 ||
           !this.getFormattedPlayers(code).some((player) => player.id === data.playerId)) return;
-      for (const [id, time] of requests) if (Date.now() - time > 60000) requests.delete(id);
+      const now = Date.now();
+      for (const [id, time] of requests) if (now - time >= 60000) requests.delete(id);
       if (requests.has(data.requestId)) return;
-      requests.set(data.requestId, Date.now());
+      requests.set(data.requestId, now);
+      for (const [key, times] of recentRequestsByPlayer) {
+        if (now - times[times.length - 1] >= 60000) recentRequestsByPlayer.delete(key);
+      }
+      const playerKey = code + ':' + data.playerId;
+      const recent = (recentRequestsByPlayer.get(playerKey) ?? []).filter(time => now - time < 60000);
+      if (recent.length >= 6) {
+        this.emit('AI_RESPONSE', code, { requestId: data.requestId, error: true });
+        return;
+      }
+      recentRequestsByPlayer.set(playerKey, [...recent, now]);
       try {
         const { requestRoomAI } = await import('../services/geminiClient');
         const text = await requestRoomAI(code, data.prompt, data.options || {});
@@ -1153,7 +1209,13 @@ class RoomBus {
   public retryConnection(roomCode:string):void {
     const code=cleanRoomCode(roomCode);
     if(!code || this.isIntentionalLeave.get(code))return;
-    if(this.isChannelSubscribed(code)){this.emit('REQUEST_ROOM_STATE',code,{});return;}
+    if(this.isChannelSubscribed(code)){
+      if (typeof localStorage !== 'undefined' && !localStorage.getItem('shabah_host_' + code)) {
+        void this.restoreRoomSnapshot(code, this.supabaseChannels.get(code));
+      }
+      this.emit('REQUEST_ROOM_STATE',code,{});
+      return;
+    }
     this.scheduleReconnect(code,this.latestPresence.get(code));
   }
 
@@ -1208,7 +1270,7 @@ class RoomBus {
 
       const ch = supabase.channel(topic, {
         config: {
-          broadcast: { self: false, ack: false },
+          broadcast: { self: false, ack: true },
           presence: { key: presenceKey }
         },
       });
@@ -1547,6 +1609,9 @@ class RoomBus {
             const local = this.getRoom(cleanCode);
             if (local) this.broadcastState(local);
           } else {
+            if (typeof localStorage !== 'undefined' && !localStorage.getItem('shabah_host_' + cleanCode)) {
+              void this.restoreRoomSnapshot(cleanCode, ch);
+            }
             this.safeChannelSend(cleanCode, {
               roomCode: cleanCode,
               type: 'REQUEST_ROOM_STATE',
@@ -1693,9 +1758,7 @@ class RoomBus {
           }
         }
       } finally {
-        setTimeout(() => {
-          this.isDispatchingReturnToLobby = false;
-        }, 150);
+        this.isDispatchingReturnToLobby = false;
       }
       return;
     }
@@ -2521,17 +2584,26 @@ class RoomBus {
     return sent;
   }
 
+  private removeGameSession(roomCode: string): void {
+    try {
+      for (const prefix of ['shabah_coach_', 'shabah_broker_state_', 'shabah_arabic_state_', 'shabah_judge_state_', 'SHABAH_GUIDE_STATE_', 'shabah_flying_state_']) {
+        sessionStorage.removeItem(prefix + roomCode);
+      }
+    } catch {}
+  }
+
   private removeLocalRoom(roomCode: string): void {
     localStorage.removeItem(STORAGE_PREFIX + roomCode);
     localStorage.removeItem(STORAGE_PREFIX + 'ROOM_' + roomCode);
     localStorage.removeItem('shabah_host_' + roomCode);
+    localStorage.removeItem('taghesi_player_' + roomCode);
+    try { sessionStorage.removeItem('taghesi_player_' + roomCode); } catch {}
+    this.removeGameSession(roomCode);
   }
 
   public async terminateRoom(roomCode: string, reason = 'تم إنهاء الغرفة بواسطة المضيف'): Promise<boolean> {
     const clean = cleanRoomCode(roomCode);
-    if (!await this.sendHostCommand(clean, 'ROOM_TERMINATED', { reason })) return false;
-    this.leaveRoom(clean);
-    return true;
+    return this.sendHostCommand(clean, 'ROOM_TERMINATED', { reason });
   }
 
   public broadcastBingoPlayerSelected(roomCode: string, player: any): void {

@@ -5,6 +5,13 @@ import type { JudgeRoomState } from '../types';
 import { ShabahGhost } from '../../../../components/mascot/ShabahGhost';
 import { toArabicNumber } from '../../../../utils/numberFormat';
 
+function formatVotes(votes: number): string {
+  if (votes === 0) return 'بلا أصوات';
+  if (votes === 1) return 'صوت واحد';
+  if (votes === 2) return 'صوتان';
+  return `${toArabicNumber(votes)} أصوات`;
+}
+
 export function JudgePartyStage({state,playerId,ownCardId,isHost=false,activePlayerIds,onVote,onReady,onAction}: {
   state:JudgeRoomState;playerId?:string;ownCardId?:string;isHost?:boolean;
   activePlayerIds?:string[];
@@ -64,7 +71,7 @@ export function JudgePartyStage({state,playerId,ownCardId,isHost=false,activePla
         {[...(state.verdictList || [])].sort((a,b)=>b.score-a.score).map(v=><article id={resultCardId('judge',v.playerId)} style={{borderColor:v.playerId===playerId?'#6ee7b7':undefined}} key={v.playerId} className="rounded-2xl border border-zinc-700 bg-zinc-950 p-4 space-y-2">
           <div className="flex justify-between gap-3"><h3 className="font-black">{v.playerName}{v.playerId===playerId?' · أنت':''}</h3><span className="text-emerald-300 font-black">+{toArabicNumber(v.score)}</span></div>
           <p className="text-lg font-bold break-words">{v.excuse || 'لم يرسل تصريفًا'}</p>
-          <p className="text-xs text-purple-300">{party.mode==='jury'?`${toArabicNumber(party.tallies?.[v.playerId]?.votes || 0)} أصوات · مكافأة الشبح +${toArabicNumber(party.tallies?.[v.playerId]?.bonus || 0)}`:v.aiUnavailable?'لا يوجد حكم معتمد':`حكم الشبح: ${v.verdict}`}</p>
+          <p className="text-xs text-purple-300">{party.mode==='jury'?`${formatVotes(party.tallies?.[v.playerId]?.votes || 0)} · مكافأة الشبح +${toArabicNumber(party.tallies?.[v.playerId]?.bonus || 0)}`:v.aiUnavailable?'لا يوجد حكم معتمد':`حكم الشبح: ${v.verdict}`}</p>
           <p className="text-zinc-300 text-sm">{v.roast}</p>
         </article>)}
       </>}

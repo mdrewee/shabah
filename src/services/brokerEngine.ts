@@ -180,14 +180,14 @@ ${isOpening?'هذه أول رسالة: افتح عرض شراء من فتحة ا
 
       if (parsed) {
         const persuasionReason=stripEmojis(String(parsed.persuasionReason || '')).slice(0,180);
-        const cleanReply = stripEmojis(parsed.brokerReply || parsed.reply || '') + (persuasionReason?' السبب: '+persuasionReason:'');
+        const cleanReply = stripEmojis(String(parsed.brokerReply || '')).slice(0, 240);
 
         if (isOpening) {
           if (typeof parsed.accepted !== 'boolean') throw new Error('رد غير صالح');
           const accepted = parsed.accepted;
           const finalPrice = Math.max(
             0,
-            Math.min(item.estimatedValue, Number(parsed.finalOpeningPrice ?? (accepted ? item.openingBaseline : 0)))
+            Math.min(item.estimatedValue, Math.max(Math.round(item.openingBaseline * 0.6), Number(parsed.finalOpeningPrice ?? item.openingBaseline)))
           );
 
           if (!Number.isFinite(finalPrice)) throw new Error('سعر غير صالح');

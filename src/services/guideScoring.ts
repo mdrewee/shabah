@@ -73,26 +73,28 @@ export function evaluateGuess(
     };
   } else if (distanceKm <= 200) {
     return {
-      points: 6,
+      points: 8,
       label: 'على بعد ٢٠٠ كم أو أقل',
       tier: 'city',
     };
   } else if (distanceKm <= 900) {
     return {
-      points: 3,
+      points: 6,
       label: 'على بعد ٩٠٠ كم أو أقل',
       tier: 'country',
     };
   } else if (distanceKm <= 3500) {
     return {
-      points: 1,
+      points: 3,
       label: 'على بعد ٣٥٠٠ كم أو أقل',
       tier: 'continent',
     };
+  } else if (distanceKm <= 6000) {
+    return { points: 1, label: 'على بعد ٦٠٠٠ كم أو أقل', tier: 'continent' };
   } else {
     return {
       points: 0,
-      label: 'أبعد من ٣٥٠٠ كم',
+      label: 'أبعد من ٦٠٠٠ كم',
       tier: 'miss',
     };
   }

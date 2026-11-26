@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronDown, Tv } from 'lucide-react';
 import { ShabahGhost, ShabahMood } from '../components/mascot/ShabahGhost';
 import { ShabahWordmark } from '../components/mascot/ShabahWordmark';
@@ -9,7 +9,6 @@ import { CoverflowCarousel } from '../components/home/CoverflowCarousel';
 import { ContainerScroll } from '../components/ui/container-scroll-animation';
 import { SHABAH_GAMES, ShabahGame } from '../data/shabahGames';
 import { sound } from '../lib/audio';
-import { roomBus } from '../lib/roomBus';
 import { getPersistedPlayerName, setPersistedPlayerName, getOrCreatePlayerId } from '../utils/playerSession';
 import { createRoom, checkRoomExists, normalizeRoomCode } from '../services/roomService';
 import { ShabahFooter } from '../components/common/ShabahFooter';
@@ -29,6 +28,7 @@ const HERO_PHRASES: Array<{
 
 export const HomeView: React.FC = () => {
   const navigate = useNavigate();
+  const { state } = useLocation();
   const [searchParams] = useSearchParams();
   const gamesSectionRef = useRef<HTMLDivElement | null>(null);
 
@@ -135,6 +135,7 @@ export const HomeView: React.FC = () => {
     setJoinError(null);
     setIsCreatingRoom(true);
     try {
+      const { roomBus } = await import('../lib/roomBus');
       // Authoritative Supabase room creation so mobile devices can find the room
       const result = await createRoom(joinModalGame.id, pid);
       if (!result.ok) {
@@ -150,6 +151,8 @@ export const HomeView: React.FC = () => {
 
       sound.playClick();
       navigate(`/room/${code}/play`, { state: { createdRoom: { code, gameId: joinModalGame.id } } });
+    } catch {
+      setJoinError('تعذر تجهيز اللعبة. أعد المحاولة.');
     } finally {
       setIsCreatingRoom(false);
     }
@@ -164,6 +167,7 @@ export const HomeView: React.FC = () => {
     setJoinError(null);
     setIsCreatingRoom(true);
     try {
+      const { roomBus } = await import('../lib/roomBus');
       // Authoritative Supabase room creation
       const result = await createRoom(joinModalGame.id, pid);
       if (!result.ok) {
@@ -177,6 +181,8 @@ export const HomeView: React.FC = () => {
       roomBus.writeLocal(room);
 
       navigate(`/game/${joinModalGame.id}/${code}`);
+    } catch {
+      setJoinError('تعذر تجهيز اللعبة. أعد المحاولة.');
     } finally {
       setIsCreatingRoom(false);
     }
@@ -205,9 +211,7 @@ export const HomeView: React.FC = () => {
       sound.playClick();
       navigate(`/enter-name?room=${encodeURIComponent(cleanCode)}`);
     } catch {
-      // Graceful fallback to prevent locking out players on unexpected network blip
-      sound.playClick();
-      navigate(`/enter-name?room=${encodeURIComponent(cleanCode)}`);
+      setCodeError('تعذر التحقق من الغرفة. تأكد من الاتصال وحاول مرة أخرى.');
     } finally {
       setIsVerifyingRoom(false);
     }
@@ -219,6 +223,7 @@ export const HomeView: React.FC = () => {
       className="min-h-screen w-full bg-[#000000] text-[#FFFFFF] flex flex-col items-center selection:bg-white selection:text-black overflow-x-hidden relative font-home-panorama"
     >
       {/* Matrix Code Wall Spotlight Canvas */}
+      {typeof state?.roomNotice === 'string' && <p role="status" className="relative z-10 mt-20 rounded-xl bg-zinc-900 px-4 py-3">{state.roomNotice}</p>}
       <MatrixSpotlightCanvas />
 
       {/* Fixed Top Navigation Bar: [حسابي] | Docked Mascot ONLY | [ألعابي] */}

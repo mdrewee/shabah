@@ -1,22 +1,21 @@
 import { useState, useEffect } from 'react';
 
 export function useSafeCountdown(endsAt: number | null | undefined, onExpire?: () => void) {
-  const [secondsLeft, setSecondsLeft] = useState<number>(() => {
-    if (!endsAt) return 0;
-    const remainingMs = endsAt - Date.now();
-    return Math.max(0, Math.ceil(remainingMs / 1000));
-  });
+  const [countdown, setCountdown] = useState(() => ({
+    endsAt,
+    seconds: endsAt ? Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)) : 0,
+  }));
 
   useEffect(() => {
     if (!endsAt) {
-      setSecondsLeft(0);
       return;
     }
 
     const calculateRemaining = () => {
       const remainingMs = endsAt - Date.now();
       const remainingSec = Math.max(0, Math.ceil(remainingMs / 1000));
-      setSecondsLeft(remainingSec);
+      setCountdown(previous => previous.endsAt === endsAt && previous.seconds === remainingSec
+        ? previous : { endsAt, seconds: remainingSec });
 
       if (remainingMs <= 0) {
         if (onExpire) onExpire();
@@ -40,5 +39,8 @@ export function useSafeCountdown(endsAt: number | null | undefined, onExpire?: (
     return () => clearInterval(intervalId);
   }, [endsAt]);
 
-  return secondsLeft;
+  if (!endsAt) return 0;
+  return countdown.endsAt === endsAt
+    ? countdown.seconds
+    : Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
 }

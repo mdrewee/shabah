@@ -7,6 +7,15 @@ const supabaseUrl =
 const supabaseKey =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) || '';
 
+const roomRpcPaths = new Map([
+  ['/rest/v1/rpc/create_shabah_room', '/room-api/create'],
+  ['/rest/v1/rpc/lookup_shabah_room', '/room-api/lookup'],
+  ['/rest/v1/rpc/change_shabah_room_game', '/room-api/change-game'],
+  ['/rest/v1/rpc/read_shabah_room_snapshot', '/room-api/snapshot'],
+  ['/rest/v1/rpc/issue_shabah_room_command', '/room-api/command'],
+  ['/rest/v1/rpc/read_shabah_room_command', '/room-api/read-command'],
+]);
+
 // Singleton Supabase Client Instance (prevents GoTrueClient duplicate instantiation warning)
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   global: {
@@ -15,13 +24,12 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
         const request = new Request(input, init);
         const url = new URL(request.url);
         if (url.origin === 'https://gvzhhpdylhnwdkslcnsu.supabase.co') {
-          const create = request.method === 'POST' && url.pathname === '/rest/v1/rpc/create_shabah_room';
-          const lookup = request.method === 'GET' && url.pathname === '/rest/v1/rooms';
-          if (create || lookup) {
-            const path = create ? '/room-api/create' : '/room-api/rooms';
+          const path = request.method === 'POST' ? roomRpcPaths.get(url.pathname) :
+            request.method === 'GET' && url.pathname === '/rest/v1/rooms' ? '/room-api/rooms' : undefined;
+          if (path) {
             return fetch(path + url.search, {
               method: request.method, headers: request.headers, signal: request.signal,
-              body: create ? init?.body : undefined, credentials: 'omit', cache: 'no-store',
+              body: request.method === 'POST' ? init?.body : undefined, credentials: 'omit', cache: 'no-store',
             });
           }
         }

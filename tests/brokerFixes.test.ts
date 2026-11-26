@@ -14,7 +14,7 @@ beforeEach(() => { ai.mockReset(); });
 test('normal currency and product words reach the judge instead of triggering bribery guards', async () => {
   ai.mockResolvedValue(JSON.stringify({accepted:true, finalOpeningPrice:100, brokerReply:'مقبول'}));
   for (const text of ['تستاهل 500 ريال', 'سيارة نظيفة', 'شاشة أصلية', 'ايفون بحالة ممتازة','الدينمو أصلي']) {
-    expect((await evaluateBrokerPitch(pitch(text))).newBid).toBe(100);
+    expect((await evaluateBrokerPitch(pitch(text))).newBid).toBe(Math.max(100, Math.round(item.openingBaseline * 0.6)));
   }
   expect(ai).toHaveBeenCalledTimes(5);
   expect((await evaluateBrokerPitch(pitch('بعطيك فوقها سيارة هدية'))).bidIncrease).toBe(0);
@@ -51,7 +51,8 @@ test('ordinary and creative persuasion receive increasing rewards with a firm va
   expect(ordinary.bidIncrease).toBe(calculateBrokerIncrement(5,item.estimatedValue));
   expect(ai.mock.calls[0][1]).toEqual(expect.objectContaining({systemPrompt:expect.stringContaining('المتسابق هو البائع')}));
   expect(ordinary.reply).toContain('سومتي');
-  expect(ordinary.reply).toContain('وضحت منفعة الاستخدام اليومي');
+  expect(ordinary.reply).not.toContain('وضحت منفعة الاستخدام اليومي');
+  expect(ordinary.persuasionReason).toBe('وضحت منفعة الاستخدام اليومي');
   expect(ordinary.publicAnnouncement).not.toContain('قفزة قوية');
   ai.mockResolvedValue(JSON.stringify({persuasionScore:10}));
   expect((await evaluateBrokerPitch({...pitch(),currentBid:item.estimatedValue-1,isFirstBid:false})).newBid).toBe(item.estimatedValue);

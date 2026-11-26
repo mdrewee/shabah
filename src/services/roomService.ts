@@ -76,7 +76,7 @@ const inFlightChecks = new Map<string, Promise<{ exists: boolean; gameId?: strin
 
 export async function checkRoomExists(inputCode: string): Promise<{ exists: boolean; gameId?: string; error?: string }> {
   const code = normalizeRoomCode(inputCode);
-  if (!/^[A-Z0-9]{3,8}$/.test(code)) {
+  if (!/^[A-HJ-NP-Z2-9]{4}$/.test(code)) {
     return { exists: false, error: 'كود الغرفة غير صحيح' };
   }
 
@@ -85,6 +85,15 @@ export async function checkRoomExists(inputCode: string): Promise<{ exists: bool
 
   const check = (async () => {
     try {
+      const lookup = await supabase.rpc('lookup_shabah_room', { code });
+      if (!lookup.error) {
+        const gameId = normalizeGameId(lookup.data);
+        return gameId
+          ? { exists: true, gameId }
+          : { exists: false, error: 'كود الغرفة غير صحيح أو الغرفة غير موجودة حالياً' };
+      }
+      // Support sites upgraded before the additive database migration.
+      if (lookup.error.code !== 'PGRST202') throw lookup.error;
       const { data, error } = await supabase
         .from('rooms')
         .select('game_id')

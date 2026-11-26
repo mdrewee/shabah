@@ -137,7 +137,8 @@ export function useRoomSync(
       if (!isHostRef.current && curPlayerId && kickedId === curPlayerId) {
         if (!roomBus.getSupabaseChannel(cleanCode)) return;
         roomBus.leaveRoom(cleanCode, curPlayerId);
-        sessionStorage.clear();
+        sessionStorage.removeItem(`taghesi_player_${cleanCode}`);
+        localStorage.removeItem(`taghesi_player_${cleanCode}`);
         alert('تم استبعادك من الغرفة بواسطة المضيف.');
         window.location.href = '/';
       } else if (kickedId) {
@@ -145,23 +146,9 @@ export function useRoomSync(
       }
     };
 
-    const handleTerminate = (evt: any) => {
-      const payload = evt?.data ?? evt;
-      if (!isHostRef.current && roomBus.getSupabaseChannel(cleanCode)) {
-        const curPlayerId = playerIdRef.current;
-        roomBus.leaveRoom(cleanCode, curPlayerId || undefined);
-        sessionStorage.clear();
-        localStorage.removeItem('current_room_code');
-        alert(payload?.reason || 'تم إنهاء اللعبة والعودة للرئيسية.');
-        window.location.href = '/';
-      }
-    };
-
     const unsubForceKick = onRoomEvent('FORCE_PLAYER_KICK', handleKickReceived);
     const unsubKick = onRoomEvent('PLAYER_KICKED', handleKickReceived);
     const unsubKickAlt = onRoomEvent('KICK_PLAYER', handleKickReceived);
-    const unsubTerminate = onRoomEvent('TERMINATE_ROOM', handleTerminate);
-    const unsubRoomTerminated = onRoomEvent('ROOM_TERMINATED', handleTerminate);
 
     // Seed initial players if already present
     try {
@@ -180,8 +167,6 @@ export function useRoomSync(
       unsubForceKick();
       unsubKick();
       unsubKickAlt();
-      unsubTerminate();
-      unsubRoomTerminated();
     };
   }, [cleanCode, isHost, playerId, playerName]);
 

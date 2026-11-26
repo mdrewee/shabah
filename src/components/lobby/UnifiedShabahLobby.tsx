@@ -67,6 +67,8 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
   React.useLayoutEffect(() => { window.scrollTo(0, 0); }, [cleanCode]);
   const isHostRole = isRoomHost(cleanCode) && (role === 'host' || isPlayerHost);
   const startingGame = useRef(false);
+  const [changingGame, setChangingGame] = useState(false);
+  const [changeError, setChangeError] = useState('');
 
   // Find game info from approved 5 games
   const titleHint = gameTitle || gameName;
@@ -76,6 +78,18 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
 
   const resolvedTitle = matchedGame.title;
   const resolvedBadge = matchedGame.badgeText;
+  async function changeGame(gameId: string) {
+    if (changingGame || startingGame.current || gameId === matchedGame.id) return;
+    setChangingGame(true);
+    setChangeError('');
+    try {
+      if (!await roomBus.changeLobbyGame(cleanCode, gameId)) {
+        setChangeError('تعذر تغيير اللعبة. تأكد أن الجميع في اللوبي ثم حاول مرة أخرى.');
+      }
+    } finally {
+      setChangingGame(false);
+    }
+  }
   const customRules = rulesSummary || gameRulesSummary;
   const resolvedRules = customRules ? (Array.isArray(customRules) ? customRules : [customRules]) : [
     matchedGame.shortExplanation,
@@ -145,11 +159,19 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
   const handleCopyCode = async () => {
     if (!cleanCode) return;
     sound.playClick();
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: matchedGame.title, url: joinUrl });
+        return;
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') return;
+      }
+    }
     try {
-      await navigator.clipboard.writeText(cleanCode);
+      await navigator.clipboard.writeText(joinUrl);
     } catch {
       const el = document.createElement('textarea');
-      el.value = cleanCode;
+      el.value = joinUrl;
       document.body.appendChild(el);
       el.select();
       document.execCommand('copy');
@@ -227,10 +249,10 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
     return p;
   });
 
-  const readyCount = sanitizedPlayers.filter((p) => p.isReady).length;
+  const readyCount = sanitizedPlayers.filter((p) => p.isReady && p.isOnline !== false).length;
   const totalCount = sanitizedPlayers.filter((p) => p.isOnline !== false).length;
   const requiredPlayers = Math.max(minPlayers, matchedGame.minPlayers);
-  const canHostStart = isHostRole && totalCount >= requiredPlayers;
+  const canHostStart = isHostRole && totalCount >= requiredPlayers && totalCount <= matchedGame.maxPlayers;
 
   const prevPlayersCountRef = useRef<number>(totalCount);
   const prevReadyCountRef = useRef<number>(readyCount);
@@ -275,37 +297,29 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
   const [autoStartCountdown, setAutoStartCountdown] = useState<number | null>(null);
 
   useEffect(() => {
-    if (gameStartedNotification) {
+    if (gameStartedNotification || changingGame) {
       setAutoStartCountdown(null);
       return;
     }
 
-    if (readyCount >= requiredPlayers && totalCount >= requiredPlayers) {
-      if (autoStartCountdown === null) {
-        setAutoStartCountdown(3);
-        sound.playTick();
-      }
-
+    if (readyCount === totalCount && canHostStart) {
+      const endsAt = Date.now() + 3000;
+      setAutoStartCountdown(3);
+      sound.playTick();
       const timer = window.setInterval(() => {
-        setAutoStartCountdown((prev) => {
-          if (prev === null) return null;
-          if (prev <= 1) {
-            window.clearInterval(timer);
-            if (isHostRole) {
-              handleHostStartGame();
-            }
-            return 0;
-          }
-          sound.playTick();
-          return prev - 1;
-        });
-      }, 1000);
+        const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+        setAutoStartCountdown(remaining);
+        if (remaining === 0) {
+          window.clearInterval(timer);
+          void handleHostStartGame();
+        }
+      }, 250);
 
       return () => window.clearInterval(timer);
     } else {
       setAutoStartCountdown(null);
     }
-  }, [readyCount, totalCount, requiredPlayers, isHostRole, gameStartedNotification]);
+  }, [readyCount, totalCount, canHostStart, gameStartedNotification, changingGame]);
 
   // Requirement 6: Contextual Top Button (إنهاء الغرفة vs خروج)
   const handleTopExitClick = async () => {
@@ -352,7 +366,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
 
   // Host Start Game handler
   const handleHostStartGame = async () => {
-    if (!canHostStart || startingGame.current) return;
+    if (!canHostStart || changingGame || startingGame.current) return;
     startingGame.current = true;
     sound.playClick();
     const startPayload = {
@@ -376,8 +390,8 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
 
   const joinUrl =
     typeof window !== 'undefined'
-      ? `${window.location.origin}/enter-name?room=${encodeURIComponent(cleanCode)}&game=${encodeURIComponent(matchedGame.id)}`
-      : `/enter-name?room=${encodeURIComponent(cleanCode)}&game=${encodeURIComponent(matchedGame.id)}`;
+      ? `${window.location.origin}/room/${encodeURIComponent(cleanCode)}`
+      : `/room/${encodeURIComponent(cleanCode)}`;
 
   return (
     <div
@@ -398,7 +412,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
               <button
                 type="button"
                 onClick={handleTopExitClick}
-                className="shabah-pill-surface px-4 py-1.5 text-xs sm:text-sm font-black text-[#0A0A0A] hover:bg-neutral-100 transition-transform duration-150 active:scale-95 cursor-pointer block"
+                className="shabah-pill-surface min-h-12 px-4 py-1.5 text-xs sm:text-sm font-black text-[#0A0A0A] hover:bg-neutral-100 transition-transform duration-150 active:scale-95 cursor-pointer block"
               >
                 {isHostRole ? 'إنهاء الغرفة' : 'خروج'}
               </button>
@@ -406,6 +420,18 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
           </div>
         </div>
 
+        {isHostRole && <div className="flex w-full max-w-[720px] flex-wrap items-center justify-center gap-2">
+          <label className="flex items-center gap-2 text-sm">
+            تغيير اللعبة
+            <select className="min-h-12 rounded-xl border border-white/25 bg-zinc-950 px-3 text-white"
+              value={matchedGame.id} disabled={changingGame || gameStartedNotification}
+              onChange={event => void changeGame(event.target.value)}>
+              {SHABAH_GAMES.map(game => <option key={game.id} value={game.id}>{game.title}</option>)}
+            </select>
+          </label>
+          {changingGame && <span role="status">جاري تغيير اللعبة…</span>}
+          {changeError && <p role="alert" className="w-full text-center text-amber-200">{changeError}</p>}
+        </div>}
         {/* Mascot at top center (w-20 h-20 sm:w-24 sm:h-24) */}
         <div className="w-20 h-20 sm:w-24 sm:h-24 flex items-center justify-center">
           <ShabahGhost mood={mood} gazeOffset={gazeOffset} className="w-full h-full" />
@@ -473,16 +499,16 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                   {/* Clickable Room Code Box */}
                   <button
                     type="button"
-                    aria-label={`نسخ كود الغرفة ${cleanCode}`}
+                    aria-label={`مشاركة رابط الغرفة ${cleanCode}`}
                     onClick={handleCopyCode}
-                    title="اضغط لنسخ الكود"
+                    title="مشاركة رابط الدخول"
                     className="relative cursor-pointer px-4 py-3 rounded-xl bg-neutral-50 hover:bg-neutral-100 border-2 border-[#0A0A0A] flex flex-col items-center justify-center min-w-[112px] sm:min-w-[125px] h-28 sm:h-32 transition-transform active:scale-95"
                   >
                     {copiedCode ? (
                       <div className="flex flex-col items-center justify-center gap-1 text-emerald-700">
                         <Check className="w-6 h-6 stroke-[3]" />
                         <span className="text-xs sm:text-sm font-black">
-                          تم نسخ الكود!
+                          تم نسخ الرابط!
                         </span>
                       </div>
                     ) : (
@@ -548,7 +574,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-2.5">
-                  {sanitizedPlayers.map((player) => {
+                  {sanitizedPlayers.map((player, index) => {
                     const playerReady = player.isOnline !== false && Boolean(player.isReady);
                     const isMe = currentPlayerId && player.id === currentPlayerId;
 
@@ -559,6 +585,9 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                           isMe ? 'ring-2 ring-[#A855F7]' : ''
                         }`}
                       >
+                        <span aria-hidden="true" className="grid size-8 place-items-center rounded-full ghost-reaction-bubble" style={{backgroundColor: ['#c4b5fd','#7dd3fc','#86efac','#fde68a'][index % 4]}}>
+                          <ShabahGhost mood={playerReady ? 'happy' : 'idle'} trackPointer={false} className="size-7" />
+                        </span>
                         {/* Status Dot: Waiting (dark zinc) vs Ready (glowing emerald) */}
                         <span
                           className={`w-3 h-3 rounded-full shrink-0 transition-all ${
@@ -600,7 +629,9 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
 
       {/* 3. Bottom Action Bar with Requirement 7 Iridescent Hover */}
       {isHostRole && !canHostStart && <p role="status" className="text-center text-sm text-amber-200">
-        نحتاج {requiredPlayers} لاعبين للبدء · الموجودون الآن {totalCount}
+        {totalCount > matchedGame.maxPlayers
+          ? `الحد الأقصى ${matchedGame.maxPlayers} لاعبين · الموجودون الآن ${totalCount}`
+          : `نحتاج ${requiredPlayers} لاعبين للبدء · الموجودون الآن ${totalCount}`}
       </p>}
       <footer className="sticky bottom-0 z-20 w-full max-w-3xl mx-auto bg-[#08080c]/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur">
         <div className="shabah-border-wrap">
@@ -611,7 +642,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                   <button
                     type="button"
                     onClick={handleContestantToggleReady}
-                    className={`w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] ${
+                    className={`w-full min-h-12 py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] ${
                       currentContestantReady
                         ? 'bg-white text-[#0A0A0A] border-[3px] border-[#0A0A0A] hover:bg-neutral-100 cursor-pointer'
                         : 'shabah-btn-black cursor-pointer'
@@ -624,8 +655,8 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                     <button
                       type="button"
                       onClick={handleHostStartGame}
-                      disabled={!canHostStart || gameStartedNotification}
-                      className="w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] shabah-btn-black cursor-pointer"
+                      disabled={!canHostStart || gameStartedNotification || changingGame}
+                      className="w-full min-h-12 py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] shabah-btn-black cursor-pointer"
                     >
                       بدء اللعبة الآن
                     </button>
@@ -635,8 +666,8 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                 <button
                   type="button"
                   onClick={handleHostStartGame}
-                  disabled={!canHostStart || gameStartedNotification}
-                  className="w-full py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] shabah-btn-black cursor-pointer"
+                  disabled={!canHostStart || gameStartedNotification || changingGame}
+                  className="w-full min-h-12 py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] shabah-btn-black cursor-pointer"
                 >
                   بدء اللعبة الآن
                 </button>

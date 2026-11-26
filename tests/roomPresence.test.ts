@@ -7,6 +7,58 @@ jest.mock('../src/lib/supabaseClient', () => ({
   supabase: { channel: jest.fn(), rpc: jest.fn(), getChannels: () => [] },
 }));
 
+test('switching games keeps the room code and clears readiness after server approval', async () => {
+  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => 'a'.repeat(64) } });
+  const rpc = jest.mocked(supabase.rpc);
+  const mockRoom = {code:'QB23', selectedGameId:'ai-judge', players:[{id:'p1', isReady:true}]} as RoomState;
+  const getRoom = jest.spyOn(roomBus,'getRoom').mockReturnValue(mockRoom);
+  const write = jest.spyOn(roomBus,'writeLocal').mockImplementation(() => {});
+  const changed = jest.fn();
+  const off = roomBus.on('SHABAH_GAME_CHANGED', changed, 'QB23');
+  try {
+    rpc.mockReturnValueOnce(Promise.resolve({data:null,error:null}) as never);
+    expect(await roomBus.changeLobbyGame('QB23','ai-guide')).toBe(false);
+    expect(changed).not.toHaveBeenCalled();
+    expect(mockRoom.players[0].isReady).toBe(true);
+    rpc.mockReturnValueOnce(Promise.resolve({data:'11111111-1111-4111-8111-111111111119',error:null}) as never);
+    expect(await roomBus.changeLobbyGame('QB23','ai-guide')).toBe(true);
+    expect(write).toHaveBeenCalledWith(expect.objectContaining({code:'QB23', selectedGameId:'ai-guide'}));
+    expect(mockRoom.players[0].isReady).toBe(false);
+    expect(changed).toHaveBeenCalledTimes(1);
+  } finally {
+    off();getRoom.mockRestore();write.mockRestore();rpc.mockReset();roomBus.leaveRoom('QB23');
+    if (previousStorage) Object.defineProperty(globalThis,'localStorage',previousStorage);
+    else Reflect.deleteProperty(globalThis,'localStorage');
+  }
+});
+
+test('returning to the lobby sends one verified command and only resets the targeted room', async () => {
+  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => 'a'.repeat(64) } });
+  const rpc = jest.mocked(supabase.rpc);
+  let complete!: (value: {data: string; error: null}) => void;
+  rpc.mockReturnValueOnce(new Promise(resolve => { complete = resolve; }) as never);
+  const local = jest.fn();
+  const other = jest.fn();
+  const offLocal = roomBus.on('RETURN_TO_LOBBY', local, 'QA23');
+  const offOther = roomBus.on('RETURN_TO_LOBBY', other, 'QA24');
+  try {
+    const returning = roomBus.broadcastReturnToLobby('QA23');
+    expect(await roomBus.broadcastReturnToLobby('QA23')).toBe(false);
+    expect(local).not.toHaveBeenCalled();
+    complete({data: '11111111-1111-4111-8111-111111111112', error: null});
+    expect(await returning).toBe(true);
+    expect(local).toHaveBeenCalledTimes(1);
+    expect(other).not.toHaveBeenCalled();
+    expect(rpc.mock.calls.filter(([, args]) => args?.command === 'RETURN_TO_LOBBY')).toHaveLength(1);
+  } finally {
+    offLocal();offOther();rpc.mockClear();
+    if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage);
+    else Reflect.deleteProperty(globalThis, 'localStorage');
+  }
+});
+
 test('an empty presence sync clears the roster and stays scoped to its room', async () => {
   jest.useFakeTimers();
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => 'a'.repeat(64) } });
