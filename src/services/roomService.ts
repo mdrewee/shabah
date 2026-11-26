@@ -25,21 +25,40 @@ export async function createRoom(
   hostId: string
 ): Promise<{ ok: true; code: string } | { ok: false; error: string }> {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
   try {
     const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
       byte.toString(16).padStart(2, '0')
     ).join('');
+    // Verify that this browser can retain the host credential before creating a cloud room.
+    const probeKey = 'shabah_test_' + token.slice(0, 8);
+    try {
+      localStorage.setItem(probeKey, token);
+      localStorage.removeItem(probeKey);
+    } catch {
+      return { ok: false, error: 'تعذر حفظ بيانات المضيف على هذا الجهاز. تحقق من مساحة المتصفح والسماح بتخزين بيانات الموقع.' };
+    }
     for (let attempt = 0; attempt < 5; attempt++) {
       const code = Array.from(crypto.getRandomValues(new Uint8Array(4)), (byte) =>
         alphabet[byte & 31]
       ).join('');
-      const { data, error } = await supabase.rpc('create_shabah_room', {
+      const { data, error, status } = await supabase.rpc('create_shabah_room', {
         code,
         game: normalizeGameId(gameId) || 'ai-judge',
         player: hostId,
         secret: token,
-      });
-      if (error) throw error;
+      }).abortSignal(controller.signal);
+      if (error) {
+        const code = error.code || String(status || 'NETWORK');
+        console.warn('[RoomService] Creation rejected:', { code, status });
+        const message = controller.signal.aborted ? 'انتهت مهلة الاتصال بخادم الغرف؛ حاول مرة أخرى' :
+          code === 'PGRST202' ? 'خدمة إنشاء الغرف تحتاج تحديثًا على الخادم' :
+          status === 401 || status === 403 ? 'خادم الغرف رفض الاتصال؛ تحتاج إعدادات الموقع مراجعة' :
+          status >= 500 ? 'خادم الغرف غير متاح مؤقتًا؛ حاول بعد قليل' :
+          'تعذر الاتصال بخادم الغرف؛ جرّب شبكة أخرى أو أعد المحاولة';
+        return { ok: false, error: `${message} (${code})` };
+      }
       if (!data) continue;
       localStorage.setItem('shabah_host_' + code, token);
       return { ok: true, code };
@@ -48,6 +67,8 @@ export async function createRoom(
   } catch (err) {
     console.warn('[RoomService] Room creation failed:', err);
     return { ok: false, error: 'تعذر إنشاء الغرفة، تحقق من الاتصال وحاول مرة أخرى' };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

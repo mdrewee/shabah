@@ -1,1 +1,3 @@
+/room-api/create  https://gvzhhpdylhnwdkslcnsu.supabase.co/rest/v1/rpc/create_shabah_room  200
+/room-api/rooms   https://gvzhhpdylhnwdkslcnsu.supabase.co/rest/v1/rooms  200
 /*    /index.html   200

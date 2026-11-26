@@ -8,7 +8,28 @@ const supabaseKey =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) || '';
 
 // Singleton Supabase Client Instance (prevents GoTrueClient duplicate instantiation warning)
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  global: {
+    fetch: (input, init) => {
+      if (typeof window !== 'undefined' && window.location.origin === 'https://shabahgames.netlify.app') {
+        const request = new Request(input, init);
+        const url = new URL(request.url);
+        if (url.origin === 'https://gvzhhpdylhnwdkslcnsu.supabase.co') {
+          const create = request.method === 'POST' && url.pathname === '/rest/v1/rpc/create_shabah_room';
+          const lookup = request.method === 'GET' && url.pathname === '/rest/v1/rooms';
+          if (create || lookup) {
+            const path = create ? '/room-api/create' : '/room-api/rooms';
+            return fetch(path + url.search, {
+              method: request.method, headers: request.headers, signal: request.signal,
+              body: create ? init?.body : undefined, credentials: 'omit', cache: 'no-store',
+            });
+          }
+        }
+      }
+      return fetch(input, init);
+    },
+  },
+});
 
 /**
  * Resolves active authentication bearer token across:
