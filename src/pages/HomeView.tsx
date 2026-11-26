@@ -149,7 +149,7 @@ export const HomeView: React.FC = () => {
       roomBus.joinRoom(code, cleanName, 'falcon', pid);
 
       sound.playClick();
-      navigate(`/room/${code}/play`);
+      navigate(`/room/${code}/play`, { state: { createdRoom: { code, gameId: joinModalGame.id } } });
     } finally {
       setIsCreatingRoom(false);
     }

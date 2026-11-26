@@ -16,8 +16,13 @@ test('reconnect keeps player identity and asks for the authoritative game state 
   try{
     roomBus.initRoom('RT23',player);channels[0].state='joined';await callbacks[0]('SUBSCRIBED');
     channels[0].state='closed';await callbacks[0]('CHANNEL_ERROR');
+    let finishRemoval!: (status: 'ok') => void;
+    jest.mocked(supabase.removeChannel).mockReturnValueOnce(new Promise(resolve => { finishRemoval = resolve; }));
     roomBus.retryConnection('RT23');roomBus.retryConnection('RT23');
-    jest.advanceTimersByTime(2000);
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(supabase.channel).toHaveBeenCalledTimes(1);
+    finishRemoval('ok');
+    await jest.advanceTimersByTimeAsync(0);
     expect(supabase.channel).toHaveBeenCalledTimes(2);
     channels[1].state='joined';await callbacks[1]('SUBSCRIBED');
     expect(channels[1].track).toHaveBeenCalledWith(expect.objectContaining({id:'same-player',name:'مازن'}));

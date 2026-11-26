@@ -167,7 +167,10 @@ export const NameEntryView: React.FC = () => {
       );
 
       sound.playClick();
-      navigate(`/room/${targetRoomCode}/play`, { replace: true });
+      navigate(`/room/${targetRoomCode}/play`, {
+        replace: true,
+        state: queryRoom ? undefined : { createdRoom: { code: targetRoomCode, gameId: detectedGame || 'ai-judge' } },
+      });
     } finally {
       setIsSubmitting(false);
     }

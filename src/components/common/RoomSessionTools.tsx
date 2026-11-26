@@ -5,7 +5,8 @@ import {roomBus} from '../../lib/roomBus';
 import {sound} from '../../lib/audio';
 
 export function RoomSessionTools(){
-  const {pathname}=useLocation(),code=pathname.match(/^\/room\/([^/]+)/)?.[1]?.toUpperCase();
+  const {pathname}=useLocation(),code=(pathname.match(/^\/room\/([^/]+)/)?.[1] ??
+    pathname.match(/^\/game\/[^/]+\/([a-z0-9]{4})(?:\/tv)?\/?$/i)?.[1])?.toUpperCase();
   const [muted,setMuted]=useState(sound.getMuted()),[status,setStatus]=useState('connecting');
   const [recovered,setRecovered]=useState(false),wasConnected=useRef(false),lostConnection=useRef(false);
   useEffect(()=>{

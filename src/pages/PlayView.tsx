@@ -1,6 +1,6 @@
 import { checkRoomExists, isRoomHost } from '../services/roomService';
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, useNavigationType } from 'react-router-dom';
 import { roomBus } from '../lib/roomBus';
 import {
   getOrCreatePlayerId,
@@ -26,15 +26,21 @@ const FlyingMobileView = React.lazy(() => import('./games/flying/FlyingMobileVie
 
 export const PlayView: React.FC = () => {
   const { code = '' } = useParams<{ code?: string }>();
-  return <VerifiedPlayView key={code} roomCode={code} />;
+  const { state } = useLocation();
+  const navigationType = useNavigationType();
+  const created = state?.createdRoom;
+  const createdGame = navigationType !== 'POP' && created?.code === code && typeof created.gameId === 'string' && isRoomHost(code)
+    ? normalizeGameId(created.gameId) : null;
+  return <VerifiedPlayView key={code} roomCode={code} createdGame={createdGame} />;
 };
 
-const VerifiedPlayView: React.FC<{ roomCode: string }> = ({ roomCode }) => {
-  const [game, setGame] = useState<ShabahGameCanonicalId | null>();
+const VerifiedPlayView: React.FC<{ roomCode: string; createdGame: ShabahGameCanonicalId | null }> = ({ roomCode, createdGame }) => {
+  const [game, setGame] = useState<ShabahGameCanonicalId | null | undefined>(createdGame ?? undefined);
   const [error, setError] = useState<string>();
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (createdGame) return;
     let active = true;
     checkRoomExists(roomCode).then((result) => {
       if (!active) return;
@@ -42,7 +48,7 @@ const VerifiedPlayView: React.FC<{ roomCode: string }> = ({ roomCode }) => {
       setError(result.error);
     });
     return () => { active = false; };
-  }, [roomCode]);
+  }, [roomCode, createdGame]);
 
   if (game) return <ActivePlayView roomCode={roomCode.toUpperCase()} initialGameId={game} />;
   return (

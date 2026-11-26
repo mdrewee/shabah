@@ -250,7 +250,7 @@ class RoomBus {
       clearTimeout(existing);
     }
 
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       this.reconnectTimers.delete(cleanCode);
       if (this.isIntentionalLeave.get(cleanCode)) {
         this.isReconnecting.set(cleanCode, false);
@@ -259,15 +259,17 @@ class RoomBus {
 
       console.log(`[ROOM_BUS] Executing single safe reconnect for ${cleanCode}`);
       const oldCh = this.supabaseChannels.get(cleanCode);
-      this.supabaseChannels.delete(cleanCode);
       if (oldCh) {
         try {
-          supabase.removeChannel(oldCh);
+          await supabase.removeChannel(oldCh);
         } catch {}
       }
+      // Leaving or switching rooms during the unsubscribe cancels this reconnect.
+      if (this.isIntentionalLeave.get(cleanCode) || this.supabaseChannels.get(cleanCode) !== oldCh) return;
+      this.supabaseChannels.delete(cleanCode);
 
       this.isReconnecting.set(cleanCode, false);
-      this.ensureSupabaseChannel(cleanCode, player);
+      this.ensureSupabaseChannel(cleanCode, this.latestPresence.get(cleanCode) ?? player);
     }, 2000);
 
     this.reconnectTimers.set(cleanCode, timer);
@@ -1563,7 +1565,7 @@ class RoomBus {
           // Single debounced safe reconnect without synchronous removeChannel recursion
           this.scheduleReconnect(cleanCode, player);
         }
-      });
+      }, 15000);
 
       this.supabaseChannels.set(cleanCode, ch);
       return ch;
