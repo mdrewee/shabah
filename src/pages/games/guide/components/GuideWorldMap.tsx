@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { addGuideMapGeography } from './guideMapGeography';
 import { toArabicNumber } from '../../../../utils/numberFormat';
 
 export interface MapMarker {
@@ -85,14 +86,7 @@ export const GuideWorldMap: React.FC<GuideWorldMapProps> = ({
       }
     ).addTo(map);
 
-    // 2. Transparent Country Borders and Place Names (Esri Boundaries)
-    L.tileLayer(
-      'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-      {
-        maxZoom: 17,
-        minZoom: 2,
-      }
-    ).addTo(map);
+    const removeGeographyListeners = addGuideMapGeography(map);
 
     // Layer group for dynamic markers and lines
     const layerGroup = L.layerGroup().addTo(map);
@@ -117,6 +111,7 @@ export const GuideWorldMap: React.FC<GuideWorldMapProps> = ({
     }, 250);
 
     return () => {
+      removeGeographyListeners();
       clearTimeout(invalidateTimer);
       try {
         if (mapRef.current) {

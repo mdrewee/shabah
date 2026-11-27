@@ -1,8 +1,12 @@
 import { beforeEach, expect, jest, test } from '@jest/globals';
 import { generateWithGemini } from '../src/config/gemini';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { evaluateBrokerPitch,calculateBrokerIncrement } from '../src/services/brokerEngine';
 import { BROKER_ITEMS } from '../src/data/brokerItems';
-import { beginBrokerNegotiation, nextBrokerRound, finishBrokerRound, acceptsBrokerPitch } from '../src/pages/games/broker/brokerRound';
+import { BrokerShowcaseStage } from '../src/pages/games/broker/components/BrokerShowcaseStage';
+import { BrokerHeroShowcase } from '../src/pages/games/broker/components/BrokerHeroShowcase';
+import { allBrokerTurnsFinished, beginBrokerNegotiation, nextBrokerRound, finishBrokerRound, acceptsBrokerPitch } from '../src/pages/games/broker/brokerRound';
 import type { BrokerRoomState, ContestantBidState } from '../src/pages/games/broker/types';
 
 jest.mock('../src/config/gemini', () => ({ generateWithGemini: jest.fn() }));
@@ -10,6 +14,32 @@ const ai = jest.mocked(generateWithGemini);
 const item = BROKER_ITEMS[0];
 const pitch = (text = 'متينة وعملية ومناسبة للاستخدام') => ({ item, pitch:text, currentBid:0, isFirstBid:true, playerName:'اختبار' });
 beforeEach(() => { ai.mockReset(); });
+
+test('broker product cards show the flaw without giving contestants a selling argument', () => {
+  for (const card of [
+    createElement(BrokerShowcaseStage, { item, roundNumber: 1 }),
+    createElement(BrokerHeroShowcase, { item, topBid: 100 }),
+  ]) {
+    const html = renderToStaticMarkup(card);
+    expect(html).toContain(item.name);
+    expect(html).toContain(item.flaw);
+    for (const fact of [item.description, item.perk, ...item.specs]) expect(html).not.toContain(fact);
+  }
+});
+
+test('copying a product fact cannot raise the bid, while adding an argument reaches the buyer', async () => {
+  for (const fact of [item.perk, item.description, ...item.specs]) {
+    expect(await evaluateBrokerPitch({ ...pitch(fact + '!!'), currentBid: 100, isFirstBid: false }))
+      .toMatchObject({ newBid: 100, bidIncrease: 0 });
+  }
+  expect(ai).not.toHaveBeenCalled();
+  ai.mockResolvedValue(JSON.stringify({ persuasionScore: 5 }));
+  const result = await evaluateBrokerPitch({ ...pitch(item.perk + ' وهذا يقلل تكاليف الصيانة عليك'), currentBid: 100, isFirstBid: false });
+  expect(result.bidIncrease).toBeGreaterThan(0);
+  expect(ai.mock.calls[0][1]).toEqual(expect.objectContaining({
+    systemPrompt: expect.stringContaining('حرفيًا أو بإعادة صياغة'),
+  }));
+});
 
 test('normal currency and product words reach the judge instead of triggering bribery guards', async () => {
   ai.mockResolvedValue(JSON.stringify({accepted:true, finalOpeningPrice:100, brokerReply:'مقبول'}));
@@ -28,11 +58,21 @@ test('rejected opening cannot award a positive price', async () => {
 
 test('prices and increments are bounded even with an excessive AI proposal', async () => {
   ai.mockResolvedValue(JSON.stringify({accepted:true, finalOpeningPrice:99999999}));
-  expect((await evaluateBrokerPitch(pitch())).newBid).toBe(item.estimatedValue);
+  expect((await evaluateBrokerPitch(pitch())).newBid).toBe(Math.ceil(item.openingBaseline * 1.25));
   ai.mockResolvedValue(JSON.stringify({bidIncrease:99999999}));
   const result=await evaluateBrokerPitch({...pitch(), currentBid:100,isFirstBid:false});
   expect(result.bidIncrease).toBeLessThanOrEqual(Math.max(1,Math.round(item.estimatedValue*0.30)));
   expect(result.newBid).toBeLessThanOrEqual(item.estimatedValue);
+});
+
+test('a TV offer opens in a realistic range, and internal reasoning is removed', async () => {
+  const television = BROKER_ITEMS.find(item => item.id === 'item_08')!;
+  ai.mockResolvedValue(JSON.stringify({ accepted: true, finalOpeningPrice: 50, brokerReply: 'التحليل: هذا هو سبب التسعير' }));
+  const result = await evaluateBrokerPitch({ ...pitch(), item: television });
+  expect(result.newBid).toBe(120);
+  expect(result.reply).not.toContain('التحليل');
+  expect((await evaluateBrokerPitch({ ...pitch(), item: television, currentBid:120, isFirstBid:false,
+    priorArgument: pitch().pitch })).bidIncrease).toBe(0);
 });
 
 test('unavailable or invalid AI never invents a valuation', async () => {
@@ -86,6 +126,14 @@ test('no bids means no winner; disconnected bidders cannot win; payout occurs on
   const won=finishBrokerRound({...state(),phase:'NEGOTIATION'},['a','b']);
   expect(won.contestantBids.a.totalBankroll).toBe(120);
   expect(finishBrokerRound(won,['a','b'])).toBe(won);
+});
+
+test('the last contestant ends negotiation even if the TV still appears in the roster', () => {
+  const cur = { ...state(), phase: 'NEGOTIATION' as const };
+  expect(allBrokerTurnsFinished(cur, ['a', 'b', 'host_tv'])).toBe(true);
+  expect(allBrokerTurnsFinished(cur, ['host_tv'])).toBe(false);
+  expect(allBrokerTurnsFinished({ ...cur, contestantBids: { ...cur.contestantBids,
+    a: { ...cur.contestantBids.a, bulletsRemaining: 1 } } }, ['a', 'b', 'host_tv'])).toBe(false);
 });
 
 test('both round paths clear old timing and bids while preserving bankroll',()=>{

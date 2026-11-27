@@ -70,7 +70,7 @@ export function getRankedJudgeContestants(
   cumulativeScores: Record<string, number>,
   contestants: Array<{ id: string; name: string }>
 ): RankedJudgeContestant[] {
-  const list: RankedJudgeContestant[] = contestants.map((c) => ({
+  const list: RankedJudgeContestant[] = contestants.filter(c => c.id !== 'host_tv').map((c) => ({
     id: c.id,
     name: c.name,
     score: cumulativeScores[c.id] || 0,

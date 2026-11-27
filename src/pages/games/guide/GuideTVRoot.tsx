@@ -16,6 +16,7 @@ import {
   savePersistedGuideState,
   loadPersistedGuideState,
   acceptsGuidePin,
+  allGuidePinsLocked,
   getRankedGuideContestants,
 } from './guideSync';
 import {
@@ -118,7 +119,7 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
 
   const executeRoundEvaluation = useCallback((overrideGuesses?: Record<string, ContestantGuess>) => {
     const curr = stateRef.current;
-    if (curr.phase === 'RESULTS' || curr.phase === 'PODIUM') return;
+    if (curr.phase !== 'GUESSING') return;
 
     sound.playVictory();
     const target = curr.currentLandmark;
@@ -126,7 +127,8 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
     const updatedCumulative = { ...(curr.cumulativeScores || {}) };
     const updatedMisses: Record<string, BiggestMissRecord> = { ...(curr.biggestMisses || {}) };
 
-    const guessesToEvaluate = overrideGuesses || curr.guesses || {};
+    const guessesToEvaluate = Object.fromEntries(Object.entries(overrideGuesses || curr.guesses || {})
+      .filter(([id, guess]) => id !== 'host_tv' && guess.contestantId !== 'host_tv'));
     const evaluatedGuessKeys = new Set<string>();
 
     // 1. Evaluate each connected contestant
@@ -138,9 +140,7 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       if (!g) {
         const found = Object.entries(guessesToEvaluate).find(
           ([key, guess]) =>
-            key === c.id ||
-            guess.contestantId === c.id ||
-            (guess.contestantName && c.name && guess.contestantName.trim().toLowerCase() === c.name.trim().toLowerCase())
+            key === c.id || guess.contestantId === c.id
         );
         if (found) {
           matchedKey = found[0];
@@ -313,6 +313,8 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
 
   useEffect(() => {
     if (guideState.phase !== 'GUESSING') return;
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
+    const roundNumber = guideState.roundNumber;
 
     // Pure state updates only inside setState; side effects (sound, broadcast, evaluation) run outside.
     const interval = setInterval(() => {
@@ -327,9 +329,9 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
         stateRef.current = expiredState;
         setGuideState(expiredState);
         roomBus.broadcastGuideSync(roomCode, expiredState);
-        // 600ms safety grace period for in-flight pin submissions arriving right at 0
-        setTimeout(() => {
-          evaluateRef.current();
+        // Allow pins already in flight to arrive without affecting a later round.
+        graceTimer = setTimeout(() => {
+          if (stateRef.current.roundNumber === roundNumber) evaluateRef.current();
         }, 1500);
         return;
       }
@@ -357,8 +359,12 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       }
     }, 1000);
 
-    return () => clearInterval(interval);
-  }, [guideState.phase, roomCode]);
+    return () => { clearInterval(interval); clearTimeout(graceTimer); };
+  }, [guideState.phase, guideState.roundNumber, roomCode]);
+
+  useEffect(() => {
+    if (allGuidePinsLocked(stateRef.current, mergedContestants.map(c => c.id))) executeRoundEvaluation();
+  }, [guideState.phase, guideState.guesses, mergedContestants, executeRoundEvaluation]);
 
   // -------------------------------------------------------------
   // Realtime Broadcast Listeners
@@ -398,14 +404,7 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       setGuideState(updatedState);
       roomBus.broadcastGuideSync(roomCode, updatedState);
 
-      // Early Advance Check: If all connected contestants have locked pins
-      const connectedCount = Math.max(1, mergedContestants.length);
-      const lockedCount = mergedContestants.filter(c => updatedGuesses[c.id]).length;
-
-      if (lockedCount >= connectedCount) {
-        executeRoundEvaluation(updatedGuesses);
-      }
-    });
+    }, roomCode);
 
     // 2. Inter-round Ready update
     const unsubReady = roomBus.on('PLAYER_READY_UPDATE', (evt: any) => {
@@ -437,7 +436,7 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       unsubPin?.();
       unsubReady?.();
     };
-  }, [roomCode, mergedContestants.length, syncState, executeRoundEvaluation]);
+  }, [roomCode, mergedContestants, syncState, executeRoundEvaluation]);
 
   // -------------------------------------------------------------
   // View Rendering
@@ -517,8 +516,8 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
         cumulativeScores={guideState.cumulativeScores}
         onNextRound={handleNextRound}
         onReturnToLobby={handleReturnToLobby}
-        readyCount={guideState.readyPlayersNextRound?.length || 0}
-        totalConnectedCount={Math.max(1, mergedContestants.length)}
+        readyCount={mergedContestants.filter(p => guideState.readyPlayersNextRound?.includes(p.id)).length}
+        totalConnectedCount={mergedContestants.length}
       />
     );
   }

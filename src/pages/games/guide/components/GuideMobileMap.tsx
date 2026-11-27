@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { addGuideMapGeography } from './guideMapGeography';
 
 interface GuideMobileMapProps {
   userPin: { lat: number; lng: number } | null;
@@ -75,11 +76,7 @@ export const GuideMobileMap: React.FC<GuideMobileMapProps> = ({
       attribution: 'Esri World Imagery',
     }).addTo(map);
 
-    // 2. Transparent Boundaries & Place Labels (Esri World Boundaries and Places)
-    L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 17,
-      minZoom: 2,
-    }).addTo(map);
+    const removeGeographyListeners = addGuideMapGeography(map);
 
     // Map Click / Tap Event
     map.on('click', (e: L.LeafletMouseEvent) => {
@@ -115,6 +112,7 @@ export const GuideMobileMap: React.FC<GuideMobileMapProps> = ({
     }, 400);
 
     return () => {
+      removeGeographyListeners();
       clearTimeout(timer1);
       clearTimeout(timer2);
       try {

@@ -1,5 +1,5 @@
 import {useRoundTransition} from '../../../hooks/useRoundTransition';
-import { resolveDraftPlayer, canonicalDraftName, isAmbiguousDraftName } from './draftPlayers';
+import { resolveDraftPlayer, canonicalDraftName, isAmbiguousDraftName, isDraftPlayerTaken, fitsDraftSlot } from './draftPlayers';
 import { fillMissedDraftPicks } from './draftRound';
 import { applyBingoAttempt, canClaimDraftSlot } from './coachRules';
 import { useGameState } from '../../../hooks/useGameState';
@@ -36,6 +36,7 @@ import { getRandomMatchCriteria } from '../../../data/coachCriteria';
 import { CoachLobby } from './CoachLobby';
 import { CoachTopBar } from './components/CoachTopBar';
 import { CoachDraftTVView } from './components/CoachDraftTVView';
+import { CoachDraftPodium } from './components/CoachDraftPodium';
 import { CoachBingoTVView } from './components/CoachBingoTVView';
 import { sound } from '../../../lib/audio';
 import { useRoomSync } from '../../../hooks/useRoomSync';
@@ -151,7 +152,7 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       const contestantName=member.name;
       const { roundIndex, slotKey }=payload;
       const rawName=payload.player.name || payload.player.playerName;
-      if(typeof rawName!=='string' || rawName.trim().length<2 || rawName.length>80) return;
+      if(typeof rawName!=='string' || rawName.trim().length<2 || rawName.length>140) return;
       if(isAmbiguousDraftName(rawName)) {
         roomBus.broadcastClaimPlayerRejected(roomCode,{contestantId,reason:'الاسم يطابق أكثر من لاعب؛ اختر الاسم الكامل من البحث.'});
         return;
@@ -163,28 +164,25 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       if (!canClaimDraftSlot(curState, contestantId, slotKey, roundIndex)) return;
 
       const normName = normalizeFootballSearch(player.name);
-      const existingClaim = curState.claimedPlayers[normName];
+      const pickedNames = [...Object.keys(curState.claimedPlayers), ...(curState.usedPlayersAcrossMatch ?? []),
+        ...Object.values(curState.squads).flatMap(squad => Object.values(squad.slots).map(pick => pick.playerName))];
 
       // A claimed player cannot occupy another slot, including in the same squad.
-      if (existingClaim) {
+      if (isDraftPlayerTaken(player.name, pickedNames)) {
         sound.playBuzz?.();
         roomBus.broadcastClaimPlayerRejected(roomCode, {
           contestantId,
           playerName: player.name,
-          reason: existingClaim.contestantId === contestantId
-            ? 'اللاعب موجود في تشكيلتك بالفعل؛ اختر لاعباً آخر.'
-            : `اللاعب حجزه ${existingClaim.contestantName} قبلك! اختر لاعباً آخر بسرعة!`,
+          reason: 'هذا اللاعب تم اختياره مسبقاً',
         });
         return;
       }
 
-      // Check if player used in previous rounds across match
-      if (curState.usedPlayersAcrossMatch && curState.usedPlayersAcrossMatch.includes(normName)) {
-        sound.playBuzz?.();
+      if (!fitsDraftSlot(player.position, slotKey)) {
         roomBus.broadcastClaimPlayerRejected(roomCode, {
           contestantId,
           playerName: player.name,
-          reason: `اللاعب تم استخدامه في جولة سابقة! اختر لاعباً آخر`,
+          reason: 'مركز اللاعب لا يطابق الخانة المختارة.',
         });
         return;
       }
@@ -837,7 +835,7 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
     ()=>coachStateRef.current.phase==='BINGO_WON'?handleRestartBingoRound():handleAdvanceToNextRound());
   if (mobileContestants) return null;
 
-  if (coachState.phase === 'EVALUATING') return <ShabahThinkingScreen title="الشبح يراجع التشكيلات" />;
+  if (coachState.phase === 'EVALUATING') return <ShabahThinkingScreen title="الشبح يراجع التشكيلات" showWaitingGame={false} />;
 
 
 
@@ -891,9 +889,12 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
       />
 
       <main className="w-full flex-1 flex flex-col items-center justify-start py-2">
+        {coachState.mode === 'draft' && coachState.phase === 'VERDICT' && coachState.verdict &&
+          <CoachDraftPodium verdict={coachState.verdict} />}
         {coachState.mode === 'draft' ? (
           <CoachDraftTVView
-            contestants={contestants}
+            contestants={coachState.phase === 'VERDICT' && coachState.verdict
+              ? coachState.verdict.evaluations.map(entry => ({ id: entry.playerId, name: entry.playerName })) : contestants}
             squads={coachState.squads}
             verdict={coachState.verdict}
             onRetryEvaluation={()=>roomBus.emit('COACH_MODE_SELECTED',roomCode,{action:'retryDraft'})}

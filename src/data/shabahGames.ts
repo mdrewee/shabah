@@ -1,3 +1,5 @@
+import { GUIDE_SCORING_LEGEND } from '../services/guideScoring';
+
 export interface ShabahGame {
   id: string;
   title: string;
@@ -64,7 +66,7 @@ export const SHABAH_GAMES: ShabahGame[] = [
     id: 'ai-guide',
     title: 'الشبح المرشد',
     badgeText: 'تحديد المعالم',
-    shortExplanation: '١٢٠ وجهة و٦٠٠ تلميح؛ حدد الموقع بالدبوس. النقاط حسب المسافة: حتى ٥٠ كم = ١٠، حتى ٢٠٠ = ٦، حتى ٩٠٠ = ٣، حتى ٣٥٠٠ = ١، وما بعدها صفر.',
+    shortExplanation: '١٢٠ وجهة و٦٠٠ تلميح. حدد الموقع بالدبوس. النقاط حسب المسافة: ' + GUIDE_SCORING_LEGEND,
     cardImage: '/images/games/guide-card-v2.jpg',
     glowColor: 'red',
     minPlayers: 2,

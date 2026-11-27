@@ -1,0 +1,35 @@
+.flying-world{position:relative;container-type:size;width:100%;height:100%;min-height:0;overflow:hidden;isolation:isolate;background:#061126}
+.flying-clouds,.flying-space{position:absolute;inset:0;pointer-events:none}
+.flying-clouds{background:linear-gradient(180deg,#09132c88,transparent 45%,#080b2099),url('/images/games/flying-sky.svg') center bottom/100% 100%}
+.flying-space{opacity:var(--space-to);background:radial-gradient(ellipse at 80% 24%,#493395a8,transparent 43%),radial-gradient(1px 1px at 12% 20%,#fff 99%,transparent),radial-gradient(1.5px 1.5px at 66% 76%,#c4e8ff 99%,transparent),radial-gradient(1px 1px at 41% 60%,#fff 99%,transparent),linear-gradient(#080619,#141b49);background-size:auto,103px 91px,151px 131px,83px 77px,auto}
+.flying-world-focus .flying-space{animation:flying-space-rise var(--flight-duration) var(--launch-delay) ease-out both}
+.flying-focus{position:absolute;inset:2% 8% 3%;animation:flying-pan .32s var(--camera-delay) ease-out both}
+.flying-launch{position:absolute;inset:0 0 3%;display:grid;grid-template-rows:minmax(0,var(--headroom)) auto minmax(0,var(--climb));margin-inline:auto;width:min(74%,15rem);animation:flying-rise var(--flight-duration) var(--launch-delay) cubic-bezier(.18,.65,.27,1) both}
+.flying-figure{grid-row:2;display:flex;min-width:0;margin:0;flex-direction:column;align-items:center;gap:4px;text-align:center;color:white}
+.flying-answer{width:100%;min-width:0;padding:4px 6px;background:#0b1125e8;border:1px solid var(--rarity-color);border-radius:10px;box-shadow:inset 0 0 16px color-mix(in srgb,var(--rarity-color),transparent 86%)}
+.flying-answer b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-size:clamp(10px,2vw,16px);line-height:1.22}
+.flying-answer span{display:block;color:var(--rarity-color);font-size:clamp(9px,1.55vw,12px);font-weight:800}
+.flying-answer-reason{margin-top:3px;color:#fecaca;font-size:clamp(10px,1.5vw,13px);line-height:1.25;overflow-wrap:anywhere}
+.flying-lane .flying-answer-reason{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.flying-sprite{position:relative;width:clamp(24px,45%,52px)}
+.flying-launch .flying-sprite{width:clamp(42px,21cqh,90px);filter:drop-shadow(0 0 18px var(--rarity-color))}
+.flying-launch .flying-answer{padding:7px 10px}
+.flying-launch .flying-answer b{font-size:clamp(14px,4.1cqh,22px)}
+.flying-figure figcaption{min-width:0;width:100%;line-height:1.22;text-shadow:0 1px 4px #000}
+.flying-figure figcaption b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:clamp(10px,2vw,15px)}
+.flying-figure figcaption span{font-size:clamp(9px,1.8vw,13px);color:#e0f2fe}
+.flying-trail{position:absolute;z-index:-1;inset:69% 28% -35%;border-radius:50%;background:linear-gradient(var(--rarity-color),transparent);filter:blur(4px);animation:flying-trail var(--flight-duration) var(--launch-delay) ease-out both}
+.flying-answer-flash{animation:flying-flash .75s var(--launch-delay) ease-out both}
+.flying-overview{position:absolute;inset:4% 3% 3%;display:grid;grid-template-columns:repeat(var(--lanes),minmax(0,1fr));gap:6px;transform-origin:center;animation:flying-zoom-out .72s var(--camera-delay) cubic-bezier(.2,.8,.3,1) both}
+.flying-lane{display:grid;grid-template-rows:minmax(0,var(--headroom)) auto minmax(0,var(--altitude));justify-items:center;min-height:0;min-width:0;border-bottom:1px solid #ffffff24;background:repeating-linear-gradient(0deg,transparent 0 calc(25% - 1px),#c4e8ff17 calc(25% - 1px) 25%)}
+.flying-lane .flying-figure{width:100%;max-width:10rem}
+@container (max-width: 600px){.flying-overview{grid-template-columns:repeat(var(--mobile-lanes),minmax(0,1fr));grid-template-rows:repeat(var(--mobile-rows),minmax(0,1fr))}.flying-lane .flying-sprite{width:clamp(20px,45%,33px)}.flying-lane .flying-answer{padding:3px 2px}}
+@keyframes flying-rise{from{grid-template-rows:minmax(0,1fr) auto minmax(0,0fr)}to{grid-template-rows:minmax(0,var(--headroom)) auto minmax(0,var(--climb))}}
+@keyframes flying-pan{from{opacity:0;transform:translateX(5%) scale(.95)}to{opacity:1;transform:translateX(0) scale(1)}}
+@keyframes flying-space-rise{from{opacity:var(--space-from);background-position:0 0,0 35px,0 58px,0 75px,0 0}to{opacity:var(--space-to);background-position:0 0,0 0,0 0,0 0,0 0}}
+@keyframes flying-zoom-out{from{opacity:0;transform:scale(1.2)}to{opacity:1;transform:scale(1)}}
+@keyframes flying-trail{0%,100%{opacity:0}25%,60%{opacity:1}}
+@keyframes flying-flash{0%,100%{box-shadow:none}38%{box-shadow:0 0 24px var(--rarity-color);background:color-mix(in srgb,var(--rarity-color),#0b1125 72%)}}
+@media(prefers-reduced-motion:reduce){.flying-overview,.flying-space,.flying-focus,.flying-launch,.flying-answer-flash,.flying-trail{animation:none!important}.flying-trail{display:none}}
+
+.flying-answer-input{background:linear-gradient(#121328,#121328) padding-box,linear-gradient(115deg,#b56bff,#38bdf8,#bef264) border-box}

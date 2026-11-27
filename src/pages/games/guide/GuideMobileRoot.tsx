@@ -28,7 +28,7 @@ export const GuideMobileRoot: React.FC = () => {
   });
 
   // Maintain Supabase Realtime channel
-  useRoomSync({
+  const { connectedPlayers, hasPresenceSnapshot } = useRoomSync({
     roomCode,
     role: 'contestant',
     playerId,
@@ -39,11 +39,11 @@ export const GuideMobileRoot: React.FC = () => {
   const activeRoom = room || roomBus.getRoom(roomCode);
 
   const [guideState, setGuideState] = useState<GuideRoomState>(() =>
-    loadPersistedGuideState(roomCode) ?? createInitialGuideState(roomCode)
+    roomBus.getLatestGameState<GuideRoomState>(roomCode, 'GUIDE_STATE_SYNC') ?? (isRoomHost(roomCode) ? loadPersistedGuideState(roomCode) : null) ?? createInitialGuideState(roomCode)
   );
 
-  const [hasSubmittedThisRound, setHasSubmittedThisRound] = useState<boolean>(false);
-  const [isReadyForNextRound, setIsReadyForNextRound] = useState<boolean>(false);
+  const [hasSubmittedThisRound, setHasSubmittedThisRound] = useState(() => Boolean(guideState.guesses[playerId]));
+  const [isReadyForNextRound, setIsReadyForNextRound] = useState(() => Boolean(guideState.readyPlayersNextRound?.includes(playerId)));
 
   useEffect(() => { savePersistedGuideState(roomCode, guideState); }, [roomCode, guideState]);
   // Synchronize with TV host state & instant game start
@@ -229,15 +229,17 @@ export const GuideMobileRoot: React.FC = () => {
 
     return (
       <GuideMobileView
+        key={guideState.roundNumber}
         roomCode={roomCode}
         roundNumber={guideState.roundNumber}
         totalRounds={guideState.totalRounds}
         timerSeconds={guideState.timerSeconds}
         clues={guideState.currentLandmark.clues}
-        submittedCount={Object.keys(guideState.guesses || {}).length}
+        submittedCount={Object.keys(guideState.guesses || {}).filter(id => id !== 'host_tv').length}
         activeClueText={currentClue}
         activeClueIndex={guideState.activeClueIndex}
         hasSubmitted={hasSubmittedThisRound}
+        initialPin={guideState.guesses[playerId]}
         onLockPin={handleLockPin}
         onReturnToLobby={isRoomHost(roomCode) ? handleReturnToLobby : undefined}
       />
@@ -246,7 +248,7 @@ export const GuideMobileRoot: React.FC = () => {
 
   // 4. Results Phase
   if (guideState.phase === 'RESULTS') {
-    const connectedCount = Math.max(1, activeRoom?.players?.length || 1);
+    const connected = hasPresenceSnapshot ? connectedPlayers : (activeRoom?.players || []).filter(p => p.id !== 'host_tv');
 
     return (
       <GuideResultsStage
@@ -259,8 +261,8 @@ export const GuideMobileRoot: React.FC = () => {
         onReturnToLobby={isRoomHost(roomCode) ? handleReturnToLobby : undefined}
         isReadyForNextRound={isReadyForNextRound}
         onToggleReady={handleToggleReady}
-        readyCount={guideState.readyPlayersNextRound?.length || 0}
-        totalConnectedCount={connectedCount}
+        readyCount={connected.filter(p => guideState.readyPlayersNextRound?.includes(p.id)).length}
+        totalConnectedCount={connected.length}
         currentContestantId={playerId}
       />
     );

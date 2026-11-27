@@ -88,8 +88,8 @@ export const ScattergoriesMobileView: React.FC<ScattergoriesMobileViewProps> = (
       sessionStorage.removeItem('taq_session_player_id');
       localStorage.removeItem('taq_room_code');
       try {
-        sessionStorage.removeItem(`taghesi_player_${cleanCode}`);
-        localStorage.removeItem(`taghesi_player_${cleanCode}`);
+        sessionStorage.removeItem(`shabah_room_player_${cleanCode}`);
+        localStorage.removeItem(`shabah_room_player_${cleanCode}`);
       } catch {}
       navigate('/');
     }

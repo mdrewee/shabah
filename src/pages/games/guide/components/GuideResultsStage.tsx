@@ -49,7 +49,7 @@ export const GuideResultsStage: React.FC<GuideResultsStageProps> = ({
   totalConnectedCount = 1,
   currentContestantId,
 }) => {
-  const resultsList = Object.values(results).sort((a, b) => b.points - a.points || a.distanceKm - b.distanceKm);
+  const resultsList = Object.values(results).filter(r => r.contestantId !== 'host_tv').sort((a, b) => b.points - a.points || a.distanceKm - b.distanceKm);
 
   // Vibrant distinct palette for contestants on the map & scoreboard
   const CONTESTANT_COLORS = [

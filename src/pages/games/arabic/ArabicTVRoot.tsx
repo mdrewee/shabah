@@ -140,9 +140,7 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
         subs[c.id] ||
         Object.values(subs).find(
           (s: any) =>
-            s.contestantId === c.id ||
-            s.playerId === c.id ||
-            (s.contestantName && c.name && s.contestantName.trim().toLowerCase() === c.name.trim().toLowerCase())
+            s.contestantId === c.id || s.playerId === c.id
         );
 
       submissionsList.push({
@@ -155,7 +153,7 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
     // 2. Safety net: include any submissions received whose ID was not in mergedContestants
     Object.values(subs).forEach((s: any) => {
       const sId = s.contestantId || s.playerId;
-      if (sId && !processedIds.has(sId)) {
+      if (sId && sId !== 'host_tv' && !processedIds.has(sId)) {
         processedIds.add(sId);
         submissionsList.push({
           playerId: sId,
@@ -353,9 +351,9 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
 
       const contestantId = String(payload.contestantId || payload.playerId || '');
       const contestantName = mergedContestants.find(c => c.id === contestantId)?.name || 'متسابق';
-      if (!contestantId || curr.submissions[contestantId] || !mergedContestants.some(c => c.id === contestantId)) return;
+      if (!contestantId || contestantId === 'host_tv' || curr.submissions[contestantId] || !mergedContestants.some(c => c.id === contestantId)) return;
       if (payload.roundNumber !== curr.roundNumber) return;
-      if (!payload.answers || typeof payload.answers !== 'object' || Object.values(payload.answers).some(a => typeof a !== 'string' || a.length > 160)) return;
+      if (!payload.answers || typeof payload.answers !== 'object' || Object.values(payload.answers).some(a => typeof a !== 'string' || a.length > 140)) return;
 
       const updatedSubmissions = {
         ...curr.submissions,
@@ -644,13 +642,13 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
 
   // 3. Judging Phase (Dedicated Waiting Screen)
   if (arabicState.phase === 'JUDGING') {
-    return <ShabahThinkingScreen title="الشبح العربي يدقّق الكلمات" />;
+    return <ShabahThinkingScreen title="الشبح العربي يدقّق الكلمات" showWaitingGame={false} />;
   }
 
   // 4. Solving Stage (TV View)
   if (arabicState.phase === 'INPUT') {
-    const submittedCount = Object.keys(arabicState.submissions || {}).length;
-    const totalCount = Math.max(1, mergedContestants.length);
+    const submittedCount = mergedContestants.filter(p => arabicState.submissions[p.id]).length;
+    const totalCount = mergedContestants.length;
 
     return (
       <div
@@ -749,7 +747,7 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
         state={arabicState}
         onNextRound={handleNextRound}
         readyContestants={arabicState.readyPlayersNextRound || []}
-        totalConnectedContestants={Math.max(1, mergedContestants.length)}
+        totalConnectedContestants={mergedContestants.length}
         onReturnToLobby={handleReturnToLobby}
       />
     );

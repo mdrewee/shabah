@@ -67,36 +67,36 @@ export const BlindTourismMobileView: React.FC<BlindTourismMobileViewProps> = ({
   const [nickname, setNickname] = useState<string>(() => {
     if (propPlayerName) return propPlayerName;
     try {
-      const sessionPlayer = sessionStorage.getItem(`taghesi_player_${roomCode}`);
+      const sessionPlayer = sessionStorage.getItem(`shabah_room_player_${roomCode}`);
       if (sessionPlayer) {
         const parsed = JSON.parse(sessionPlayer);
         if (parsed?.name) return parsed.name;
       }
     } catch {}
-    return localStorage.getItem('taghesi_playerName') || '';
+    return localStorage.getItem('shabah_player_name') || '';
   });
 
   const [playerId, setPlayerId] = useState<string>(() => {
     if (propPlayerId) return propPlayerId;
     try {
-      const sessionPlayer = sessionStorage.getItem(`taghesi_player_${roomCode}`);
+      const sessionPlayer = sessionStorage.getItem(`shabah_room_player_${roomCode}`);
       if (sessionPlayer) {
         const parsed = JSON.parse(sessionPlayer);
         if (parsed?.id) return parsed.id;
       }
     } catch {}
-    return localStorage.getItem('taghesi_playerId') || 'p_' + Math.random().toString(36).substring(2, 9);
+    return localStorage.getItem('shabah_player_id') || 'p_' + Math.random().toString(36).substring(2, 9);
   });
 
   const [isJoined, setIsJoined] = useState<boolean>(() => {
     try {
-      const sessionPlayer = sessionStorage.getItem(`taghesi_player_${roomCode}`) || localStorage.getItem(`taghesi_player_${roomCode}`);
+      const sessionPlayer = sessionStorage.getItem(`shabah_room_player_${roomCode}`) || localStorage.getItem(`shabah_room_player_${roomCode}`);
       if (sessionPlayer) {
         const parsed = JSON.parse(sessionPlayer);
         if (parsed?.id && parsed?.name) return true;
       }
     } catch {}
-    return Boolean(propPlayerId || localStorage.getItem('taghesi_playerId'));
+    return Boolean(propPlayerId || localStorage.getItem('shabah_player_id'));
   });
 
   const handleJoin = (e: React.MouseEvent) => {
@@ -109,13 +109,13 @@ export const BlindTourismMobileView: React.FC<BlindTourismMobileViewProps> = ({
 
     const pid = playerId || 'p_' + Math.random().toString(36).substring(2, 9);
     setPlayerId(pid);
-    localStorage.setItem('taghesi_playerId', pid);
-    localStorage.setItem('taghesi_playerName', nickname.trim());
+    localStorage.setItem('shabah_player_id', pid);
+    localStorage.setItem('shabah_player_name', nickname.trim());
 
     const p = roomBus.joinPlayer(roomCode, nickname.trim(), 'avatar_1', 'team_a', pid);
     if (p?.id && p.id !== pid) {
       setPlayerId(p.id);
-      localStorage.setItem('taghesi_playerId', p.id);
+      localStorage.setItem('shabah_player_id', p.id);
     }
     const finalPlayer = p || {
       id: pid,
@@ -128,8 +128,8 @@ export const BlindTourismMobileView: React.FC<BlindTourismMobileViewProps> = ({
       lastPingMs: 25,
     };
 
-    sessionStorage.setItem(`taghesi_player_${roomCode}`, JSON.stringify(finalPlayer));
-    localStorage.setItem(`taghesi_player_${roomCode}`, JSON.stringify(finalPlayer));
+    sessionStorage.setItem(`shabah_room_player_${roomCode}`, JSON.stringify(finalPlayer));
+    localStorage.setItem(`shabah_room_player_${roomCode}`, JSON.stringify(finalPlayer));
 
     if (channel && channel.track && channel.state === 'joined') {
       channel.track(finalPlayer);
@@ -145,13 +145,13 @@ export const BlindTourismMobileView: React.FC<BlindTourismMobileViewProps> = ({
     if (propPlayerId) return propPlayerId;
     if (typeof window === 'undefined') return '';
     try {
-      const sessionPlayer = sessionStorage.getItem(`taghesi_player_${roomId}`);
+      const sessionPlayer = sessionStorage.getItem(`shabah_room_player_${roomId}`);
       if (sessionPlayer) {
         const parsed = JSON.parse(sessionPlayer);
         if (parsed?.id) return parsed.id;
       }
     } catch {}
-    return sessionStorage.getItem('taq_session_player_id') || localStorage.getItem('taghesi_playerId') || '';
+    return sessionStorage.getItem('taq_session_player_id') || localStorage.getItem('shabah_player_id') || '';
   }, [roomId, propPlayerId]);
 
   const currentPlayer = useMemo(() => {

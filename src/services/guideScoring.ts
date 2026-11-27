@@ -1,3 +1,5 @@
+import { toArabicNumber } from '../utils/numberFormat';
+
 /**
  * Precise Geographic Distance & Scoring Engine for "الشبح المرشد"
  * Uses Haversine Great-Circle Distance and 5-tier accuracy grading.
@@ -58,44 +60,21 @@ export function inferContinentFromCoords(
   return 'other';
 }
 
-/**
- * Evaluates points and brutalist feedback text based on distance and continent matching.
- */
-export function evaluateGuess(
-  distanceKm: number,
-  _isSameContinent: boolean
-): GuessEvaluationResult {
-  if (distanceKm <= 50) {
-    return {
-      points: 10,
-      label: 'على بعد ٥٠ كم أو أقل',
-      tier: 'exact',
-    };
-  } else if (distanceKm <= 200) {
-    return {
-      points: 8,
-      label: 'على بعد ٢٠٠ كم أو أقل',
-      tier: 'city',
-    };
-  } else if (distanceKm <= 900) {
-    return {
-      points: 6,
-      label: 'على بعد ٩٠٠ كم أو أقل',
-      tier: 'country',
-    };
-  } else if (distanceKm <= 3500) {
-    return {
-      points: 3,
-      label: 'على بعد ٣٥٠٠ كم أو أقل',
-      tier: 'continent',
-    };
-  } else if (distanceKm <= 6000) {
-    return { points: 1, label: 'على بعد ٦٠٠٠ كم أو أقل', tier: 'continent' };
-  } else {
-    return {
-      points: 0,
-      label: 'أبعد من ٦٠٠٠ كم',
-      tier: 'miss',
-    };
-  }
+const GUIDE_DISTANCE_BANDS: ReadonlyArray<{ maxKm: number; points: number; tier: GuideTier }> = [
+  { maxKm: 50, points: 10, tier: 'exact' },
+  { maxKm: 200, points: 8, tier: 'city' },
+  { maxKm: 900, points: 6, tier: 'country' },
+  { maxKm: 3500, points: 3, tier: 'continent' },
+  { maxKm: 6000, points: 1, tier: 'continent' },
+];
+const longestBand = GUIDE_DISTANCE_BANDS[GUIDE_DISTANCE_BANDS.length - 1].maxKm;
+
+export const GUIDE_SCORING_LEGEND = GUIDE_DISTANCE_BANDS.map(({ maxKm, points }) =>
+  `حتى ${toArabicNumber(maxKm)} كم = ${toArabicNumber(points)}`).join('، ') +
+  `، وأبعد من ${toArabicNumber(longestBand)} كم = صفر.`;
+
+export function evaluateGuess(distanceKm: number, _isSameContinent: boolean): GuessEvaluationResult {
+  const band = GUIDE_DISTANCE_BANDS.find(({ maxKm }) => distanceKm <= maxKm);
+  return band ? { points: band.points, tier: band.tier, label: `على بعد ${toArabicNumber(band.maxKm)} كم أو أقل` }
+    : { points: 0, tier: 'miss', label: `أبعد من ${toArabicNumber(longestBand)} كم` };
 }

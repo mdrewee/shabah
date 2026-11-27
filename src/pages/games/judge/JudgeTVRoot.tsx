@@ -9,7 +9,7 @@ import { UnifiedShabahLobby } from '../../../components/lobby/UnifiedShabahLobby
 import { getNextUnplayedJudgeCase } from '../../../data/judgePredicaments';
 import { evaluateAllExcuses } from '../../../services/judgeEngine';
 import { createInitialJudgeState, savePersistedJudgeState, getRankedJudgeContestants } from './judgeSync';
-import { openJudgeReading, acceptJudgeVote, publicJudgeState, scoreJudgeParty } from './judgeParty';
+import { openJudgeReading, acceptJudgeVote, publicJudgeState, scoreJudgeParty, JUDGE_DEFENSE_SECONDS, JUDGE_VOTE_SECONDS, JUDGE_READING_MS } from './judgeParty';
 import { JudgePartyStage } from './components/JudgePartyStage';
 import { JudgeFinalPodium } from './components/JudgeFinalPodium';
 import type { JudgeRoomState } from './types';
@@ -40,7 +40,7 @@ export const JudgeTVRoot:React.FC<{mobileContestants?:Array<{id:string;name:stri
     const predicament=fresh?cur.currentPredicament:getNextUnplayedJudgeCase(cur.usedPredicamentIds);
     sync({...cur,phase:'case_briefing',roundNumber:fresh?1:cur.roundNumber+1,currentPredicament:predicament,
       usedPredicamentIds:fresh?[predicament.id]:[...cur.usedPredicamentIds,predicament.id],briefingEndsAt:Date.now()+6000,
-      defenseEndsAt:undefined,timerSeconds:40,excuses:{},submittedPlayerIds:[],verdicts:{},verdictList:[],
+      defenseEndsAt:undefined,timerSeconds:JUDGE_DEFENSE_SECONDS,excuses:{},submittedPlayerIds:[],verdicts:{},verdictList:[],
       party:undefined,revealState:'anonymous',readyPlayersNextRound:[]});
   },[sync,snapshot]);
 
@@ -48,13 +48,13 @@ export const JudgeTVRoot:React.FC<{mobileContestants?:Array<{id:string;name:stri
     roundTransition=>sync({...snapshot.current,roundTransition}),()=>startRound());
   const startWriting=useCallback(()=>{
     const cur=snapshot.current;if(cur.phase!=='case_briefing') return;
-    sync({...cur,phase:'defending',timerSeconds:40,defenseEndsAt:Date.now()+40000});
+    sync({...cur,phase:'defending',timerSeconds:JUDGE_DEFENSE_SECONDS,defenseEndsAt:Date.now()+JUDGE_DEFENSE_SECONDS*1000});
   },[sync,snapshot]);
 
   const closeWriting=useCallback(()=>{
     const cur=snapshot.current;if(cur.phase!=='defending') return;
     const people=new Map(membersRef.current.map(p=>[p.id,{id:p.id,name:p.name}]));
-    Object.values(cur.excuses).forEach(e=>people.set(e.playerId,{id:e.playerId,name:e.playerName}));
+    Object.values(cur.excuses).filter(e=>e.playerId!=='host_tv').forEach(e=>people.set(e.playerId,{id:e.playerId,name:e.playerName}));
     const next=openJudgeReading(cur,[...people.values()]);
     if(!next.party?.cards.length) next.phase='JUDGING';
     sync(next);
@@ -64,9 +64,9 @@ export const JudgeTVRoot:React.FC<{mobileContestants?:Array<{id:string;name:stri
     const cur=snapshot.current;const party=cur.party;
     if(cur.phase!=='READING' || !party) return;
     if(party.readIndex+1<party.cards.length) {
-      sync({...cur,party:{...party,readIndex:party.readIndex+1,phaseEndsAt:Date.now()+8000}});
+      sync({...cur,party:{...party,readIndex:party.readIndex+1,phaseEndsAt:Date.now()+JUDGE_READING_MS}});
     } else sync({...cur,phase:party.mode==='jury' && party.cards.length>1?'VOTING':party.mode==='jury' && party.eligibleVoterIds.length?'VOTING':'JUDGING',
-      party:{...party,phaseEndsAt:Date.now()+28000}});
+      party:{...party,phaseEndsAt:Date.now()+JUDGE_VOTE_SECONDS*1000}});
   },[sync,snapshot]);
 
   useEffect(()=>{
@@ -133,7 +133,7 @@ export const JudgeTVRoot:React.FC<{mobileContestants?:Array<{id:string;name:stri
       if(cur.phase==='VOTING' && Date.now()>=(cur.party?.phaseEndsAt || Infinity)) sync({...cur,phase:'JUDGING'});
     },250);
     return()=>{clearInterval(timer);if(grace)clearTimeout(grace);};
-  },[snapshot,sync,roomCode,startWriting,closeWriting,advanceReading]);
+  },[snapshot,sync,roomCode,startWriting,closeWriting,advanceReading,state.roundNumber]);
 
   // Analysis overlaps reading and voting. Persisted answers allow retry after a host reload.
   useEffect(()=>{
@@ -152,7 +152,8 @@ export const JudgeTVRoot:React.FC<{mobileContestants?:Array<{id:string;name:stri
   useEffect(()=>()=>{++generation.current;},[]);
   useEffect(()=>{
     if(state.phase!=='JUDGING' || !state.party?.aiReady) return;
-    if(state.party.mode==='duel' && state.party.aiFailed) return;
+    if(state.party.aiFailed && (state.party.mode==='duel' || !Object.keys(state.party.votes ?? {}).length) &&
+      !state.party.aiVerdicts?.some(verdict => !verdict.aiUnavailable && state.excuses[verdict.playerId]?.excuse.trim())) return;
     sync(scoreJudgeParty(snapshot.current));
   },[state.phase,state.party?.aiReady,state.party?.aiFailed,snapshot,sync]);
 
@@ -164,7 +165,7 @@ export const JudgeTVRoot:React.FC<{mobileContestants?:Array<{id:string;name:stri
     <p className="text-purple-300">محكمة التصريف · الجولة {state.roundNumber}</p>
     <h1 className="text-3xl font-black">{state.currentPredicament.title}</h1><p className="text-2xl max-w-3xl text-center">{state.currentPredicament.description}</p>
     <p className="text-amber-300">الدليل: {state.currentPredicament.keyEvidence}</p>
-    <p>{state.phase==='case_briefing'?'اقرأوا الورطة… الكتابة تبدأ بعد قليل':`${defenseSeconds} ثانية · وصل ${Object.keys(state.excuses).length} من ${members.length}`}</p>
+    <p>{state.phase==='case_briefing'?'اقرأوا الورطة… الكتابة تبدأ بعد قليل':`${defenseSeconds} ثانية · وصل ${members.filter(p=>state.excuses[p.id]).length} من ${members.length}`}</p>
     <p className="text-zinc-400">أقنعنا أو ضحّكنا. الجواب القصير الذكي يكسب.</p>
   </section>;
 };

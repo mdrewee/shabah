@@ -22,7 +22,7 @@ import { TRAJECTORY_ROUNDS_FALLBACK, calculateHitCountries } from './trajectoryE
 import { TourismRoomState, TourismPlayer, TourismItem } from '../types/tourismGame';
 import { isAnswerCorrect } from '../data/tourismLexicon';
 
-const STORAGE_PREFIX = 'taghesi_room_';
+const STORAGE_PREFIX = 'shabah_room_';
 const CHANNEL_NAME = 'taghesi_bus_v3';
 const HOST_COMMAND_EVENTS = new Set([
   'GAME_STARTED', 'HOST_START_GAME', 'GAME_ENDED', 'ROOM_TERMINATED', 'TERMINATE_ROOM',
@@ -221,6 +221,16 @@ class RoomBus {
   private lastBroadcastTimes: Map<string, number> = new Map();
   private trailingSnapshots = new Map<string, ReturnType<typeof setTimeout>>();
   private reconnectAttempts: Map<string, number> = new Map();
+  private readonly subscribedAt = new Map<string, number>();
+  private readonly snapshotFailures = new Set<string>();
+
+  public getRoomConnectionError(roomCode: string): string | undefined {
+    const code = cleanRoomCode(roomCode);
+    if (!this.isChannelSubscribed(code) && (this.reconnectAttempts.get(code) ?? 0) >= 3 && !this.isReconnecting.get(code)) {
+      return 'تعذرت المزامنة مع الغرفة. تحقق من الاتصال ثم أعد المحاولة.';
+    }
+    if (this.snapshotFailures.has(code)) return 'تعذر استعادة حالة الجولة من الخادم.';
+  }
   private kickedPlayerIds = new Map<string, Set<string>>();
   private isIntentionalLeave: Map<string, boolean> = new Map();
   private reconnectTimers: Map<string, any> = new Map();
@@ -245,6 +255,7 @@ class RoomBus {
       return;
     }
 
+    if ((this.reconnectAttempts.get(cleanCode) ?? 0) >= 3) return;
     this.isReconnecting.set(cleanCode, true);
     const existing = this.reconnectTimers.get(cleanCode);
     if (existing) {
@@ -259,6 +270,7 @@ class RoomBus {
       }
 
       console.log(`[ROOM_BUS] Executing single safe reconnect for ${cleanCode}`);
+      this.reconnectAttempts.set(cleanCode, (this.reconnectAttempts.get(cleanCode) ?? 0) + 1);
       const oldCh = this.supabaseChannels.get(cleanCode);
       if (oldCh) {
         try {
@@ -270,7 +282,9 @@ class RoomBus {
       this.supabaseChannels.delete(cleanCode);
 
       this.isReconnecting.set(cleanCode, false);
-      this.ensureSupabaseChannel(cleanCode, this.latestPresence.get(cleanCode) ?? player);
+      if (!this.ensureSupabaseChannel(cleanCode, this.latestPresence.get(cleanCode) ?? player)) {
+        this.scheduleReconnect(cleanCode, player);
+      }
     }, 2000);
 
     this.reconnectTimers.set(cleanCode, timer);
@@ -444,15 +458,34 @@ class RoomBus {
     }
   }
 
-  private async restoreRoomSnapshot(roomCode: string, channel: unknown): Promise<void> {
+  private readonly latestGameStates = new Map<string, { event: string; payload: any }>();
+
+  public getLatestGameState<T>(roomCode: string, event: string): T | undefined {
+    const state = this.latestGameStates.get(cleanRoomCode(roomCode));
+    return state?.event === event ? state.payload : undefined;
+  }
+
+  public async restoreRoomSnapshot(roomCode: string, channel?: unknown): Promise<boolean> {
+    roomCode = cleanRoomCode(roomCode);
+    const previous = this.latestGameStates.get(roomCode);
     try {
       const { data, error } = await supabase.rpc('read_shabah_room_snapshot', { code: roomCode });
-      if (error || !data || this.supabaseChannels.get(roomCode) !== channel) return;
-      if (['COACH_STATE_SYNC','BROKER_STATE_SYNC','ARABIC_STATE_SYNC','JUDGE_STATE_SYNC','GUIDE_STATE_SYNC','FLYING_STATE_SYNC'].includes(data.event)) {
-        this.applyHostCommand(roomCode, data.event, data.payload);
+      if (channel && this.supabaseChannels.get(roomCode) !== channel) return false;
+      if (error) {
+        this.snapshotFailures.add(roomCode);
+        return false;
       }
+      this.snapshotFailures.delete(roomCode);
+      if (data && ['COACH_STATE_SYNC','BROKER_STATE_SYNC','ARABIC_STATE_SYNC','JUDGE_STATE_SYNC','GUIDE_STATE_SYNC','FLYING_STATE_SYNC'].includes(data.event)) {
+        this.applyHostCommand(roomCode, data.event, data.payload);
+      } else if (!data && !channel && previous === this.latestGameStates.get(roomCode)) {
+        this.latestGameStates.delete(roomCode);
+      }
+      return true;
     } catch {
       // A live host can still answer REQUEST_ROOM_STATE.
+      this.snapshotFailures.add(roomCode);
+      return false;
     }
   }
 
@@ -499,6 +532,7 @@ class RoomBus {
     if (event === 'GAME_STARTED') {
       dispatch('GAME_STARTED');
     } else if (event === 'ROOM_TERMINATED') {
+      this.latestGameStates.delete(roomCode);
       this.removeLocalRoom(roomCode);
       this.leaveRoom(roomCode);
       dispatch('ROOM_TERMINATED');
@@ -521,6 +555,7 @@ class RoomBus {
         if (event === 'SHABAH_GAME_CHANGED' && !gameId) return;
         if (sequence <= (this.lobbySequence.get(roomCode) ?? 0)) return;
         this.lobbySequence.set(roomCode, sequence);
+        this.latestGameStates.delete(roomCode);
         const room = this.getRoom(roomCode);
         if (room) {
           room.players.forEach(player => { player.isReady = false; });
@@ -531,6 +566,10 @@ class RoomBus {
           this.removeGameSession(roomCode);
           this.dispatchLocal({roomCode, type:'RETURN_TO_LOBBY', data:{}, timestamp: Date.now()});
         }
+      }
+      if (event.endsWith('_STATE_SYNC')) {
+        this.snapshotFailures.delete(roomCode);
+        this.latestGameStates.set(roomCode, { event, payload });
       }
       dispatch(event);
     }
@@ -861,7 +900,7 @@ class RoomBus {
       // Deduplicate incoming list strictly by player ID
       const uniqueMap = new Map<string, any>();
       list.forEach((p) => {
-        if (p && p.id && p.id !== 'host_tv' && !this.kickedPlayerIds.get(clean)?.has(p.id)) {
+        if (p && p.id && p.id !== 'host_tv' && !p.isHost && !this.kickedPlayerIds.get(clean)?.has(p.id)) {
           if (uniqueMap.has(p.id)) {
             const prev = uniqueMap.get(p.id);
             uniqueMap.set(p.id, {
@@ -1093,7 +1132,7 @@ class RoomBus {
         const all = Object.values(state).flat() as any[];
         const map = new Map<string, { id: string; name: string; isHost: boolean; isReady: boolean }>();
         all.forEach((p) => {
-          if (p && p.id && p.id !== 'host_tv' && !this.kickedPlayerIds.get(clean)?.has(p.id)) {
+          if (p && p.id && p.id !== 'host_tv' && !p.isHost && !this.kickedPlayerIds.get(clean)?.has(p.id)) {
             map.set(p.id, {
               id: p.id,
               name: p.name || 'متسابق',
@@ -1124,10 +1163,10 @@ class RoomBus {
 
     if (typeof window !== 'undefined') {
       try {
-        const saved = sessionStorage.getItem(`taghesi_player_${clean}`) || localStorage.getItem(`taghesi_player_${clean}`);
+        const saved = sessionStorage.getItem(`shabah_room_player_${clean}`) || localStorage.getItem(`shabah_room_player_${clean}`);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (parsed?.id && parsed?.name && !this.kickedPlayerIds.get(clean)?.has(parsed.id)) {
+          if (parsed?.id && parsed.id !== 'host_tv' && parsed?.name && !this.kickedPlayerIds.get(clean)?.has(parsed.id)) {
             return [{
               id: parsed.id,
               name: parsed.name,
@@ -1168,6 +1207,8 @@ class RoomBus {
     }
     this.isReconnecting.set(clean, false);
     this.reconnectAttempts.delete(clean);
+    this.subscribedAt.delete(clean);
+    this.snapshotFailures.delete(clean);
 
     if (playerId) {
       this.leavePlayer(clean, playerId);
@@ -1206,9 +1247,10 @@ class RoomBus {
     return this.supabaseChannels.get(clean) || null;
   }
 
-  public retryConnection(roomCode:string):void {
+  public retryConnection(roomCode:string, manual=false):void {
     const code=cleanRoomCode(roomCode);
     if(!code || this.isIntentionalLeave.get(code))return;
+    if (manual) this.reconnectAttempts.delete(code);
     if(this.isChannelSubscribed(code)){
       if (typeof localStorage !== 'undefined' && !localStorage.getItem('shabah_host_' + code)) {
         void this.restoreRoomSnapshot(code, this.supabaseChannels.get(code));
@@ -1265,7 +1307,7 @@ class RoomBus {
       const presenceKey = player?.id || (this.isHosting(cleanCode)
         ? 'host_tv'
         : (typeof window !== 'undefined'
-          ? (localStorage.getItem('taghesi_playerId') || sessionStorage.getItem('taghesi_playerId') || 'guest_' + Math.random().toString(36).substring(2, 7))
+          ? (localStorage.getItem('shabah_player_id') || sessionStorage.getItem('shabah_player_id') || 'guest_' + Math.random().toString(36).substring(2, 7))
           : 'guest'));
 
       const ch = supabase.channel(topic, {
@@ -1563,7 +1605,7 @@ class RoomBus {
             clearTimeout(timer);
             this.reconnectTimers.delete(cleanCode);
           }
-          this.reconnectAttempts.delete(cleanCode);
+          this.subscribedAt.set(cleanCode, Date.now());
           this.flushPendingQueue(cleanCode);
 
           const latestPlayer = this.latestPresence.get(cleanCode) ?? player;
@@ -1575,10 +1617,10 @@ class RoomBus {
               await this.trackPlayerPresence(cleanCode, pending);
             } else if (typeof window !== 'undefined') {
               try {
-                const saved = sessionStorage.getItem(`taghesi_player_${cleanCode}`) || localStorage.getItem(`taghesi_player_${cleanCode}`);
+                const saved = sessionStorage.getItem(`shabah_room_player_${cleanCode}`) || localStorage.getItem(`shabah_room_player_${cleanCode}`);
                 if (saved) {
                   const parsed = JSON.parse(saved);
-                  if (parsed?.id && parsed?.name) {
+                  if (parsed?.id && parsed.id !== 'host_tv' && parsed?.name) {
                     await this.trackPlayerPresence(cleanCode, parsed);
                   }
                 }
@@ -1620,6 +1662,9 @@ class RoomBus {
             });
           }
         } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          const since = this.subscribedAt.get(cleanCode);
+          if (since !== undefined && Date.now() - since >= 15_000) this.reconnectAttempts.delete(cleanCode);
+          this.subscribedAt.delete(cleanCode);
           this.supabaseChannelStates.set(cleanCode, 'CLOSED');
 
           // If intentional leave or already reconnecting: DO NOTHING, NEVER RECURSE
@@ -2596,8 +2641,8 @@ class RoomBus {
     localStorage.removeItem(STORAGE_PREFIX + roomCode);
     localStorage.removeItem(STORAGE_PREFIX + 'ROOM_' + roomCode);
     localStorage.removeItem('shabah_host_' + roomCode);
-    localStorage.removeItem('taghesi_player_' + roomCode);
-    try { sessionStorage.removeItem('taghesi_player_' + roomCode); } catch {}
+    localStorage.removeItem('shabah_room_player_' + roomCode);
+    try { sessionStorage.removeItem('shabah_room_player_' + roomCode); } catch {}
     this.removeGameSession(roomCode);
   }
 

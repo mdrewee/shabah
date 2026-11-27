@@ -681,8 +681,8 @@ export function rankDraftEvaluations(evaluations:SquadEvaluationResult[],verific
   const strength=(item:SquadEvaluationResult)=>Object.values(item.slots).reduce((sum,slot)=>sum+(slot.isValidCondition && slot.isValidPosition?slot.playerPower:0),0);
   const compare=(a:SquadEvaluationResult,b:SquadEvaluationResult)=>b.totalPercentage-a.totalPercentage || strength(b)-strength(a);
   evaluations.sort(compare);
-  for(const item of evaluations){
-    const rank=evaluations.findIndex(other=>compare(other,item)===0)+1;
+  for(const [index,item] of evaluations.entries()){
+    const rank=item.totalPercentage === 0 ? index+1 : evaluations.findIndex(other=>compare(other,item)===0)+1;
     item.rank=rank;item.matchPointsAwarded=item.totalPercentage>0 ? rank===1?5:rank===2?3:rank===3?1:0 : 0;
   }
   const best=evaluations[0]?.totalPercentage || 0;

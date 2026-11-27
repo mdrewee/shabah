@@ -1,6 +1,6 @@
 begin;
 
-create function public.lookup_shabah_room(code text)
+create or replace function public.lookup_shabah_room(code text)
 returns text
 language sql
 stable

@@ -1,7 +1,4 @@
-import {RoundCelebration,roundLeaders} from '../../../components/common/RoundCelebration';
-import {ResultNavigator,resultCardId} from '../../../components/common/ResultNavigator';
 import {WaitingChase} from '../../../components/common/WaitingChase';
-import { RarityBadge } from './RarityBadge';
 import { ShabahThinkingScreen } from '../../../components/common/ShabahThinkingScreen';
 import { getSeenFlyingQuestions, rememberFlyingQuestion } from './flyingQuestionHistory';
 import { FlyingBankExhausted } from './FlyingBankExhausted';
@@ -20,7 +17,6 @@ import { UnifiedShabahLobby } from '../../../components/lobby/UnifiedShabahLobby
 import {
   FlyingRoomState,
   FlyingSubmission,
-  FlyingContestantResult,
 } from './types';
 import {
   createInitialFlyingState,
@@ -32,7 +28,9 @@ import {
 import { stripEmojis } from './flyingEngine';
 import { FlyingSkyWorld } from './FlyingSkyWorld';
 import { FlyingTVRoot } from './FlyingTVRoot';
-import { GhostAvatar, getTierDisplayLabel } from './GhostAvatar';
+import { GhostAvatar } from './GhostAvatar';
+import { flyingRevealRoster, FLYING_QUESTION_SECONDS } from './flyingRound';
+import { useSafeCountdown } from '../../../hooks/useSafeCountdown';
 import {
   CheckCircle2,
   Clock,
@@ -41,7 +39,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 
-const ROUND_TIME = 35;
+const ROUND_TIME = FLYING_QUESTION_SECONDS;
 
 export const FlyingMobileView: React.FC = () => {
   const { code } = useParams<{ code?: string }>();
@@ -91,7 +89,7 @@ const FlyingMobilePlayer: React.FC<{
   const navigate = useNavigate();
 
   const [flyingState, setFlyingState] = useState<FlyingRoomState>(
-    () => getPersistedFlyingState(roomCode) || createInitialFlyingState(roomCode)
+    () => roomBus.getLatestGameState<FlyingRoomState>(roomCode, 'FLYING_STATE_SYNC') ?? (isPlayerHost ? getPersistedFlyingState(roomCode) : null) ?? createInitialFlyingState(roomCode)
   );
 
 
@@ -108,9 +106,10 @@ const FlyingMobilePlayer: React.FC<{
   const stateRef = useRef<FlyingRoomState>(flyingState);
   stateRef.current = flyingState;
 
+  const [emptyWarning, setEmptyWarning] = useState(false);
   const [answerInput, setAnswerInput] = useState<string>('');
-  const [hasSubmittedThisRound, setHasSubmittedThisRound] = useState<boolean>(false);
-  const [submittedAnswer, setSubmittedAnswer] = useState<string>('');
+  const [hasSubmittedThisRound, setHasSubmittedThisRound] = useState(() => Boolean(flyingState.submissions[playerId]));
+  const [submittedAnswer, setSubmittedAnswer] = useState(() => flyingState.submissions[playerId]?.answer ?? '');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const handleReturnToLobby = useCallback(() => {
@@ -128,31 +127,14 @@ const FlyingMobilePlayer: React.FC<{
     savePersistedFlyingState(roomCode, lobbyState);
     setHasSubmittedThisRound(false);
     setAnswerInput('');
+    setEmptyWarning(false);
     setSubmittedAnswer('');
     roomBus.broadcastReturnToLobby(roomCode);
   }, [roomCode]);
 
-  // -------------------------------------------------------------
-  // Question Timer Countdown (Visual display only, evaluation is exclusive to TV Host)
-  // -------------------------------------------------------------
-  useEffect(() => {
-    if (flyingState.phase !== 'QUESTION') return;
-
-    const timer = setInterval(() => {
-      setFlyingState((prev) => {
-        if (prev.phase !== 'QUESTION') return prev;
-        if (prev.timerSeconds <= 1) {
-          clearInterval(timer);
-          return { ...prev, timerSeconds: 0 };
-        }
-        const updated = { ...prev, timerSeconds: prev.timerSeconds - 1 };
-        stateRef.current = updated;
-        return updated;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [flyingState.phase]);
+  const questionSeconds = useSafeCountdown(flyingState.phase === 'QUESTION'
+    ? flyingState.roundStartedAt + ROUND_TIME * 1000
+    : undefined);
 
   // -------------------------------------------------------------
   // Realtime Socket Event Synchronizer
@@ -169,6 +151,10 @@ const FlyingMobilePlayer: React.FC<{
       const nextRound = Number(payload.roundIndex) || 1;
       const nextTotal = Number(payload.totalRounds) || 5;
       const nextDuration = Number(payload.roundDuration) || ROUND_TIME;
+      const previous = stateRef.current;
+      if (nextRound < previous.roundNumber ||
+          (nextRound === previous.roundNumber && previous.phase !== 'LOBBY' &&
+            previous.currentQuestion?.id === payload.question.id)) return;
 
       const newState: FlyingRoomState = {
         ...stateRef.current,
@@ -177,6 +163,7 @@ const FlyingMobilePlayer: React.FC<{
         totalRounds: nextTotal,
         currentQuestion: payload.question,
         timerSeconds: nextDuration,
+        roundStartedAt: payload.roundStartedAt ?? Date.now(),
         submissions: {},
         results: {},
         activeSpotlightIndex: 0,
@@ -209,6 +196,9 @@ const FlyingMobilePlayer: React.FC<{
       const payload = evt?.data ?? evt;
       if (incomingCode && incomingCode !== roomCode) return;
       if (!payload?.results) return;
+      const previous = stateRef.current;
+      if ((payload.roundNumber && payload.roundNumber !== previous.roundNumber) ||
+          previous.phase === 'REVEALING' || previous.phase === 'PODIUM') return;
 
       sound.playSuccess?.();
       const nextCumulative =
@@ -221,6 +211,7 @@ const FlyingMobilePlayer: React.FC<{
         cumulativeMeters: nextCumulative,
         activeSpotlightIndex: payload.activeSpotlightIndex ?? 0,
         cameraMode: payload.cameraMode ?? 'spotlight',
+        cameraStartedAt: payload.cameraStartedAt ?? Date.now(),
       };
 
       stateRef.current = nextState;
@@ -317,7 +308,8 @@ const FlyingMobilePlayer: React.FC<{
   const handleSubmitAnswer = (e: React.FormEvent) => {
     e.preventDefault();
     const clean = stripEmojis(answerInput.trim());
-    if (!clean || hasSubmittedThisRound || isSubmitting) return;
+    if (hasSubmittedThisRound || isSubmitting || questionSeconds === 0) return;
+    if (!clean) { setEmptyWarning(true); return; }
 
     sound.playClick();
     setIsSubmitting(true);
@@ -355,7 +347,6 @@ const FlyingMobilePlayer: React.FC<{
     }, 300);
   };
 
-  const myResult: FlyingContestantResult | undefined = flyingState.results[playerId];
   const myTotalMeters = flyingState.cumulativeMeters[playerId] || 0;
   const q = flyingState.currentQuestion;
 
@@ -517,8 +508,8 @@ const FlyingMobilePlayer: React.FC<{
         {/* Main Content Card */}
         <main className="w-full max-w-md mx-auto flex flex-col my-auto py-2">
           {(
-            <div className="pixel-box bg-[#111827] text-white border-4 border-black p-5 sm:p-6 flex flex-col items-center text-center">
-              <span className="px-3 py-1 bg-amber-400 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider mb-4">
+            <div className="flex flex-col items-center rounded-3xl border border-violet-300/20 bg-[#111427] p-5 text-center text-white shadow-xl shadow-violet-950/30 sm:p-6">
+              <span className="mb-4 rounded-full border border-violet-300/25 bg-violet-400/10 px-3 py-1 text-xs font-bold text-violet-200">
                 {q.category}
               </span>
 
@@ -531,20 +522,21 @@ const FlyingMobilePlayer: React.FC<{
                   <input
                     type="text"
                     value={answerInput}
-                    onChange={(e) => setAnswerInput(e.target.value)}
+                    onChange={(e) => { setAnswerInput(e.target.value.slice(0, 140)); setEmptyWarning(false); }}
                     placeholder="اكتب إجابتك هنا..."
-                    maxLength={60}
-                    className="w-full py-3.5 px-4 bg-[#070B14] border-4 border-black text-amber-300 font-mono font-black text-center text-base placeholder:text-zinc-600 focus:outline-none focus:border-amber-400"
+                    className="w-full rounded-2xl border-2 border-transparent flying-answer-input bg-[#121328] px-4 py-4 text-center text-base font-bold text-white placeholder:text-zinc-400 outline-none transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-300/15"
                     autoFocus
                   />
 
+                  {answerInput.length >= 140 && <p role="status" className="text-sm text-amber-300">الحد الأقصى ١٤٠ حرفًا.</p>}
+                  {emptyWarning && <p role="alert" className="text-sm text-amber-300">اكتب إجابتك أولاً.</p>}
                   <button
                     type="submit"
-                    disabled={!answerInput.trim() || isSubmitting}
-                    className={`w-full py-3.5 font-mono font-black text-sm uppercase tracking-wider border-4 border-black transition-none cursor-pointer ${
+                    disabled={isSubmitting || questionSeconds === 0}
+                    className={`w-full rounded-2xl py-3.5 text-sm font-black transition cursor-pointer ${
                       answerInput.trim() && !isSubmitting
-                        ? 'bg-amber-400 text-black shadow-[4px_4px_0px_#000] active:translate-x-1 active:translate-y-1 active:shadow-none'
-                        : 'bg-zinc-800 text-zinc-600 border-zinc-950 cursor-not-allowed shadow-none'
+                        ? 'bg-gradient-to-r from-violet-400 via-sky-300 to-lime-200 text-zinc-950 active:scale-[.98]'
+                        : 'bg-white/10 text-zinc-400 cursor-not-allowed'
                     }`}
                   >
                     إرسال الإجابة
@@ -579,7 +571,7 @@ const FlyingMobilePlayer: React.FC<{
         <footer className="w-full flex items-center justify-center pb-2">
           <div className="pixel-box bg-[#111827] text-white px-4 py-2 border-2 border-black flex items-center gap-2 font-mono text-xs font-black">
             <Clock className="w-4 h-4 text-amber-400" />
-            <span>الوقت المتبقي: {flyingState.timerSeconds} ثانية</span>
+            <span>الوقت المتبقي: {questionSeconds} ثانية</span>
           </div>
         </footer>
       </div>
@@ -587,74 +579,31 @@ const FlyingMobilePlayer: React.FC<{
   }
 
   // -------------------------------------------------------------
-  // 4. Revealing Phase: 16-Bit Pixel Sky World + Summary Card
-  // -------------------------------------------------------------
-  const contestantsList =
-    mergedContestants.length > 0
-      ? mergedContestants
-      : Object.keys(flyingState.results).map((id) => ({
-          id,
-          name: flyingState.results[id]?.contestantName || 'متسابق',
-        }));
-
-  const myTierInfo = getTierDisplayLabel(myResult?.tier);
-
+  // 4. Flight reveal
+  const contestants = flyingRevealRoster(flyingState.results);
+  const overview = flyingState.cameraMode === 'global_overview';
   return (
-    <div
-      dir="rtl"
-      className="h-full min-h-0 w-full bg-[#070B14] text-white flex flex-col justify-between overflow-hidden relative select-none pixel-art"
-    >
-      {/* 16-Bit Vertical Skyline World & Ghost Sprites */}
-      <div className="absolute inset-0">
-        <FlyingSkyWorld
-          contestants={contestantsList}
-          results={flyingState.results}
-          cumulativeMeters={flyingState.cumulativeMeters}
-          activeSpotlightIndex={flyingState.activeSpotlightIndex}
-          cameraMode={flyingState.cameraMode}
-        />
-      </div>
-
-      {/* Top Header */}
-      <header className="relative z-30 w-full max-w-md mx-auto p-3 flex items-center justify-between">
-        <div className="pixel-box bg-[#111827] text-amber-400 px-3 py-1.5 border-2 border-black font-mono text-xs font-black">
-          الجولة {flyingState.roundNumber} / {flyingState.totalRounds}
-        </div>
-        <div className="pixel-box bg-black text-emerald-400 px-3 py-1.5 border-2 border-black font-mono text-xs font-black">
-          الارتفاع الكلي: {myTotalMeters}م
-        </div>
-      </header>
-
-      {/* Bottom Personal Summary Card */}
-      <footer className="relative z-30 w-full max-w-md mx-auto p-3">
-        {flyingState.cameraMode==='global_overview' && <RoundCelebration award="أندر إجابة" names={roundLeaders(Object.values(flyingState.results).map(r=>({name:r.contestantName,score:r.roundMeters,eligible:!r.needsReview})))}/>}
-        <details className="mb-2 max-h-[35dvh] overflow-y-auto rounded-xl border border-white/20 bg-zinc-950/95 p-3 text-sm"><summary className="min-h-11 cursor-pointer font-bold">نتائج جميع المتسابقين</summary>
-          <ResultNavigator scope="flying" players={Object.values(flyingState.results).map(r=>({id:r.contestantId,name:r.contestantName}))} currentId={playerId}/>
-          {Object.values(flyingState.results).sort((a,b)=>b.roundMeters-a.roundMeters).map(r=><article key={r.contestantId} id={resultCardId('flying',r.contestantId)} style={{borderColor:r.contestantId===playerId?'#6ee7b7':undefined}} className="my-2 rounded-xl border border-zinc-700 p-3"><p className="font-bold">{r.contestantName}{r.contestantId===playerId?' (أنت)':''} · +{r.roundMeters}م</p><p className="my-1 break-words">{r.answer || 'بدون إجابة'}</p><p className="text-xs leading-6 text-zinc-300">{r.comment}</p></article>)}
-        </details>
-        {myResult && (
-          <div className="pixel-box bg-[#111827] text-white border-4 border-black p-3.5 flex items-center justify-between gap-3 shadow-[4px_4px_0px_#000]">
-            <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="shrink-0">
-                <RarityBadge tier={myResult.tier} />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-black text-sm text-white break-words">
-                    "{myResult.answer || 'بدون إجابة'}"
-                  </span>
-                  <span className="font-mono text-xs font-black text-black bg-amber-400 px-2 py-0.5 border border-black shrink-0">
-                    +{myResult.roundMeters}م
-                  </span>
-                </div>
-                <p className="text-[11px] font-mono text-zinc-300 leading-6 break-words">
-                  {myResult.comment}
-                </p>
-              </div>
-            </div>
+    <section dir="rtl" data-flying-reveal className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#070b1c] text-white">
+      <header className="relative z-10 flex shrink-0 items-center justify-between gap-2 px-3 py-2 text-xs font-bold">
+        <span>الجولة {flyingState.roundNumber} / {flyingState.totalRounds}</span>
+        <span>{overview ? 'كل الأشباح' : `تحليق ${flyingState.activeSpotlightIndex + 1} من ${contestants.length}`}</span>
+        {overview && <details className="relative">
+          <summary className="cursor-pointer rounded-lg border border-white/20 px-2 py-1.5">التفاصيل</summary>
+          <div className="absolute left-0 top-full mt-2 max-h-[50dvh] w-[min(80vw,24rem)] overflow-auto rounded-2xl border border-white/20 bg-zinc-950 p-3 shadow-xl">
+            {Object.values(flyingState.results).map(result => <article key={result.contestantId} className="border-b border-white/10 py-2">
+              <b>{result.answer || 'بدون إجابة'}</b>
+              <p>{result.contestantName} · +{result.roundMeters} م</p>
+              <p className="mt-1 text-zinc-300">{result.comment}</p>
+            </article>)}
           </div>
-        )}
-      </footer>
-    </div>
+        </details>}
+      </header>
+      <div className="min-h-0 flex-1">
+        <FlyingSkyWorld contestants={contestants} results={flyingState.results}
+          cumulativeMeters={flyingState.cumulativeMeters} activeSpotlightIndex={flyingState.activeSpotlightIndex}
+          cameraMode={flyingState.cameraMode} cameraStartedAt={flyingState.cameraStartedAt}
+          totalRounds={flyingState.totalRounds} currentPlayerId={playerId} />
+      </div>
+    </section>
   );
 };

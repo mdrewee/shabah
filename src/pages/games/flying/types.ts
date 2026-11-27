@@ -47,6 +47,7 @@ export interface FlyingRoomState {
   cumulativeMeters: Record<string, number>; // contestantId -> total meters
   activeSpotlightIndex: number; // 0..N-1 during REVEALING
   cameraMode: 'spotlight' | 'global_overview';
+  cameraStartedAt?: number;
   readyPlayersNextRound?: string[];
 }
 

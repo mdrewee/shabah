@@ -37,7 +37,7 @@ export const HostModeratorView: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    const isHost = sessionStorage.getItem(`taghesi_host_${roomId}`) === 'true';
+    const isHost = sessionStorage.getItem(`shabah_moderator_${roomId}`) === 'true';
     if (isHost) {
       setIsAuthenticated(true);
       roomBus.setHostStatus(roomId, true);
@@ -48,7 +48,7 @@ export const HostModeratorView: React.FC = () => {
     e.preventDefault();
     sound.playClick();
     setIsAuthenticated(true);
-    sessionStorage.setItem(`taghesi_host_${roomId}`, 'true');
+    sessionStorage.setItem(`shabah_moderator_${roomId}`, 'true');
     roomBus.setHostStatus(roomId, true);
   };
 
@@ -81,7 +81,7 @@ export const HostModeratorView: React.FC = () => {
   const handleLeave = () => {
     sound.playClick();
     roomBus.setHostStatus(roomId, false);
-    sessionStorage.removeItem(`taghesi_host_${roomId}`);
+    sessionStorage.removeItem(`shabah_moderator_${roomId}`);
     navigate(`/room/${roomId}/board`);
   };
 

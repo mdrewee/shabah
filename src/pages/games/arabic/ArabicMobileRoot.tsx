@@ -30,7 +30,7 @@ export const ArabicMobileRoot: React.FC<{onNextRound?:()=>void}> = ({onNextRound
   });
 
   // Maintain Supabase Realtime channel
-  useRoomSync({
+  const { connectedPlayers, hasPresenceSnapshot } = useRoomSync({
     roomCode,
     role: 'contestant',
     playerId,
@@ -41,11 +41,11 @@ export const ArabicMobileRoot: React.FC<{onNextRound?:()=>void}> = ({onNextRound
   const activeRoom = room || roomBus.getRoom(roomCode);
 
   const [arabicState, setArabicState] = useState<ArabicRoomState>(() =>
-    createInitialArabicState(roomCode)
+    roomBus.getLatestGameState<ArabicRoomState>(roomCode, 'ARABIC_STATE_SYNC') ?? createInitialArabicState(roomCode, !isRoomHost(roomCode))
   );
 
-  const [hasSubmittedThisRound, setHasSubmittedThisRound] = useState<boolean>(false);
-  const [isReadyForNextRound, setIsReadyForNextRound] = useState<boolean>(false);
+  const [hasSubmittedThisRound, setHasSubmittedThisRound] = useState(() => Boolean(arabicState.submissions[playerId]));
+  const [isReadyForNextRound, setIsReadyForNextRound] = useState(() => Boolean(arabicState.readyPlayersNextRound?.includes(playerId)));
 
   // Synchronize with TV host state
   useEffect(() => {
@@ -235,7 +235,7 @@ export const ArabicMobileRoot: React.FC<{onNextRound?:()=>void}> = ({onNextRound
 
   // 3. Dedicated Correction Waiting Screen (JUDGING)
   if (arabicState.phase === 'JUDGING') {
-    return <ShabahThinkingScreen title="الشبح العربي يدقّق الكلمات"
+    return <ShabahThinkingScreen title="الشبح العربي يدقّق الكلمات" showWaitingGame={false}
       onRetry={isRoomHost(roomCode) ? () => window.location.reload() : undefined}
       onReturnToLobby={isRoomHost(roomCode) ? () => roomBus.broadcastReturnToLobby(roomCode) : undefined} />;
   }
@@ -244,10 +244,13 @@ export const ArabicMobileRoot: React.FC<{onNextRound?:()=>void}> = ({onNextRound
   if (arabicState.phase === 'INPUT') {
     return (
       <ArabicMobileInput
+        key={arabicState.roundNumber}
+        roomCode={roomCode}
         contestantId={playerId}
         contestantName={playerName}
         currentLetter={arabicState.currentLetter}
         categories={arabicState.currentCategories}
+        initialAnswers={arabicState.submissions[playerId]?.answers}
         timerSeconds={arabicState.timerSeconds}
         hasSubmitted={hasSubmittedThisRound}
         onSubmit={handleSubmitAnswers}
@@ -258,10 +261,11 @@ export const ArabicMobileRoot: React.FC<{onNextRound?:()=>void}> = ({onNextRound
 
   // 5. Results & Objection Phase
   if (arabicState.phase === 'RESULTS') {
-    const connectedContestantsCount = Math.max(1, activeRoom?.players?.length || 1);
+    const connected = hasPresenceSnapshot ? connectedPlayers : (activeRoom?.players || []).filter(p => p.id !== 'host_tv');
 
     return (
       <ArabicMobileResults
+        key={arabicState.roundNumber}
         onNextRound={isRoomHost(roomCode)?onNextRound:undefined}
         currentContestantId={playerId}
         evaluations={arabicState.evaluations || {}}
@@ -272,8 +276,8 @@ export const ArabicMobileRoot: React.FC<{onNextRound?:()=>void}> = ({onNextRound
         onVoteObjection={handleVoteObjection}
         isReadyForNextRound={isReadyForNextRound}
         onToggleReady={handleToggleReady}
-        readyContestantsCount={arabicState.readyPlayersNextRound?.length || 0}
-        totalContestantsCount={connectedContestantsCount}
+        readyContestantsCount={connected.filter(p => arabicState.readyPlayersNextRound?.includes(p.id)).length}
+        totalContestantsCount={connected.length}
         onReturnToLobby={isRoomHost(roomCode) ? handleReturnToLobby : undefined}
       />
     );

@@ -35,6 +35,14 @@ test('missing player/category results never borrow another verdict', () => {
   expect(result[0].results[0]).toMatchObject({ score:0, needsReview:true });
 });
 
+test('the landmark category rejects a generic profession even if the model approves it', () => {
+  const result = applyScoringAndDuplicates(
+    [{ playerId: 'a', results: [{ category: 'مَعلم', answer: 'عالم', isCorrect: true }] }],
+    ['مَعلم'], [sub('a', 'عالم')], 'ع',
+  );
+  expect(result[0].results[0]).toMatchObject({ score: 0, isCorrect: false, needsReview: false });
+});
+
 test('contradictory verdicts for the same answer require review for both players', () => {
   const result = applyScoringAndDuplicates([verdict('a','ألمانيا'),verdict('b','المانيا',false)], ['بلاد'], [sub('a','ألمانيا'),sub('b','المانيا')], 'أ');
   expect(result.map(p => p.totalScore)).toEqual([0,0]);

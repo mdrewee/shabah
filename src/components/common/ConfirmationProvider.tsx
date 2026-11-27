@@ -1,23 +1,29 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
-const ConfirmationContext = createContext<(message: string) => Promise<boolean>>(() => Promise.resolve(false));
+const ConfirmationContext = createContext<(message: string, signal?: AbortSignal) => Promise<boolean>>(() => Promise.resolve(false));
 export const useConfirmation = () => useContext(ConfirmationContext);
 
 export function ConfirmationProvider({ children }: { children: React.ReactNode }) {
   const [message, setMessage] = useState<string | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const resolve = useRef<((accepted: boolean) => void) | null>(null);
-  const confirm = useCallback((text: string) => new Promise<boolean>((done) => {
-    resolve.current?.(false);
-    resolve.current = done;
-    setMessage(text);
-  }), []);
-  const finish = (accepted: boolean) => {
+  const finish = useCallback((accepted: boolean) => {
     dialog.current?.close();
     resolve.current?.(accepted);
     resolve.current = null;
     setMessage(null);
-  };
+  }, []);
+  const confirm = useCallback((text: string, signal?: AbortSignal) => new Promise<boolean>((done) => {
+    if (signal?.aborted) { done(false); return; }
+    resolve.current?.(false);
+    const abort = () => finish(false);
+    resolve.current = (accepted) => {
+      signal?.removeEventListener('abort', abort);
+      done(accepted);
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+    setMessage(text);
+  }), [finish]);
   useEffect(() => {
     if (message) dialog.current?.showModal();
     return () => dialog.current?.close();

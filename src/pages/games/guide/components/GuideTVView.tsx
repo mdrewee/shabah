@@ -40,8 +40,9 @@ export const GuideTVView: React.FC<GuideTVViewProps> = ({
   onEndGame,
 }) => {
   const clues = landmark.clues;
-  const pinnedCount = Object.keys(guesses).length;
-  const totalCount = Math.max(1, connectedContestants.length);
+  const contestants = connectedContestants.filter(p => p.id !== 'host_tv');
+  const pinnedCount = contestants.filter(p => guesses[p.id]).length;
+  const totalCount = contestants.length;
 
   return (
     <div
@@ -192,15 +193,8 @@ export const GuideTVView: React.FC<GuideTVViewProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-1.5 py-1.5">
-              {connectedContestants.map((player) => {
-                const hasPinned = Boolean(
-                  guesses[player.id] ||
-                  Object.values(guesses).find(
-                    (g) =>
-                      g.contestantId === player.id ||
-                      (g.contestantName && player.name && g.contestantName.trim().toLowerCase() === player.name.trim().toLowerCase())
-                  )
-                );
+              {contestants.map((player) => {
+                const hasPinned = Boolean(guesses[player.id]);
 
                 return (
                   <div

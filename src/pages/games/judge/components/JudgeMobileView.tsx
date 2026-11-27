@@ -1,3 +1,4 @@
+import { JUDGE_DEFENSE_SECONDS } from '../judgeParty';
 import {WaitingChase} from '../../../../components/common/WaitingChase';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Predicament } from '../../../../data/judgePredicaments';
@@ -91,10 +92,12 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
 
   const maxChars = 140;
   const charCount = excuseText.length;
+  const [emptyWarning, setEmptyWarning] = useState(false);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value.slice(0, maxChars);
     setExcuseText(val);
+    setEmptyWarning(false);
     excuseRef.current = val;
   };
 
@@ -132,7 +135,12 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmittedRef.current || !excuseText.trim()) return;
+    if (isSubmittedRef.current) return;
+    if (!excuseText.trim()) {
+      setEmptyWarning(true);
+      textareaRef.current?.focus();
+      return;
+    }
     isSubmittedRef.current = true;
     sound.playClick();
     onSubmitExcuse(excuseText.trim(), false);
@@ -345,7 +353,7 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
               اقرأ الورطة وجهّز تصريفك
             </h3>
             <p className="font-sans text-sm font-bold text-amber-300/95 leading-relaxed bg-amber-950/40 border border-amber-600/50 p-4 rounded-2xl shadow-inner">
-              الجواب القصير الذكي يكسب. بعد القراءة عندك ٤٠ ثانية؛ ما فيه نقاط على طول الجواب أو سرعة تسليمه.
+              الجواب القصير الذكي يكسب. بعد القراءة عندك {toArabicNumber(JUDGE_DEFENSE_SECONDS)} ثانية؛ ما فيه نقاط على طول الجواب أو سرعة تسليمه.
             </p>
           </div>
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-sans text-zinc-400">
@@ -391,7 +399,6 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
               value={excuseText}
               onChange={handleTextChange}
               placeholder="اكتب تصريفك… أقنعنا أو ضحّكنا!"
-              maxLength={maxChars}
               rows={4}
               className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-3.5 text-white font-sans font-bold text-base placeholder:text-zinc-600 focus:outline-none focus:border-purple-500 transition-colors resize-none leading-relaxed"
               autoFocus
@@ -401,11 +408,12 @@ export const JudgeMobileView: React.FC<JudgeMobileViewProps> = ({
             />
           </div>
 
+          {charCount >= maxChars && <p role="status" className="text-sm text-amber-300">الحد الأقصى ١٤٠ حرفًا.</p>}
+          {emptyWarning && !excuseText.trim() && <p role="alert" className="text-sm text-amber-300">اكتب تصريفك أولاً.</p>}
           {/* Submit Button */}
           <div className="pt-3">
             <button
               type="submit"
-              disabled={!excuseText.trim()}
               className="w-full py-4 px-4 rounded-2xl bg-white hover:bg-zinc-200 text-black font-sans font-black text-base flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(255,255,255,0.2)] disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] transition-all"
             >
               <Send className="w-5 h-5 fill-current" />

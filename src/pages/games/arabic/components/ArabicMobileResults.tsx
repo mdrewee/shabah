@@ -52,11 +52,11 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
   onReturnToLobby,
   onNextRound,
 }) => {
-  const contestantsList = Object.values(evaluations);
+  const contestantsList = Object.values(evaluations).filter(p => p.contestantId !== 'host_tv');
 
-  // Default carousel to current contestant's index
-  const myIndex = contestantsList.findIndex((c) => c.contestantId === currentContestantId);
-  const [activeIndex, setActiveIndex] = useState<number>(() => (myIndex >= 0 ? myIndex : 0));
+  const [selectedId, setSelectedId] = useState<string>();
+  const activeContestant = contestantsList.find(c => c.contestantId === (selectedId ?? currentContestantId)) ?? contestantsList[0];
+  const activeIndex = contestantsList.findIndex(c => c.contestantId === activeContestant?.contestantId);
 
   // 10-second Objection countdown timer in modal
   const [objectionSecondsLeft, setObjectionSecondsLeft] = useState<number>(10);
@@ -74,17 +74,16 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
     return () => clearInterval(interval);
   }, [activeObjection?.id]);
 
-  const activeContestant = contestantsList[activeIndex] || contestantsList[0];
   const isMe = activeContestant?.contestantId === currentContestantId;
 
   const handlePrev = () => {
     sound.playClick();
-    setActiveIndex((prev) => (prev > 0 ? prev - 1 : contestantsList.length - 1));
+    setSelectedId(contestantsList[(activeIndex - 1 + contestantsList.length) % contestantsList.length]?.contestantId);
   };
 
   const handleNext = () => {
     sound.playClick();
-    setActiveIndex((prev) => (prev < contestantsList.length - 1 ? prev + 1 : 0));
+    setSelectedId(contestantsList[(activeIndex + 1) % contestantsList.length]?.contestantId);
   };
 
   // Has the current user already voted on the active objection?
@@ -164,7 +163,7 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
       )}
 
       <RoundCelebration award="نجم الحروف" names={roundLeaders(contestantsList.map(c=>({name:c.contestantName,score:c.totalRoundPoints,eligible:!c.answers?.some(a=>a.needsReview)})))}/>
-      <ResultNavigator scope="arabic" players={contestantsList.map(c=>({id:c.contestantId,name:c.contestantName}))} currentId={currentContestantId} selectedId={activeContestant?.contestantId} onSelect={id=>setActiveIndex(contestantsList.findIndex(c=>c.contestantId===id))}/>
+      <ResultNavigator scope="arabic" players={contestantsList.map(c=>({id:c.contestantId,name:c.contestantName}))} currentId={currentContestantId} selectedId={activeContestant?.contestantId} onSelect={setSelectedId}/>
       {/* Top Carousel Navigation Tabs */}
       <div className="flex-shrink-0 flex items-center justify-between pb-3 border-b border-zinc-800">
         <button
@@ -184,7 +183,7 @@ export const ArabicMobileResults: React.FC<ArabicMobileResultsProps> = ({
                 key={c.contestantId}
                 onClick={() => {
                   sound.playClick();
-                  setActiveIndex(idx);
+                  setSelectedId(contestantsList[idx]?.contestantId);
                 }}
                 className={`px-2.5 py-1 rounded-xl text-xs font-sans font-bold whitespace-nowrap transition-all ${
                   isSelected

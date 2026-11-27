@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { BrokerItem } from '../types';
 import { ensureBrokerItem } from '../../../../data/brokerItems';
-import { formatPriceArabic, toArabicDigits } from '../brokerUtils';
+import { toArabicDigits } from '../brokerUtils';
 import { sound } from '../../../../lib/audio';
-import { AlertTriangle, Clock, Tag, Sparkles, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, Clock, Tag } from 'lucide-react';
 
 interface BrokerShowcaseStageProps {
   item: BrokerItem;
@@ -82,13 +82,6 @@ export const BrokerShowcaseStage: React.FC<BrokerShowcaseStageProps> = ({
                 {safeItem.name}
               </h1>
 
-              {/* Description */}
-              {safeItem.description && (
-                <p className="text-sm sm:text-base font-bold text-neutral-600 mb-6 max-w-2xl leading-relaxed">
-                  {safeItem.description}
-                </p>
-              )}
-
               {/* Glowing Red Flaw Alert Card */}
               <div className="w-full max-w-2xl mb-4 p-4 sm:p-5 rounded-2xl bg-red-500/10 border-2 border-red-500 text-red-700 shadow-[0_0_25px_rgba(239,68,68,0.25)] flex items-center gap-3.5 text-right">
                 <div className="p-2 rounded-xl bg-red-500/20 text-red-600 shrink-0">
@@ -103,43 +96,6 @@ export const BrokerShowcaseStage: React.FC<BrokerShowcaseStageProps> = ({
                   </p>
                 </div>
               </div>
-
-              {/* Rare Perk Card */}
-              {safeItem.perk && (
-                <div className="w-full max-w-2xl mb-6 p-4 sm:p-5 rounded-2xl bg-emerald-500/10 border-2 border-emerald-500 text-emerald-800 shadow-[0_0_25px_rgba(16,185,129,0.2)] flex items-center gap-3.5 text-right">
-                  <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-600 shrink-0">
-                    <Sparkles className="w-7 h-7 sm:w-8 sm:h-8" />
-                  </div>
-                  <div className="flex-1">
-                    <span className="text-xs sm:text-sm font-black text-emerald-900 block mb-0.5">
-                      الميزة النادرة (نقطة قوة):
-                    </span>
-                    <p className="text-sm sm:text-base font-bold text-emerald-800 leading-relaxed">
-                      {safeItem.perk}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Quick Specs */}
-              {safeItem.specs && safeItem.specs.length > 0 && (
-                <div className="w-full max-w-2xl mb-6 text-right">
-                  <span className="text-xs font-black text-neutral-500 block mb-2">
-                    المواصفات السريعة:
-                  </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {safeItem.specs.map((spec, i) => (
-                      <div
-                        key={i}
-                        className="p-2.5 rounded-xl bg-neutral-100 border border-neutral-200 text-xs font-bold text-neutral-700 flex items-center gap-2"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        <span className="truncate">{spec}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>

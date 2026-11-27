@@ -21,6 +21,7 @@ import { normalizeFootballSearch } from './footballDataService';
 import { CoachLobby } from './CoachLobby';
 import { CoachTopBar } from './components/CoachTopBar';
 import { CoachDraftMobileView } from './components/CoachDraftMobileView';
+import { CoachDraftPodium } from './components/CoachDraftPodium';
 import { CoachBingoMobileView } from './components/CoachBingoMobileView';
 import { sound } from '../../../lib/audio';
 import {
@@ -49,7 +50,7 @@ export const CoachMobileRoot: React.FC = () => {
   });
 
   const [coachState, setCoachState] = useState<CoachRoomState>(() =>
-    createInitialCoachState(roomCode, 'draft')
+    roomBus.getLatestGameState<CoachRoomState>(roomCode, 'COACH_STATE_SYNC') ?? createInitialCoachState(roomCode, 'draft', !isPlayerHost)
   );
 
   // Sync state from server / host
@@ -248,7 +249,7 @@ export const CoachMobileRoot: React.FC = () => {
   const myEvaluation = coachState.verdict?.evaluations.find((e) => e.playerId === playerId);
   const isMeReadyForNext = Boolean(coachState.readyPlayersNextRound?.includes(playerId));
 
-  if (coachState.phase === 'EVALUATING') return <ShabahThinkingScreen title="الشبح يراجع التشكيلات"
+  if (coachState.phase === 'EVALUATING') return <ShabahThinkingScreen title="الشبح يراجع التشكيلات" showWaitingGame={false}
     onRetry={isPlayerHost ? () => window.location.reload() : undefined}
     onReturnToLobby={isPlayerHost ? () => roomBus.broadcastReturnToLobby(roomCode) : undefined} />;
 
@@ -289,6 +290,8 @@ export const CoachMobileRoot: React.FC = () => {
       />
 
       <main className="w-full flex-1 flex flex-col items-center justify-start py-2">
+        {coachState.mode === 'draft' && coachState.phase === 'VERDICT' && coachState.verdict &&
+          <CoachDraftPodium verdict={coachState.verdict} playerId={playerId} />}
         {coachState.mode === 'draft' ? (
           <CoachDraftMobileView
             roomCode={roomCode}

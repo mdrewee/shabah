@@ -364,7 +364,7 @@ export const BROKER_ITEMS: BrokerItem[] = RAW_ITEMS_POOL.map((item) => ({
   flaw: item.flaw,
   perk: item.perk,
   openingGreeting: item.openingGreeting,
-  openingBaseline: Math.max(10, Math.round(item.estimatedValue * 0.1)),
+  openingBaseline: Math.max(10, Math.round(item.estimatedValue * 0.4)),
   specs: item.specs && item.specs.length > 0 ? item.specs : [item.perk, item.description],
   incrementTiers: computeIncrementTiers(item.estimatedValue),
 }));

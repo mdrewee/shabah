@@ -1,6 +1,6 @@
 begin;
 
-create table shabah_private.room_game_snapshots (
+create table if not exists shabah_private.room_game_snapshots (
   room_code text primary key references public.rooms(room_code) on delete cascade,
   event text not null,
   payload jsonb not null,
@@ -9,7 +9,7 @@ create table shabah_private.room_game_snapshots (
 alter table shabah_private.room_game_snapshots enable row level security;
 revoke all on shabah_private.room_game_snapshots from public, anon, authenticated;
 
-create function shabah_private.keep_room_snapshot()
+create or replace function shabah_private.keep_room_snapshot()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin
   if new.event in ('RETURN_TO_LOBBY', 'ROOM_TERMINATED', 'SHABAH_GAME_CHANGED') then
@@ -36,11 +36,11 @@ begin
 end;
 $$;
 
-create trigger shabah_keep_room_snapshot
+create or replace trigger shabah_keep_room_snapshot
 after insert on shabah_private.room_commands
 for each row execute function shabah_private.keep_room_snapshot();
 
-create function public.read_shabah_room_snapshot(code text)
+create or replace function public.read_shabah_room_snapshot(code text)
 returns jsonb language sql stable security definer set search_path = '' as $$
   select jsonb_build_object('event', s.event, 'payload', s.payload)
   from shabah_private.room_game_snapshots s

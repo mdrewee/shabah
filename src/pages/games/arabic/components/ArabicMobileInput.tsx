@@ -1,16 +1,17 @@
-import {WaitingChase} from '../../../../components/common/WaitingChase';
 import { useConfirmation } from '../../../../components/common/ConfirmationProvider';
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { toArabicNumber, formatSecondsToTime } from '../../../../utils/numberFormat';
 import { sound } from '../../../../lib/audio';
 import { roomBus } from '../../../../lib/roomBus';
 import { Clock, CheckCircle2, Zap } from 'lucide-react';
 
 interface ArabicMobileInputProps {
+  roomCode: string;
   contestantId: string;
   contestantName: string;
   currentLetter: string;
   categories: string[]; // exactly 5 categories
+  initialAnswers?: Record<number, string>;
   timerSeconds: number;
   hasSubmitted: boolean;
   onSubmit: (answers: Record<number, string>, durationMs: number) => void;
@@ -18,24 +19,24 @@ interface ArabicMobileInputProps {
 }
 
 export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
+  roomCode,
   contestantId,
   contestantName,
   currentLetter,
   categories,
+  initialAnswers,
   timerSeconds,
   hasSubmitted,
   onSubmit,
   roundStartTime,
 }) => {
-  const [answers, setAnswers] = useState<Record<number, string>>({
-    0: '',
-    1: '',
-    2: '',
-    3: '',
-    4: '',
-  });
+  const [answers, setAnswers] = useState<Record<number, string>>(() => ({ ...initialAnswers }));
 
   const confirm = useConfirmation();
+  const inputId = useId();
+  const confirmation = useRef<AbortController>();
+  const [emptyWarning, setEmptyWarning] = useState(false);
+  useEffect(() => () => confirmation.current?.abort(), []);
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const submitButtonRef = useRef<HTMLButtonElement | null>(null);
   const answersRef = useRef<Record<number, string>>(answers);
@@ -49,6 +50,7 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
   const forceSubmitAnswers = useCallback(() => {
     if (isSubmittedRef.current) return;
     isSubmittedRef.current = true;
+    confirmation.current?.abort();
     sound.playClick();
     const duration = roundStartTime > 0 ? Date.now() - roundStartTime : 60000;
     onSubmit({ ...answersRef.current }, duration);
@@ -71,15 +73,25 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
     }
   }, [timerSeconds, forceSubmitAnswers]);
 
+  const forceSubmitRef = useRef(forceSubmitAnswers);
+  forceSubmitRef.current = forceSubmitAnswers;
+  useEffect(() => {
+    if (!roundStartTime) return;
+    const timeout = window.setTimeout(() => forceSubmitRef.current(), Math.max(0, roundStartTime + 60_000 - Date.now()));
+    return () => window.clearTimeout(timeout);
+  }, [roundStartTime]);
+
   // Listen for definitive ARABIC_TIME_UP signal from TV host
   useEffect(() => {
     const unsub = roomBus.on('ARABIC_TIME_UP', () => {
       forceSubmitAnswers();
-    });
+    }, roomCode);
     return () => unsub?.();
-  }, [forceSubmitAnswers]);
+  }, [forceSubmitAnswers, roomCode]);
 
   const handleChange = (index: number, val: string) => {
+    val = val.slice(0, 140);
+    setEmptyWarning(false);
     setAnswers((prev) => ({
       ...prev,
       [index]: val,
@@ -90,7 +102,19 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
   const handleSubmitEarly = async () => {
     if (isSubmittedRef.current) return;
     const emptyCount = categories.filter((_, index) => !answersRef.current[index]?.trim()).length;
-    if (emptyCount > 0 && !await confirm(`باقي ${toArabicNumber(emptyCount)} فئات فارغة. تسلّم إجاباتك الآن؟`)) return;
+    if (emptyCount === categories.length) {
+      setEmptyWarning(true);
+      inputRefs.current[0]?.focus();
+      return;
+    }
+    if (emptyCount > 0) {
+      if (confirmation.current) return;
+      const pending = new AbortController();
+      confirmation.current = pending;
+      const accepted = await confirm(`باقي ${toArabicNumber(emptyCount)} فئات فارغة. تسلّم إجاباتك الآن؟`, pending.signal);
+      confirmation.current = undefined;
+      if (!accepted) return;
+    }
     forceSubmitAnswers();
   };
 
@@ -125,7 +149,6 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
           وقتك مسجل للمنافسة على بونص السرعة (+٥ نقاط). بانتظار باقي المتسابقين...
         </p>
 
-        <WaitingChase/>
         {/* Live Timer Indicator */}
         <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-300 font-sans font-bold text-lg">
           <Clock className="w-5 h-5 text-amber-400 animate-pulse" />
@@ -200,7 +223,7 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
               className="bg-zinc-950 border border-zinc-800 rounded-2xl p-3 focus-within:border-emerald-500 transition-colors"
             >
               <div className="flex items-center justify-between mb-1.5">
-                <label className="font-sans font-bold text-sm text-zinc-300 flex items-center gap-1.5">
+                <label htmlFor={`${inputId}-${index}`} className="font-sans font-bold text-sm text-zinc-300 flex items-center gap-1.5">
                   <span className="text-[11px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono">
                     {toArabicNumber(index + 1)}
                   </span>
@@ -214,9 +237,9 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
               </div>
 
               <input
-                ref={(el) => (inputRefs.current[index] = el)}
+                id={`${inputId}-${index}`}
+                ref={(el) => { inputRefs.current[index] = el; }}
                 type="text"
-                maxLength={160}
                 value={val}
                 onChange={(e) => handleChange(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(e, index)}
@@ -227,6 +250,7 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
                 autoCorrect="off"
                 spellCheck="false"
               />
+              {val.length >= 140 && <p role="status" className="mt-1 text-xs text-amber-300">الحد الأقصى ١٤٠ حرفًا.</p>}
             </div>
           );
         })}
@@ -239,6 +263,7 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
       </details>
       {/* Action Footer: [خلصت!] button */}
       <div className="pt-2">
+        {emptyWarning && <p role="alert" className="mb-2 text-center text-sm text-amber-300">اكتب إجابة واحدة على الأقل.</p>}
         <button
           ref={submitButtonRef}
           onClick={handleSubmitEarly}

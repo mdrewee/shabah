@@ -1,52 +1,91 @@
-import React, { useEffect, useState } from 'react';
-import { FlyingContestantResult } from './types';
+import React, { useMemo } from 'react';
 import { GhostAvatar } from './GhostAvatar';
+import { FLYING_RARITY } from './RarityBadge';
+import { flyingAltitudeRatio, FLIGHT_DURATION_MS, FLIGHT_LAUNCH_DELAY_MS, METERS_PER_FLYING_ROUND } from './flyingRound';
+import type { FlyingContestantResult, FlyingRoomState } from './types';
+import './flyingSkyWorld.css';
 
-export const MAX_WORLD_METERS = 5000;
-export interface FlyingSkyWorldProps {
-  contestants: Array<{ id: string; name: string }>;
+interface Flyer { id: string; name: string }
+interface FlyingSkyWorldProps {
+  contestants: Flyer[];
   results: Record<string, FlyingContestantResult>;
   cumulativeMeters: Record<string, number>;
   activeSpotlightIndex: number;
-  cameraMode: 'spotlight' | 'global_overview';
+  cameraMode: FlyingRoomState['cameraMode'];
+  totalRounds: number;
+  cameraStartedAt?: number;
+  currentPlayerId?: string;
 }
 
-export const FlyingSkyWorld: React.FC<FlyingSkyWorldProps> = ({ contestants, results, cumulativeMeters, activeSpotlightIndex, cameraMode }) => {
-  const [launched, setLaunched] = useState(false);
-  useEffect(() => {
-    setLaunched(false);
-    const timer = window.setTimeout(() => setLaunched(true), 350);
-    return () => window.clearTimeout(timer);
-  }, [activeSpotlightIndex, cameraMode]);
-  const spotlight = cameraMode === 'spotlight';
-  const active = contestants[Math.min(Math.max(0, activeSpotlightIndex), contestants.length - 1)];
-  const visible = spotlight && active ? [active] : contestants;
-  const highest = Math.max(300, ...contestants.map((p) => results[p.id]?.newTotalMeters ?? cumulativeMeters[p.id] ?? 0));
-  const ceiling = Math.ceil(highest / 250) * 250;
-  const flightBottom = (ratio: number) => `calc(140px + max(0px, 100% - 560px) * ${ratio})`;
-  return <section aria-label="ساحة طيران الأشباح" className="relative h-full w-full overflow-hidden bg-[#071126]">
-    <div aria-hidden="true" className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: 'url(/images/games/flying-sky.svg)' }} />
-    <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-b from-[#071126]/60 via-transparent to-[#071126]/70" />
-    <div className="absolute inset-x-3 top-16 z-10 flex items-center justify-between gap-2 text-xs font-bold text-white">
-      <span className="rounded-full border border-white/20 bg-black/65 px-3 py-2">{spotlight ? 'لحظة الإقلاع' : 'سباق الارتفاعات'}</span>
-      <span className="rounded-full border border-white/20 bg-black/65 px-3 py-2">{contestants.length} أشباح</span>
+function FlyerFigure({player, result, index, meters, focused, isMe}: {
+  player: Flyer; result?: FlyingContestantResult; index: number; meters: number; focused: boolean; isMe: boolean;
+}) {
+  const rarity = result && !result.needsReview ? FLYING_RARITY[result.tier] : undefined;
+  const color = rarity?.color ?? '#94a3b8';
+  const rejected = result && result.answer.trim() && !result.isValid && !result.needsReview;
+  return <figure className="flying-figure" dir="rtl" aria-label={player.name}
+    style={{'--rarity-color': color} as React.CSSProperties}>
+    {result && <div className={`flying-answer ${focused && (rarity?.power ?? 0) >= 3 ? 'flying-answer-flash' : ''}`}>
+      <b title={result.answer}>{result.answer || 'بدون إجابة'}</b>
+      {rejected && <p className="flying-answer-reason" title={result.comment}>
+        {result.comment?.trim() || 'الإجابة لا تطابق شرط السؤال'}
+      </p>}
+      <span>{result.needsReview ? 'تحتاج مراجعة' : rarity?.label}</span>
+    </div>}
+    <div className="flying-sprite">
+      <GhostAvatar name={player.name} totalMeters={meters} tier={result?.tier} colorIndex={index} spriteOnly />
+      {focused && (result?.roundMeters ?? 0) > 0 && <span aria-hidden="true" className="flying-trail" />}
     </div>
-    <div className="absolute inset-0 overflow-x-auto overscroll-x-contain" dir="ltr" tabIndex={0} aria-label="اسحب لمقارنة ارتفاعات اللاعبين">
-      <div className="relative h-full min-w-full" style={{ width: spotlight ? '100%' : Math.max(320, visible.length * 150) }}>
-        {[0, 1, 2, 3, 4].map((step) => <div key={step} aria-hidden="true" className="absolute inset-x-0 border-t border-dashed border-white/20" style={{ bottom: flightBottom(step / 4) }}>
-          <span className="absolute left-2 -top-3 rounded-md bg-[#071126]/85 px-2 py-1 font-mono text-[10px] text-white/80">{Math.round(ceiling * step / 4)} م</span>
-        </div>)}
-        {visible.map((p, index) => {
-          const result = results[p.id];
-          const meters = result ? (spotlight && !launched ? result.previousTotalMeters : result.newTotalMeters) : cumulativeMeters[p.id] || 0;
-          return <div key={p.id} className="absolute -translate-x-1/2 motion-safe:transition-[bottom] motion-safe:duration-[1400ms] motion-safe:ease-out" style={{ left: spotlight ? '50%' : ((index + 0.5) / visible.length * 100) + '%', bottom: flightBottom(Math.min(1, meters / ceiling)) }}>
-            <GhostAvatar name={p.name} colorIndex={contestants.findIndex((entry) => entry.id === p.id)} totalMeters={meters}
-              roundMeters={result?.roundMeters} answer={result?.answer} comment={result?.comment} tier={result?.tier}
-              showAnswerCard={Boolean(result)} isSpotlight={spotlight} size={spotlight ? 'md' : 'sm'} />
-          </div>;
-        })}
+    <figcaption>
+      <b title={player.name}>{player.name}{isMe ? ' · أنت' : ''}</b>
+      <span>{focused && result ? `+${result.roundMeters} م · ` : ''}{meters} م</span>
+    </figcaption>
+  </figure>;
+}
+
+export function FlyingSkyWorld({contestants, results, cumulativeMeters, activeSpotlightIndex, cameraMode, totalRounds, cameraStartedAt, currentPlayerId}: FlyingSkyWorldProps) {
+  const player = contestants[activeSpotlightIndex];
+  const focus = cameraMode === 'spotlight' && player;
+  const result = focus ? results[player.id] : undefined;
+  const maxMeters = Math.max(0, ...contestants.map(({id}) => results[id]?.newTotalMeters ?? cumulativeMeters[id] ?? 0));
+  const targetAltitude = result?.newTotalMeters ?? maxMeters;
+  const flightGain = Math.max(0, Math.min(1, (result?.roundMeters ?? 0) / METERS_PER_FLYING_ROUND));
+  const startingSpace = flyingAltitudeRatio(result?.previousTotalMeters ?? targetAltitude, totalRounds);
+  const endingSpace = flyingAltitudeRatio(targetAltitude, totalRounds);
+  const elapsed = useMemo(() => cameraStartedAt ? Date.now() - cameraStartedAt : 0,
+    [cameraStartedAt, activeSpotlightIndex, cameraMode]);
+  const launchDelay = Math.max(-FLIGHT_DURATION_MS, FLIGHT_LAUNCH_DELAY_MS - elapsed);
+  const stageStyle = {
+    '--space-from': Math.min(1, startingSpace * 1.9),
+    '--space-to': Math.min(1, endingSpace * 1.9),
+    '--camera-delay': `${Math.max(-720, -elapsed)}ms`,
+    '--launch-delay': `${launchDelay}ms`,
+    '--flight-duration': `${FLIGHT_DURATION_MS}ms`,
+    // Spotlight magnifies the same 1,000 m window each round. It never follows the leader.
+    '--climb': `${flightGain * 0.85}fr`,
+    '--headroom': `${1 - flightGain * 0.85}fr`,
+    '--lanes': Math.max(1, contestants.length),
+    '--mobile-lanes': Math.min(5, Math.max(1, contestants.length)),
+    '--mobile-rows': Math.max(1, Math.ceil(contestants.length / 5)),
+  } as React.CSSProperties;
+
+  return <section aria-label="ساحة طيران الأشباح" className={`flying-world ${focus ? 'flying-world-focus' : 'flying-world-wide'}`} style={stageStyle}>
+    <div aria-hidden="true" className="flying-clouds" />
+    <div aria-hidden="true" key={focus ? 'sky:' + player.id + ':' + cameraStartedAt : 'sky:overview'} className="flying-space" />
+    {focus ? <div key={'focus:' + player.id + ':' + cameraStartedAt} className="flying-focus">
+      <div className="flying-launch">
+        <FlyerFigure player={player} index={activeSpotlightIndex} result={result}
+          meters={result?.newTotalMeters ?? cumulativeMeters[player.id] ?? 0} focused isMe={player.id === currentPlayerId} />
       </div>
-    </div>
-    {!spotlight && visible.length > 2 && <p className="absolute inset-x-4 bottom-36 pointer-events-none text-center text-xs font-bold text-white/80">↔ اسحب لمشاهدة بقية الأشباح</p>}
+    </div> : <div className="flying-overview" aria-label="كل الأشباح" dir="ltr">
+      {contestants.map((item, index) => {
+        const verdict = results[item.id];
+        const meters = verdict?.newTotalMeters ?? cumulativeMeters[item.id] ?? 0;
+        const altitude = flyingAltitudeRatio(meters, totalRounds);
+        return <div key={item.id} className="flying-lane" style={{'--altitude':`${altitude}fr`, '--headroom':`${1 - altitude}fr`} as React.CSSProperties}>
+          <FlyerFigure player={item} index={index} result={verdict} meters={meters} focused={false} isMe={item.id === currentPlayerId} />
+        </div>;
+      })}
+    </div>}
   </section>;
-};
+}

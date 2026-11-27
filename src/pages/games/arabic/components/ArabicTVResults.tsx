@@ -41,7 +41,7 @@ export const ArabicTVResults: React.FC<ArabicTVResultsProps> = ({
 
   // Harmonize new PlayerArabicEvaluation[] with legacy evaluations
   const playerEvals: PlayerArabicEvaluation[] =
-    state.playerEvaluations && state.playerEvaluations.length > 0
+    (state.playerEvaluations && state.playerEvaluations.length > 0
       ? state.playerEvaluations
       : Object.values(state.evaluations || {}).map((ev: ContestantEvaluation) => ({
           playerId: ev.contestantId,
@@ -54,7 +54,7 @@ export const ArabicTVResults: React.FC<ArabicTVResultsProps> = ({
             score: ans.points,
             reason: ans.comment,
           })),
-        }));
+        }))).filter(ev => ev.playerId !== 'host_tv');
 
   const count = playerEvals.length;
 

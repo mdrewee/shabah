@@ -1,6 +1,6 @@
 import { expect,jest,test,beforeEach } from '@jest/globals';
 import { generateWithGemini } from '../src/config/gemini';
-import { resolveDraftPlayer,searchDraftPlayers,canonicalDraftName } from '../src/pages/games/coach/draftPlayers';
+import { resolveDraftPlayer,searchDraftPlayers,canonicalDraftName, fitsDraftSlot, isDraftPlayerTaken } from '../src/pages/games/coach/draftPlayers';
 import { evaluateSquad,evaluateAllSquadsWithAI,rankDraftEvaluations } from '../src/pages/games/coach/coachEvaluationEngine';
 import { fillMissedDraftPicks } from '../src/pages/games/coach/draftRound';
 import { canClaimDraftSlot } from '../src/pages/games/coach/coachRules';
@@ -17,6 +17,11 @@ test('draft search uses real positions and deduplicates names; aliases resolve t
   expect(results.some(p=>p.name===goalkeeper.name && p.position==='GK')).toBe(true);
   expect(new Set(results.map(p=>p.name)).size).toBe(results.length);
   expect(canonicalDraftName('ميسي')).toBe(canonicalDraftName('Lionel Messi'));
+  expect(isDraftPlayerTaken('مِيسي', ['Messi'])).toBe(true);
+  expect(isDraftPlayerTaken('  مُدَرِّبَه ', ['مدربة'])).toBe(true);
+  expect(fitsDraftSlot('MID', 'GK')).toBe(false);
+  expect(fitsDraftSlot('DEF', 'DEF_2')).toBe(true);
+  expect(fitsDraftSlot(undefined, 'FWD')).toBe(true);
   expect(resolveDraftPlayer('ميسي من اختراعي')).toBeNull();
 });
 
@@ -78,7 +83,8 @@ test('equal percentages share ranks and rewards; zero-score squads do not get a 
   const verdict=rankDraftEvaluations([{...base,totalPercentage:50},{...base,playerId:'b',playerName:'b',totalPercentage:50}]);
   expect(verdict.isTie).toBe(true);
   expect(verdict.evaluations.map(p=>[p.rank,p.matchPointsAwarded])).toEqual([[1,5],[1,5]]);
-  const empty=rankDraftEvaluations([base]);
+  const empty=rankDraftEvaluations([base, {...base, playerId:'b'}]);
+  expect(empty.evaluations.map(p=>p.rank)).toEqual([1,2]);
   expect(empty.winnerId).toBe('');expect(empty.evaluations[0].matchPointsAwarded).toBe(0);
 });
 

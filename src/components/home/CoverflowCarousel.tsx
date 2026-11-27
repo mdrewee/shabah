@@ -179,11 +179,8 @@ export const CoverflowCarousel: React.FC<CoverflowCarouselProps> = ({
             <div
               key={game.id}
               onClick={() => {
-                if (isCenter) {
-                  onPlayGame(game);
-                } else {
-                  selectCardIndex(idx);
-                }
+                if (isCenter) onPlayGame(game);
+                else selectCardIndex(idx);
               }}
               style={{
                 transform: transformStyle,
@@ -198,7 +195,7 @@ export const CoverflowCarousel: React.FC<CoverflowCarouselProps> = ({
                 glowColor={game.glowColor}
                 customSize={true}
                 isActive={isCenter}
-                className="w-[285px] sm:w-[325px] h-[440px] sm:h-[470px] select-none flex flex-col justify-between"
+                className="w-[min(285px,calc(100vw-104px))] sm:w-[325px] h-[440px] sm:h-[470px] select-none flex flex-col justify-between"
                 style={{ touchAction: 'pan-y' }}
               >
                 {/* أعلى الكرت: الشكل البيضاوي البارز (شكل كبسولة أنيق يحتوي على badgeText) */}
@@ -234,15 +231,12 @@ export const CoverflowCarousel: React.FC<CoverflowCarouselProps> = ({
                 </div>
 
                 {/* شريط الأزرار السفلي (أفقي) */}
-                <div className="flex items-center gap-2.5 w-full mt-auto">
+                {isCenter ? <div className="flex items-center gap-2.5 w-full mt-auto">
                   {/* زر [العب]: يأخذ المساحة الأكبر، هوفر تدرج شبح، كليك يفتح المودال */}
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (!isCenter) {
-                        selectCardIndex(idx);
-                      }
                       onPlayGame(game);
                     }}
                     className="flex-1 min-h-12 rounded-xl bg-gradient-to-r from-[#B56BFF] via-[#38BDF8] to-[#BEF264] text-[#0A0A0A] font-black text-lg shadow-[0_0_14px_rgba(181,107,255,0.25)] active:scale-[0.98] cursor-pointer"
@@ -262,7 +256,7 @@ export const CoverflowCarousel: React.FC<CoverflowCarouselProps> = ({
                   >
                     شرح
                   </button>
-                </div>
+                </div> : <div className="mt-auto h-12" aria-hidden="true" />}
               </GlowCard>
             </div>
           );
@@ -270,7 +264,7 @@ export const CoverflowCarousel: React.FC<CoverflowCarouselProps> = ({
       </div>
 
       {/* مؤشرات التنقل (Dots) */}
-      <div className="flex items-center justify-center gap-2 mt-2">
+      <div className="flex items-center justify-center gap-1 mt-2">
         {games.map((game, idx) => {
           const isActive = idx === activeIndex;
           return (
@@ -278,11 +272,12 @@ export const CoverflowCarousel: React.FC<CoverflowCarouselProps> = ({
               key={game.id}
               type="button"
               aria-label={game.title}
+              aria-current={isActive ? 'true' : undefined}
               onClick={() => selectCardIndex(idx)}
-              className={`h-4 rounded-full transition-all duration-200 cursor-pointer ${
-                isActive ? 'w-8 bg-white' : 'w-2.5 bg-neutral-700 hover:bg-neutral-500'
-              }`}
-            />
+              className="grid h-12 w-10 place-items-center rounded-lg cursor-pointer"
+            >
+              <span aria-hidden="true" className={`h-3 rounded-full transition-all duration-200 ${isActive ? 'w-8 bg-white' : 'w-3 bg-neutral-700'}`} />
+            </button>
           );
         })}
       </div>

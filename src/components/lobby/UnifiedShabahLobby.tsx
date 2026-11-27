@@ -67,8 +67,6 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
   React.useLayoutEffect(() => { window.scrollTo(0, 0); }, [cleanCode]);
   const isHostRole = isRoomHost(cleanCode) && (role === 'host' || isPlayerHost);
   const startingGame = useRef(false);
-  const [changingGame, setChangingGame] = useState(false);
-  const [changeError, setChangeError] = useState('');
 
   // Find game info from approved 5 games
   const titleHint = gameTitle || gameName;
@@ -78,18 +76,6 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
 
   const resolvedTitle = matchedGame.title;
   const resolvedBadge = matchedGame.badgeText;
-  async function changeGame(gameId: string) {
-    if (changingGame || startingGame.current || gameId === matchedGame.id) return;
-    setChangingGame(true);
-    setChangeError('');
-    try {
-      if (!await roomBus.changeLobbyGame(cleanCode, gameId)) {
-        setChangeError('تعذر تغيير اللعبة. تأكد أن الجميع في اللوبي ثم حاول مرة أخرى.');
-      }
-    } finally {
-      setChangingGame(false);
-    }
-  }
   const customRules = rulesSummary || gameRulesSummary;
   const resolvedRules = customRules ? (Array.isArray(customRules) ? customRules : [customRules]) : [
     matchedGame.shortExplanation,
@@ -297,7 +283,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
   const [autoStartCountdown, setAutoStartCountdown] = useState<number | null>(null);
 
   useEffect(() => {
-    if (gameStartedNotification || changingGame) {
+    if (gameStartedNotification) {
       setAutoStartCountdown(null);
       return;
     }
@@ -319,7 +305,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
     } else {
       setAutoStartCountdown(null);
     }
-  }, [readyCount, totalCount, canHostStart, gameStartedNotification, changingGame]);
+  }, [readyCount, totalCount, canHostStart, gameStartedNotification]);
 
   // Requirement 6: Contextual Top Button (إنهاء الغرفة vs خروج)
   const handleTopExitClick = async () => {
@@ -366,7 +352,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
 
   // Host Start Game handler
   const handleHostStartGame = async () => {
-    if (!canHostStart || changingGame || startingGame.current) return;
+    if (!canHostStart || startingGame.current) return;
     startingGame.current = true;
     sound.playClick();
     const startPayload = {
@@ -396,6 +382,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
   return (
     <div
       dir="rtl"
+      data-room-lobby
       className="min-h-[100dvh] w-full bg-[#08080c] text-white flex flex-col gap-5 px-4 py-5 sm:py-6 select-none overflow-x-hidden font-sans"
     >
       {/* 1. Top Bar: Game Badge | Mascot & Speech Bubble | Contextual Button [إنهاء الغرفة] or [خروج] */}
@@ -420,18 +407,6 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
           </div>
         </div>
 
-        {isHostRole && <div className="flex w-full max-w-[720px] flex-wrap items-center justify-center gap-2">
-          <label className="flex items-center gap-2 text-sm">
-            تغيير اللعبة
-            <select className="min-h-12 rounded-xl border border-white/25 bg-zinc-950 px-3 text-white"
-              value={matchedGame.id} disabled={changingGame || gameStartedNotification}
-              onChange={event => void changeGame(event.target.value)}>
-              {SHABAH_GAMES.map(game => <option key={game.id} value={game.id}>{game.title}</option>)}
-            </select>
-          </label>
-          {changingGame && <span role="status">جاري تغيير اللعبة…</span>}
-          {changeError && <p role="alert" className="w-full text-center text-amber-200">{changeError}</p>}
-        </div>}
         {/* Mascot at top center (w-20 h-20 sm:w-24 sm:h-24) */}
         <div className="w-20 h-20 sm:w-24 sm:h-24 flex items-center justify-center">
           <ShabahGhost mood={mood} gazeOffset={gazeOffset} className="w-full h-full" />
@@ -573,7 +548,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                   </p>
                 </div>
               ) : (
-                <div className="flex flex-wrap gap-2.5">
+                <div className="flex flex-wrap items-start gap-2">
                   {sanitizedPlayers.map((player, index) => {
                     const playerReady = player.isOnline !== false && Boolean(player.isReady);
                     const isMe = currentPlayerId && player.id === currentPlayerId;
@@ -581,16 +556,16 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                     return (
                       <div
                         key={player.id}
-                        className={`inline-flex items-center gap-2.5 px-3.5 py-2 rounded-full bg-[#FFFFFF] border-[2.5px] border-[#0A0A0A] text-[#0A0A0A] ${
+                        className={`inline-flex w-fit max-w-full min-w-0 items-center gap-1.5 px-2 py-1.5 rounded-full bg-[#FFFFFF] border-[2.5px] border-[#0A0A0A] text-[#0A0A0A] ${
                           isMe ? 'ring-2 ring-[#A855F7]' : ''
                         }`}
                       >
-                        <span aria-hidden="true" className="grid size-8 place-items-center rounded-full ghost-reaction-bubble" style={{backgroundColor: ['#c4b5fd','#7dd3fc','#86efac','#fde68a'][index % 4]}}>
-                          <ShabahGhost mood={playerReady ? 'happy' : 'idle'} trackPointer={false} className="size-7" />
+                        <span aria-hidden="true" className="grid size-6 shrink-0 place-items-center rounded-full ghost-reaction-bubble" style={{backgroundColor: ['#c4b5fd','#7dd3fc','#86efac','#fde68a'][index % 4]}}>
+                          <ShabahGhost mood={playerReady ? 'happy' : 'idle'} trackPointer={false} className="size-5" />
                         </span>
                         {/* Status Dot: Waiting (dark zinc) vs Ready (glowing emerald) */}
                         <span
-                          className={`w-3 h-3 rounded-full shrink-0 transition-all ${
+                          className={`size-2 rounded-full shrink-0 transition-all ${
                             playerReady
                               ? 'bg-emerald-500 shadow-[0_0_8px_#10B981]'
                               : 'bg-zinc-600 border border-zinc-500'
@@ -598,11 +573,11 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                         />
 
                         {/* Player Name */}
-                        <span className="text-sm font-black text-[#0A0A0A] truncate max-w-[140px]">
+                        <span className="text-sm font-black text-[#0A0A0A] truncate max-w-[8ch] sm:max-w-[16ch]">
                           {player.name}
                         </span>
 
-                        <span className="text-[10px] font-bold text-neutral-500">
+                        <span className="sr-only">
                           {player.isOnline === false ? 'انقطع اتصاله' : playerReady ? 'جاهز' : 'متصل'}
                         </span>
 
@@ -655,7 +630,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                     <button
                       type="button"
                       onClick={handleHostStartGame}
-                      disabled={!canHostStart || gameStartedNotification || changingGame}
+                      disabled={!canHostStart || gameStartedNotification}
                       className="w-full min-h-12 py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] shabah-btn-black cursor-pointer"
                     >
                       بدء اللعبة الآن
@@ -666,7 +641,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
                 <button
                   type="button"
                   onClick={handleHostStartGame}
-                  disabled={!canHostStart || gameStartedNotification || changingGame}
+                  disabled={!canHostStart || gameStartedNotification}
                   className="w-full min-h-12 py-3.5 rounded-xl text-base sm:text-lg font-black transition-transform duration-150 active:scale-[0.98] shabah-btn-black cursor-pointer"
                 >
                   بدء اللعبة الآن

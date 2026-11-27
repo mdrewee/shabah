@@ -4,10 +4,15 @@ import { getRandomGuideLandmarks, GUIDE_LANDMARKS_POOL } from '../../../data/gui
 const STORAGE_KEY_PREFIX = 'SHABAH_GUIDE_STATE_';
 
 export function acceptsGuidePin(state: GuideRoomState, payload: any, contestantIds: string[]): boolean {
-  return state.phase === 'GUESSING' && contestantIds.includes(payload?.contestantId) &&
+  return state.phase === 'GUESSING' && payload?.contestantId !== 'host_tv' && contestantIds.includes(payload?.contestantId) &&
     !state.guesses[payload.contestantId] && payload.roundNumber === state.roundNumber &&
     payload.landmarkId === state.currentLandmark.id && Number.isFinite(payload.lat) &&
     Number.isFinite(payload.lng) && Math.abs(payload.lat) <= 90 && Math.abs(payload.lng) <= 180;
+}
+
+export function allGuidePinsLocked(state: GuideRoomState, contestantIds: string[]): boolean {
+  const ids = contestantIds.filter(id => id !== 'host_tv');
+  return state.phase === 'GUESSING' && ids.length > 0 && ids.every(id => Boolean(state.guesses[id]));
 }
 
 export function createInitialGuideState(roomCode: string): GuideRoomState {
@@ -69,7 +74,7 @@ export function getRankedGuideContestants(
   biggestMisses: Record<string, { landmarkName: string; distanceKm: number }> = {}
 ): RankedGuideContestant[] {
   // Ensure all known contestants have an entry
-  const list = contestants.map((c) => ({
+  const list = contestants.filter(c => c.id !== 'host_tv').map((c) => ({
     playerId: c.id,
     playerName: c.name,
     totalScore: cumulativeScores[c.id] || 0,

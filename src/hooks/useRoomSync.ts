@@ -137,8 +137,8 @@ export function useRoomSync(
       if (!isHostRef.current && curPlayerId && kickedId === curPlayerId) {
         if (!roomBus.getSupabaseChannel(cleanCode)) return;
         roomBus.leaveRoom(cleanCode, curPlayerId);
-        sessionStorage.removeItem(`taghesi_player_${cleanCode}`);
-        localStorage.removeItem(`taghesi_player_${cleanCode}`);
+        sessionStorage.removeItem(`shabah_room_player_${cleanCode}`);
+        localStorage.removeItem(`shabah_room_player_${cleanCode}`);
         alert('تم استبعادك من الغرفة بواسطة المضيف.');
         window.location.href = '/';
       } else if (kickedId) {

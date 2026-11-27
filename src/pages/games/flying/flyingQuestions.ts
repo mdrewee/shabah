@@ -7,11 +7,11 @@ export interface FlyingQuestion {
   category: string;
 }
 
-export const FLYING_QUESTIONS: FlyingQuestion[] = [
+const questionBank: FlyingQuestion[] = [
   // 1. أطعمة ومشروبات ومطابخ (1 - 20)
-  { id: 'fq_001', title: 'اذكر نكهة آيسكريم حقيقية ومعروفة', category: 'أطعمة' },
+  { id: 'fq_001', title: 'اذكر شيئًا له نكهات مختلفة', category: 'أطعمة' },
   { id: 'fq_002', title: 'اذكر فاكهة تؤكل طازجة', category: 'أطعمة' },
-  { id: 'fq_003', title: 'اذكر نوعاً من أنواع الخضار الورقية', category: 'أطعمة' },
+  { id: 'fq_003', title: 'اذكر شيئًا يمكن زراعته في حديقة البيت', category: 'أطعمة' },
   { id: 'fq_004', title: 'اذكر نوع بهار أو عشبة تُوضع في الطبخ', category: 'أطعمة' },
   { id: 'fq_005', title: 'اذكر أكلة شعبية سعودية أو خليجية', category: 'أطعمة' },
   { id: 'fq_006', title: 'اذكر نوع مشروب ساخن يُقدم في المقاهي أو المنازل', category: 'مشروبات' },
@@ -19,19 +19,19 @@ export const FLYING_QUESTIONS: FlyingQuestion[] = [
   { id: 'fq_008', title: 'اذكر نوع مكسرات أو بذور تؤكل', category: 'أطعمة' },
   { id: 'fq_009', title: 'اذكر نوع صوص أو تغميسة يُوضع مع الوجبات', category: 'أطعمة' },
   { id: 'fq_010', title: 'اذكر نوع خبز أو معجنات معروفة', category: 'مخبوزات' },
-  { id: 'fq_011', title: 'اذكر نوع جبنة مشهورة عالمياً', category: 'أطعمة' },
+  { id: 'fq_011', title: 'اذكر طعامًا يتغير مذاقه بالطبخ', category: 'أطعمة' },
   { id: 'fq_012', title: 'اذكر نوع سمك أو كائن بحري يُؤكل', category: 'أطعمة بحرية' },
   { id: 'fq_013', title: 'اذكر مشروباً غازياً أو بارداً يباع في البقالات', category: 'مشروبات' },
-  { id: 'fq_014', title: 'اذكر نوع تمر مشهور', category: 'أطعمة' },
+  { id: 'fq_014', title: 'اذكر شيئًا يُقدّم مع القهوة', category: 'أطعمة' },
   { id: 'fq_015', title: 'اذكر نوع أرز أو طبق أرز عالمي', category: 'أطعمة' },
   { id: 'fq_016', title: 'اذكر نوع شوربة معروفة', category: 'أطعمة' },
-  { id: 'fq_017', title: 'اذكر نوع شاي أو نكهة شاي', category: 'مشروبات' },
+  { id: 'fq_017', title: 'اذكر شيئًا تشربه في الشتاء', category: 'مشروبات' },
   { id: 'fq_018', title: 'اذكر نوع مخلل مشهور', category: 'أطعمة' },
-  { id: 'fq_019', title: 'اذكر نوع فاكهة حمضية', category: 'أطعمة' },
+  { id: 'fq_019', title: 'اذكر شيئًا طعمه حامض', category: 'أطعمة' },
   { id: 'fq_020', title: 'اذكر نوع ساندوتش أو شطيرة سريعة', category: 'أطعمة' },
 
   // 2. أشياء ويوميات ومقتنيات (21 - 40)
-  { id: 'fq_021', title: 'اذكر شيئاً تشتريه من البقالة بريالين أو أقل', category: 'يوميات' },
+  { id: 'fq_021', title: 'اذكر شيئًا تشتريه من البقالة', category: 'يوميات' },
   { id: 'fq_022', title: 'اذكر شيئاً يوجد داخل حقيبة السفر', category: 'سفر' },
   { id: 'fq_023', title: 'اذكر أداة توجد في المطبخ', category: 'منزل' },
   { id: 'fq_024', title: 'اذكر أداة توجد في ورشة النجارة أو الميكانيكا', category: 'أدوات' },
@@ -117,10 +117,14 @@ export const FLYING_QUESTIONS: FlyingQuestion[] = [
   { id: 'fq_096', title: 'اذكر مادة دراسية تُدرس في المدارس', category: 'تعليم' },
   { id: 'fq_097', title: 'اذكر رتبة عسكرية معروفة', category: 'عسكرية' },
   { id: 'fq_098', title: 'اذكر لغة برمجة حاسوبية معروفة', category: 'تقنية' },
-  { id: 'fq_099', title: 'اذكر مهنة يعمل صاحبها أثناء الليل فقط', category: 'مهن' },
+  { id: 'fq_099', title: 'اذكر مهنة قد يعمل صاحبها في الليل', category: 'مهن' },
   { id: 'fq_100', title: 'اذكر وظيفة توجد داخل طاقم الطائرة', category: 'طيران' },
   ...EXTRA_FLYING_QUESTIONS,
 ];
+
+// A single condition leaves room for different answers instead of a fixed list.
+const narrowPrompt = /(?:^|\s)(?:أو|فقط|حصراً|حصرا|معتزلاً|معتزلا)(?:\s|$)|مقره |امتداد ملف|بريال|بحرف |يبدأ اسم|يتكون من |تتكون من |من [١-٩1-9]|أقل من |أكثر من /;
+export const FLYING_QUESTIONS = questionBank.filter(question => !narrowPrompt.test(question.title));
 
 export function getRandomUnusedQuestion(allQuestions: FlyingQuestion[], usedIds: string[] = []): FlyingQuestion | undefined {
   const available = allQuestions.filter((q) => !usedIds.includes(q.id));

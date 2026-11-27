@@ -6,7 +6,6 @@ import { roomBus } from '../lib/roomBus';
 import { sound } from '../lib/audio';
 import {
   getOrCreatePlayerId,
-  getPersistedPlayerName,
   setPersistedPlayerName,
 } from '../utils/playerSession';
 import { createRoom, checkRoomExists, normalizeRoomCode } from '../services/roomService';
@@ -43,10 +42,11 @@ export const NameEntryView: React.FC = () => {
   const params = useParams<{ code?: string }>();
 
   const rawRoom = searchParams.get('room') || searchParams.get('code') || params.code || '';
-  const queryRoom = normalizeRoomCode(rawRoom);
+  const [roomCodeInput, setRoomCodeInput] = useState(() => normalizeRoomCode(rawRoom));
+  const isJoining = Boolean(rawRoom);
   const queryGame = (searchParams.get('game') || '').trim();
 
-  const [playerName, setPlayerName] = useState<string>(() => getPersistedPlayerName());
+  const [playerName, setPlayerName] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mood, setMood] = useState<ShabahMood>('judging');
@@ -69,6 +69,11 @@ export const NameEntryView: React.FC = () => {
     e.preventDefault();
     if (isSubmitting) return;
     setErrorMsg(null);
+    const queryRoom = normalizeRoomCode(roomCodeInput);
+    if (isJoining && !queryRoom) {
+      setErrorMsg('أدخل كود الغرفة.');
+      return;
+    }
 
     const cleanName = playerName.trim();
     if (!cleanName || cleanName === 'لاعب') {
@@ -103,11 +108,11 @@ export const NameEntryView: React.FC = () => {
         }
 
         sessionStorage.setItem(
-          `taghesi_player_${code}`,
+          `shabah_room_player_${code}`,
           JSON.stringify({ id: pid, name: cleanName, roomCode: code })
         );
         localStorage.setItem(
-          `taghesi_player_${code}`,
+          `shabah_room_player_${code}`,
           JSON.stringify({ id: pid, name: cleanName, roomCode: code })
         );
 
@@ -158,11 +163,11 @@ export const NameEntryView: React.FC = () => {
       }
 
       sessionStorage.setItem(
-        `taghesi_player_${targetRoomCode}`,
+        `shabah_room_player_${targetRoomCode}`,
         JSON.stringify({ id: pid, name: cleanName, roomCode: targetRoomCode })
       );
       localStorage.setItem(
-        `taghesi_player_${targetRoomCode}`,
+        `shabah_room_player_${targetRoomCode}`,
         JSON.stringify({ id: pid, name: cleanName, roomCode: targetRoomCode })
       );
 
@@ -210,8 +215,8 @@ export const NameEntryView: React.FC = () => {
             <div className="shabah-pill-surface px-4 py-1.5 text-xs sm:text-sm font-black text-[#0A0A0A]">
               {selectedGame
                 ? `تجهيز غرفة: ${selectedGame.title}`
-                : queryRoom
-                ? `الانضمام لغرفة: ${queryRoom}`
+                : isJoining
+                ? 'الانضمام إلى غرفة'
                 : 'سجّل حضورك مع شبح'}
             </div>
           </div>
@@ -234,18 +239,25 @@ export const NameEntryView: React.FC = () => {
               </p>
             </div>
 
+            {isJoining && <label className="grid gap-1 text-right text-sm font-bold text-neutral-700">
+              كود الغرفة
+              <input dir="ltr" value={roomCodeInput} autoComplete="off" spellCheck={false}
+                onChange={e => { setRoomCodeInput(e.target.value); setErrorMsg(null); }}
+                className="h-12 rounded-xl border-2 border-neutral-800 bg-neutral-50 px-3 text-center font-black text-black uppercase" />
+            </label>}
             <input
               type="text"
               value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
+              onChange={(e) => { setPlayerName(e.target.value.slice(0, 18)); setErrorMsg(null); }}
               placeholder="اكتب اسمك هنا..."
-              maxLength={18}
               autoFocus
               className="w-full h-14 px-4 rounded-xl bg-neutral-50 border-[3px] border-[#0A0A0A] text-[#0A0A0A] placeholder-neutral-400 text-lg font-black text-center focus:outline-none focus:bg-white transition-colors"
             />
 
+            {playerName.length >= 18 && <p role="status" className="text-sm font-bold text-amber-800">الحد الأقصى للاسم ١٨ حرفًا.</p>}
+
             {errorMsg && (
-              <div className="px-3.5 py-2.5 rounded-xl bg-red-50 border-2 border-red-600 text-red-700 text-xs font-black text-center">
+              <div role="alert" className="px-3.5 py-2.5 rounded-xl bg-red-50 border-2 border-red-600 text-red-700 text-xs font-black text-center">
                 {errorMsg}
               </div>
             )}

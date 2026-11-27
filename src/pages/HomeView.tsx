@@ -9,7 +9,7 @@ import { CoverflowCarousel } from '../components/home/CoverflowCarousel';
 import { ContainerScroll } from '../components/ui/container-scroll-animation';
 import { SHABAH_GAMES, ShabahGame } from '../data/shabahGames';
 import { sound } from '../lib/audio';
-import { getPersistedPlayerName, setPersistedPlayerName, getOrCreatePlayerId } from '../utils/playerSession';
+import { setPersistedPlayerName, getOrCreatePlayerId } from '../utils/playerSession';
 import { createRoom, checkRoomExists, normalizeRoomCode } from '../services/roomService';
 import { ShabahFooter } from '../components/common/ShabahFooter';
 
@@ -58,7 +58,7 @@ export const HomeView: React.FC = () => {
 
   // Requirement 2: Game Entry Modal ([العب] / Card click)
   const [joinModalGame, setJoinModalGame] = useState<ShabahGame | null>(null);
-  const [playerNameInput, setPlayerNameInput] = useState(() => getPersistedPlayerName());
+  const [playerNameInput, setPlayerNameInput] = useState('');
   const [joinError, setJoinError] = useState<string | null>(null);
 
   // Compact Room Code state
@@ -100,6 +100,7 @@ export const HomeView: React.FC = () => {
     if (normalized === activeIndexRef.current) return;
 
     const dir = nextIdx > activeIndexRef.current ? -1 : 1;
+    activeIndexRef.current = normalized;
     setSwipeGaze({ x: dir * 6, y: 2 });
     setActiveIndex(normalized);
     sound.playTick();
@@ -114,7 +115,7 @@ export const HomeView: React.FC = () => {
     sound.playClick();
     setJoinModalGame(game);
     setJoinError(null);
-    setPlayerNameInput(getPersistedPlayerName());
+    setPlayerNameInput('');
   };
 
   // Requirement 2 - Action A: Enter as contestant
@@ -381,7 +382,7 @@ export const HomeView: React.FC = () => {
         playerName={playerNameInput}
         error={joinError}
         onNameChange={(val) => {
-          setPlayerNameInput(val);
+          setPlayerNameInput(val.slice(0, 18));
           setJoinError(null);
         }}
         isSubmitting={isCreatingRoom}

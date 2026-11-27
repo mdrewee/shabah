@@ -1,6 +1,7 @@
 import { FOOTBALL_PLAYERS_MASTER, type FootballPlayer } from '../../../data/footballMasterData';
 import { ADDITIONAL_100_PLAYERS } from '../../../data/footballPlayers';
 import { normalizeFootballSearch, type FootballSearchResult } from './footballDataService';
+import { COACH_SLOT_CONFIG, type CoachSlotKey } from './types';
 
 // Draft identity is resolved by exact names/aliases, never by substrings or client metadata.
 export function resolveDraftPlayer(query:string):FootballPlayer|null {
@@ -20,7 +21,19 @@ export function resolveDraftPlayer(query:string):FootballPlayer|null {
 }
 
 export function canonicalDraftName(name:string):string {
-  return resolveDraftPlayer(name)?.name || name.trim();
+  const known = resolveDraftPlayer(name);
+  if (known) return known.name;
+  const key = normalizeFootballSearch(name);
+  return ADDITIONAL_100_PLAYERS.find(p => [p.name, p.nameEn].some(alias => normalizeFootballSearch(alias) === key))?.name || name.trim();
+}
+
+export function isDraftPlayerTaken(name: string, pickedNames: string[]): boolean {
+  const key = normalizeFootballSearch(canonicalDraftName(name));
+  return Boolean(key && pickedNames.some(picked => normalizeFootballSearch(canonicalDraftName(picked)) === key));
+}
+
+export function fitsDraftSlot(position: string | undefined, slot: CoachSlotKey): boolean {
+  return !position || (position === 'ATT' ? 'FWD' : position) === COACH_SLOT_CONFIG[slot].role;
 }
 
 export function isAmbiguousDraftName(name:string):boolean {

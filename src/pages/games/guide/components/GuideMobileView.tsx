@@ -21,6 +21,7 @@ interface GuideMobileViewProps {
   hasSubmitted: boolean;
   clues?: string[];
   submittedCount?: number;
+  initialPin?: { lat: number; lng: number };
   onLockPin: (coords: { lat: number; lng: number }) => void;
   onReturnToLobby?: () => void;
 }
@@ -35,10 +36,12 @@ export const GuideMobileView: React.FC<GuideMobileViewProps> = ({
   hasSubmitted,
   clues,
   submittedCount = 0,
+  initialPin,
   onLockPin,
   onReturnToLobby,
 }) => {
-  const [selectedPin, setSelectedPin] = useState<{ lat: number; lng: number } | null>(null);
+  const [selectedPin, setSelectedPin] = useState<{ lat: number; lng: number } | null>(initialPin ?? null);
+  const [missingPin, setMissingPin] = useState(false);
   const selectedPinRef = useRef(selectedPin);
   selectedPinRef.current = selectedPin;
 
@@ -52,10 +55,12 @@ export const GuideMobileView: React.FC<GuideMobileViewProps> = ({
     if (hasSubmittedRef.current) return;
     sound.playClick();
     setSelectedPin(coords);
+    setMissingPin(false);
   };
 
   const handleConfirmPin = () => {
-    if (!selectedPinRef.current || hasSubmittedRef.current) return;
+    if (hasSubmittedRef.current) return;
+    if (!selectedPinRef.current) { setMissingPin(true); return; }
     sound.playVictory();
     onLockPinRef.current(selectedPinRef.current);
   };
@@ -115,7 +120,7 @@ export const GuideMobileView: React.FC<GuideMobileViewProps> = ({
           </span>
           <span className="text-zinc-500 text-[10px]">تلميح جديد كل ١٢ث</span>
         </div>
-        <p className="h-16 overflow-y-auto font-sans font-extrabold text-sm sm:text-base text-zinc-100 leading-relaxed">
+        <p className="h-20 min-h-20 overflow-y-auto font-sans font-extrabold text-sm sm:text-base text-zinc-100 leading-relaxed">
           "{activeClueText}"
         </p>
       </div>
@@ -165,11 +170,11 @@ export const GuideMobileView: React.FC<GuideMobileViewProps> = ({
 
       {/* 4. Bottom Lock Pin Action Bar */}
       <div className="flex-shrink-0 pt-2">
+        {missingPin && !hasSubmitted && <p role="alert" className="mb-2 text-sm text-amber-300">حدد موقعًا على الخريطة أولًا.</p>}
         {!hasSubmitted ? (
           <button
             type="button"
             onClick={handleConfirmPin}
-            disabled={!selectedPin}
             className={`w-full py-3.5 px-4 rounded-2xl font-sans font-bold text-base flex items-center justify-center gap-2 active:scale-98 transition-all cursor-pointer shadow-lg ${
               selectedPin
                 ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-[0_0_20px_rgba(168,85,247,0.4)]'

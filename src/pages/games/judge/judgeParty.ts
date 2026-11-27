@@ -1,6 +1,11 @@
 import type { JudgeRoomState, PlayerVerdict } from './types';
 
+export const JUDGE_DEFENSE_SECONDS = 40;
+export const JUDGE_VOTE_SECONDS = 28;
+export const JUDGE_READING_MS = 12_000;
+
 export function openJudgeReading(state: JudgeRoomState, participants: Array<{ id: string; name: string }>, now = Date.now()): JudgeRoomState {
+  participants = participants.filter(p => p.id !== 'host_tv');
   const cards = participants.filter(p => state.excuses[p.id]?.excuse.trim()).map(p => ({
     id: state.excuses[p.id].cardId || Array.from(crypto.getRandomValues(new Uint8Array(12)), n => n.toString(16).padStart(2,'0')).join(''),
     text: state.excuses[p.id].excuse,
@@ -14,7 +19,7 @@ export function openJudgeReading(state: JudgeRoomState, participants: Array<{ id
   return { ...state, phase:'READING', timerSeconds:0, party:{
     participants, cards:cards.map(({id,text})=>({id,text})), authors, votes:{}, votedPlayerIds:[],
     eligibleVoterIds:participants.filter(p => cards.some(c => c.author !== p.id)).map(p => p.id),
-    mode:participants.length >= 3 ? 'jury' : 'duel', readIndex:0, phaseEndsAt:now + 8000,
+    mode:participants.length >= 3 ? 'jury' : 'duel', readIndex:0, phaseEndsAt:now + JUDGE_READING_MS,
   }};
 }
 
@@ -41,15 +46,16 @@ export function scoreJudgeParty(state: JudgeRoomState, cancelled = false): Judge
   const party=state.party;
   if (!party || state.phase === 'COURTROOM_VERDICT') return state;
   const ai=party.aiVerdicts || [];
-  const best=Math.max(0,...ai.filter(v=>!v.aiUnavailable).map(v=>v.score));
+  const best=Math.max(0,...ai.filter(v=>!v.aiUnavailable && state.excuses[v.playerId]?.excuse.trim()).map(v=>v.score));
+  const hasVotes=Object.keys(party.votes ?? {}).length > 0;
   const tallies: Record<string,{votes:number;bonus:number}>={};
   const verdicts: Record<string,PlayerVerdict>={};
   const cumulativeScores={...state.cumulativeScores};
-  for (const p of party.participants) {
+  for (const p of party.participants.filter(p => p.id !== 'host_tv')) {
     const excuse=state.excuses[p.id]?.excuse || '';
     const judged=ai.find(v=>v.playerId===p.id);
     const votes=Object.values(party.votes || {}).filter(cardId=>party.authors?.[cardId]===p.id).length;
-    const bonus=!cancelled && !party.aiFailed && excuse && judged && !judged.aiUnavailable && best>=5 && judged.score===best ? 2 : 0;
+    const bonus=!cancelled && excuse && judged && !judged.aiUnavailable && (!hasVotes || best>=5) && judged.score===best ? 2 : 0;
     const score=cancelled || !excuse ? 0 : party.mode==='jury' ? votes*3+bonus : judged?.score || 0;
     tallies[p.id]={votes,bonus:Number(bonus)};
     verdicts[p.id]={playerId:p.id,playerName:p.name,excuse,verdict:judged?.verdict || 'مذنب',score,

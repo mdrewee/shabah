@@ -249,7 +249,7 @@ export const JudgeTVCourtroom: React.FC<JudgeTVCourtroomProps> = ({
                   <div className="my-3 p-4 rounded-2xl bg-white border-2 border-zinc-200 shadow-md text-right">
                     <div className="text-xs font-sans font-bold text-zinc-500 mb-1">عذر المتهم:</div>
                     <p className="font-sans text-xl font-bold text-black leading-snug">
-                      "{item.excuse}"
+                      «<bdi>{item.excuse}</bdi>»
                     </p>
                   </div>
 

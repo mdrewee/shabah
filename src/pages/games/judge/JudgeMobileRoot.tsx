@@ -18,7 +18,7 @@ export const JudgeMobileRoot:React.FC=()=>{
   const [playerName]=useState(()=>getPersistedPlayerName() || getOrCreatePlayerName('متهم'));
   const {connectedPlayers}=useRoomSync({roomCode,role:'contestant',playerId,playerName});
   const {room}=useRoom(roomCode);
-  const [state,setState]=useState<JudgeRoomState>(()=>createInitialJudgeState(roomCode));
+  const [state,setState]=useState<JudgeRoomState>(()=>roomBus.getLatestGameState<JudgeRoomState>(roomCode, 'JUDGE_STATE_SYNC') ?? createInitialJudgeState(roomCode, !isRoomHost(roomCode)));
   const defenseSeconds=useSafeCountdown(state.phase==='defending' ? state.defenseEndsAt : undefined);
   const host=isRoomHost(roomCode);
   const ownKey=`judge_card_${roomCode}_${state.roundNumber}_${state.currentPredicament.id}`;

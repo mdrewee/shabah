@@ -69,7 +69,7 @@ export async function callGeminiWithFallback(
 
   const { roomBus } = await import('../lib/roomBus');
   const requestId = crypto.randomUUID();
-  const playerId = localStorage.getItem('shabah_player_id') || localStorage.getItem('taghesi_playerId');
+  const playerId = sessionStorage.getItem('shabah_player_id') || localStorage.getItem('shabah_player_id');
   return new Promise((resolve, reject) => {
     const off = roomBus.on('AI_RESPONSE', (event) => {
       const result = event.data;

@@ -34,7 +34,6 @@ import {
   Crosshair,
   TrendingUp,
   XCircle,
-  Sparkles,
 } from 'lucide-react';
 
 export const BrokerMobileRoot: React.FC = () => {
@@ -55,7 +54,7 @@ export const BrokerMobileRoot: React.FC = () => {
   });
 
   const [brokerState, setBrokerState] = useState<BrokerRoomState>(() =>
-    createInitialBrokerState(roomCode)
+    roomBus.getLatestGameState<BrokerRoomState>(roomCode, 'BROKER_STATE_SYNC') ?? createInitialBrokerState(roomCode, !isPlayerHost)
   );
 
   const chatRequest = useRef(0);
@@ -67,6 +66,7 @@ export const BrokerMobileRoot: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentBid, setCurrentBid] = useState(0); // Starts strictly at 0 SAR
+  const [emptyWarning, setEmptyWarning] = useState(false);
   const [bulletsRemaining, setBulletsRemaining] = useState(7);
   const [isBidFlashing, setIsBidFlashing] = useState(false);
   const [isReadyForNext, setIsReadyForNext] = useState(false);
@@ -95,14 +95,16 @@ export const BrokerMobileRoot: React.FC = () => {
 
     ++chatRequest.current;
     setIsSubmitting(false);
+    setEmptyWarning(false);
     // Reset conversation completely and set the new item's greeting
     const initialGreeting =
-      (currentAuctionItem as any).openingGreeting ||
-      `أرحبو يا الربع! اليوم جايب لكم ${currentAuctionItem.name}.. قطبة ونظيفة، عطونا فتحة باب تسوى ولا تبخسون السلعة!`;
+      `أرحب! اليوم معك ${currentAuctionItem.name}. وش حجتك عشان أفتح السوم؟`;
 
     let restoredMessages: BrokerChatMessage[] | null = null;
     try { restoredMessages = JSON.parse(sessionStorage.getItem(`broker_chat_${roomCode}_${playerId}_${itemKey}`) || 'null'); } catch {}
-    setMessages(restoredMessages || [
+    setMessages(restoredMessages?.[0]?.id.startsWith('msg_initial_')
+      ? [{ ...restoredMessages[0], text: initialGreeting }, ...restoredMessages.slice(1)]
+      : restoredMessages || [
       {
         id: `msg_initial_${itemKey}_${Date.now()}`,
         sender: 'broker',
@@ -219,8 +221,8 @@ export const BrokerMobileRoot: React.FC = () => {
     if (isSubmitting || bulletsRemaining <= 0 || brokerState.phase !== 'NEGOTIATION' || Date.now() >= (brokerState.roundEndsAt || 0)) return;
 
     // Sanitize and enforce maximum character limit (DDoS / Buffer payload protection)
-    const pitch = inputText.trim().slice(0, 200);
-    if (!pitch) return;
+    const pitch = inputText.trim().slice(0, 140);
+    if (!pitch) { setEmptyWarning(true); return; }
 
     sound.playClick();
 
@@ -336,7 +338,7 @@ export const BrokerMobileRoot: React.FC = () => {
         winnerName={brokerState.winnerName || 'أحد المتسابقين'}
         winningBid={brokerState.winningBid || 0}
         winningQuote={brokerState.winningQuote || undefined}
-        contestants={Object.values(brokerState.contestantBids)}
+        contestants={Object.values(brokerState.contestantBids).filter(p => p.playerId !== 'host_tv')}
         currentUserId={playerId}
         isHost={isPlayerHost}
         onPlayerReady={handlePlayerReady}
@@ -356,7 +358,7 @@ export const BrokerMobileRoot: React.FC = () => {
   if (brokerState.phase === 'FINAL_PODIUM') {
     return (
       <BrokerFinalPodium
-        contestants={Object.values(brokerState.contestantBids)}
+        contestants={Object.values(brokerState.contestantBids).filter(p => p.playerId !== 'host_tv')}
         totalRounds={brokerState.totalRounds}
         isHost={isPlayerHost}
         onReturnToLobby={() => {
@@ -408,9 +410,8 @@ export const BrokerMobileRoot: React.FC = () => {
         </div>
 
         <details className="rounded-xl border border-white/15 bg-zinc-900 px-3 py-2 text-sm leading-7">
-          <summary className="cursor-pointer font-bold text-zinc-200">تفاصيل السلعة وعيوبها</summary>
+          <summary className="cursor-pointer font-bold text-zinc-200">عيب السلعة</summary>
           <p className="mt-2 flex items-start gap-2 text-red-300"><AlertTriangle className="mt-1 h-4 w-4 shrink-0" />{currentAuctionItem.flaw}</p>
-          {currentAuctionItem.perk && <p className="flex items-start gap-2 text-emerald-300"><Sparkles className="mt-1 h-4 w-4 shrink-0" />{currentAuctionItem.perk}</p>}
         </details>
         {/* Current Bid Display Card */}
         <div
@@ -499,7 +500,7 @@ export const BrokerMobileRoot: React.FC = () => {
             <input
               type="text"
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
+              onChange={(e) => { setInputText(e.target.value.slice(0, 140)); setEmptyWarning(false); }}
               placeholder={
                 bulletsRemaining <= 0
                   ? 'نفدت رصاصاتك لهذه الجولة!'
@@ -509,14 +510,13 @@ export const BrokerMobileRoot: React.FC = () => {
                   ? 'أنت البائع؛ اعرض سلعتك وأقنع المشتري...'
                   : 'أقنع الشريطي يرفع السومة...'
               }
-              maxLength={140}
               disabled={isSubmitting || bulletsRemaining <= 0}
               className="flex-1 h-12 px-4 rounded-xl bg-neutral-900 border-2 border-white/20 text-white placeholder-neutral-500 text-sm font-bold focus:outline-none focus:border-white transition-colors disabled:opacity-50 font-sans"
             />
 
             <button
               type="submit"
-              disabled={!inputText.trim() || isSubmitting || bulletsRemaining <= 0}
+              disabled={isSubmitting || bulletsRemaining <= 0}
               className="h-12 px-5 rounded-xl font-black bg-white text-[#0A0A0A] hover:bg-neutral-100 active:scale-95 border-2 border-[#0A0A0A] shadow-[2px_2px_0px_#0A0A0A] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center shrink-0 font-sans"
             >
               <Send className="w-5 h-5 ml-1 -rotate-90" />
@@ -524,6 +524,14 @@ export const BrokerMobileRoot: React.FC = () => {
             </button>
           </div>
 
+          {inputText.length >= 140 && <p role="status" className="text-sm text-amber-300">الحد الأقصى ١٤٠ حرفًا.</p>}
+          {emptyWarning && <p role="alert" className="text-sm text-amber-300">اكتب رسالتك أولاً.</p>}
+          {currentBid > 0 && bulletsRemaining > 0 && <button type="button" disabled={isSubmitting}
+            onClick={() => roomBus.broadcastBrokerBid(roomCode, { action: 'finishTurn', playerId,
+              roundNumber: brokerState.roundNumber, itemId: currentAuctionItem.id, gameStartedAt: brokerState.gameStartedAt })}
+            className="min-h-12 self-start rounded-xl border border-white/20 px-4 text-sm text-zinc-200 disabled:opacity-50">
+            اكتفي بهذه السومة
+          </button>}
           {/* Character counter & bullet guidance */}
           <div className="flex items-center justify-between px-1">
             <span className="text-[11px] font-bold text-neutral-500">

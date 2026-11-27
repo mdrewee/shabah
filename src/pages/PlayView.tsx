@@ -52,6 +52,14 @@ const VerifiedPlayView: React.FC<{ roomCode: string; createdGame: ShabahGameCano
         setError(result?.error);
         return;
       }
+      if (!isRoomHost(roomCode) && !await roomBus.restoreRoomSnapshot(roomCode)) {
+        if (active) {
+          setGame(null);
+          setError('تعذر استعادة حالة الغرفة، حاول مرة أخرى');
+        }
+        return;
+      }
+      if (!active) return;
       setGame(gameId);
     }
     void enterRoom();

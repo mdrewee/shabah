@@ -43,7 +43,7 @@ export function JudgePartyStage({state,playerId,ownCardId,isHost=false,activePla
       {state.phase==='READING' && <>
         <div className="flex justify-between text-sm text-purple-300"><span>تصريف {toArabicNumber(party.readIndex+1)} من {toArabicNumber(party.cards.length)}</span><span>{toArabicNumber(seconds)} ث</span></div>
         <article aria-label="التصريف المجهول" className="min-h-48 rounded-3xl border-2 border-purple-400/50 bg-purple-950/30 p-6 flex flex-col justify-center text-center">
-          <p className="text-xs text-purple-300 mb-4">مين صاحب التصريف؟ نكشفه {party.mode==='jury'?'بعد التصويت':'مع الحكم'}</p><p className="text-2xl sm:text-4xl font-black leading-relaxed break-words">«{card?.text}»</p>
+          <p className="text-xs text-purple-300 mb-4">مين صاحب التصريف؟ نكشفه {party.mode==='jury'?'بعد التصويت':'مع الحكم'}</p><p className="text-2xl sm:text-4xl font-black leading-relaxed break-words">«<bdi>{card?.text}</bdi>»</p>
         </article>
         <p className="text-center text-zinc-400 text-sm">{party.mode==='jury'?'اقرأوا واضحكوا… بعدها تختارون أفضل تصريف.':'لاعبان: الشبح يحكم على الذكاء والطرافة، دون تفضيل الجواب الطويل.'}</p>
       </>}
@@ -53,7 +53,7 @@ export function JudgePartyStage({state,playerId,ownCardId,isHost=false,activePla
         {voted && <p role="status" className="text-emerald-300">تم تسجيل صوتك. الأسماء والنتائج تظهر معًا.</p>}
         {!party.eligibleVoterIds.includes(playerId || '') && playerId && <p className="text-amber-300 text-sm">لا يوجد تصريف آخر يمكنك التصويت له؛ لا تحتاج لإرسال صوت.</p>}
         <div className="grid sm:grid-cols-2 gap-3">{party.cards.map((c,index)=><button key={c.id} type="button" disabled={!onVote || voted || c.id===ownCardId || !party.eligibleVoterIds.includes(playerId || '')} onClick={()=>onVote?.(c.id)} className="rounded-2xl border border-zinc-700 bg-zinc-950 p-5 text-right disabled:opacity-50 hover:border-purple-400">
-          <span className="text-purple-300 text-xs">تصريف {toArabicNumber(index+1)}{c.id===ownCardId?' · تصريفك':''}</span><p className="mt-2 font-bold text-lg break-words">{c.text}</p>
+          <span className="text-purple-300 text-xs">تصريف {toArabicNumber(index+1)}{c.id===ownCardId?' · تصريفك':''}</span><p className="mt-2 font-bold text-lg break-words"><bdi>{c.text}</bdi></p>
         </button>)}</div>
         <p className="text-zinc-500 text-xs">كل صوت ٣ نقاط · لا تصويت للنفس · مكافأة الشبح نقطتان لأفضل تقييم.</p>
       </>}
@@ -70,7 +70,7 @@ export function JudgePartyStage({state,playerId,ownCardId,isHost=false,activePla
         {party.aiFailed && party.mode==='jury' && !party.cancelled && <p role="status" className="text-amber-300 text-sm">تعذر تعليق الشبح؛ النقاط من أصوات المجموعة فقط.</p>}
         {[...(state.verdictList || [])].sort((a,b)=>b.score-a.score).map(v=><article id={resultCardId('judge',v.playerId)} style={{borderColor:v.playerId===playerId?'#6ee7b7':undefined}} key={v.playerId} className="rounded-2xl border border-zinc-700 bg-zinc-950 p-4 space-y-2">
           <div className="flex justify-between gap-3"><h3 className="font-black">{v.playerName}{v.playerId===playerId?' · أنت':''}</h3><span className="text-emerald-300 font-black">+{toArabicNumber(v.score)}</span></div>
-          <p className="text-lg font-bold break-words">{v.excuse || 'لم يرسل تصريفًا'}</p>
+          <p className="text-lg font-bold break-words"><bdi>{v.excuse || 'لم يرسل تصريفًا'}</bdi></p>
           <p className="text-xs text-purple-300">{party.mode==='jury'?`${formatVotes(party.tallies?.[v.playerId]?.votes || 0)} · مكافأة الشبح +${toArabicNumber(party.tallies?.[v.playerId]?.bonus || 0)}`:v.aiUnavailable?'لا يوجد حكم معتمد':`حكم الشبح: ${v.verdict}`}</p>
           <p className="text-zinc-300 text-sm">{v.roast}</p>
         </article>)}

@@ -1,6 +1,5 @@
-import {RoundCelebration,roundLeaders} from '../../../components/common/RoundCelebration';
+import { flyingRevealRoster, SPOTLIGHT_DURATION_MS, hasAllFlyingAnswers, flyingSecondsLeft, FLYING_QUESTION_SECONDS } from './flyingRound';
 import { useGameState } from '../../../hooks/useGameState';
-import { hasAllFlyingAnswers } from './flyingRound';
 import { FlyingBankExhausted } from './FlyingBankExhausted';
 import { ShabahThinkingScreen } from '../../../components/common/ShabahThinkingScreen';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -33,7 +32,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 
-const ROUND_TIME = 35;
+const ROUND_TIME = FLYING_QUESTION_SECONDS;
 
 export const FlyingTVRoot: React.FC<{
   mobileContestants?: Array<{ id: string; name: string }>;
@@ -125,6 +124,7 @@ export const FlyingTVRoot: React.FC<{
         totalRounds: 5,
         question,
         roundDuration: ROUND_TIME,
+        roundStartedAt: nextState.roundStartedAt,
         roomCode,
       };
 
@@ -257,6 +257,7 @@ export const FlyingTVRoot: React.FC<{
       cumulativeMeters: nextCumulative,
       activeSpotlightIndex: 0,
       cameraMode: 'spotlight',
+      cameraStartedAt: Date.now() + 450,
     };
 
     stateRef.current = revealingState;
@@ -266,6 +267,7 @@ export const FlyingTVRoot: React.FC<{
       results: resultMap,
       cumulativeMeters: nextCumulative,
       roundNumber: curr.roundNumber,
+      cameraStartedAt: revealingState.cameraStartedAt,
       roomCode,
     };
     roomBus.safeBroadcast(roomCode, 'FLYING_ROUND_RESULTS', resultsPayload);
@@ -301,13 +303,13 @@ export const FlyingTVRoot: React.FC<{
     const timer = setInterval(() => {
       const current = stateRef.current;
       if (current.phase !== 'QUESTION') return;
-      const remaining = Math.max(0, current.timerSeconds - 1);
-      syncState({ ...current, timerSeconds: remaining });
+      const remaining = flyingSecondsLeft(current.roundStartedAt);
+      if (current.timerSeconds !== remaining) setFlyingState({ ...current, timerSeconds: remaining });
       if (remaining === 0) { clearInterval(timer); void executeEvaluation(); }
-    }, 1000);
+    }, 250);
 
     return () => clearInterval(timer);
-  }, [flyingState.phase, executeEvaluation]);
+  }, [flyingState.phase, flyingState.roundStartedAt, executeEvaluation, setFlyingState]);
 
   useEffect(() => {
     if (flyingState.phase !== 'QUESTION' || !hasAllFlyingAnswers(mergedContestants, flyingState.submissions)) return;
@@ -322,13 +324,7 @@ export const FlyingTVRoot: React.FC<{
     if (flyingState.phase !== 'REVEALING') return;
 
     const activeIndex = flyingState.activeSpotlightIndex;
-    const contestantsList =
-      mergedContestants.length > 0
-        ? mergedContestants
-        : Object.keys(flyingState.results).map((id) => ({
-            id,
-            name: flyingState.results[id]?.contestantName || 'متسابق',
-          }));
+    const contestantsList = flyingRevealRoster(flyingState.results);
     const totalContestants = Math.max(1, contestantsList.length);
 
     if (flyingState.cameraMode === 'spotlight') {
@@ -347,24 +343,26 @@ export const FlyingTVRoot: React.FC<{
             ...stateRef.current,
             activeSpotlightIndex: activeIndex + 1,
             cameraMode: 'spotlight',
+            cameraStartedAt: Date.now() + 450,
           });
         } else {
           sound.playVictory();
           syncState({
             ...stateRef.current,
             cameraMode: 'global_overview',
+            cameraStartedAt: Date.now() + 450,
           });
           setAutoAdvanceSeconds(5);
         }
-      }, 3400);
+      }, Math.max(0, (flyingState.cameraStartedAt ?? Date.now()) + SPOTLIGHT_DURATION_MS - Date.now()));
 
       return () => clearTimeout(advanceTimer);
     } else if (flyingState.cameraMode === 'global_overview') {
-      let secondsRemaining = 5;
+      const endsAt = (flyingState.cameraStartedAt ?? Date.now()) + 5000;
       const overviewTimer = setInterval(() => {
-        const sec = secondsRemaining--;
-        setAutoAdvanceSeconds(Math.max(0, secondsRemaining));
-          if (sec <= 1) {
+        const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+        setAutoAdvanceSeconds(remaining);
+          if (remaining === 0) {
             clearInterval(overviewTimer);
             if (flyingState.roundNumber >= flyingState.totalRounds) {
               syncState({
@@ -384,7 +382,7 @@ export const FlyingTVRoot: React.FC<{
               startQuestionRound(flyingState.roundNumber + 1, flyingState.usedQuestionIds);
             }
           }
-      }, 1000);
+      }, 250);
 
       return () => clearInterval(overviewTimer);
     }
@@ -392,11 +390,11 @@ export const FlyingTVRoot: React.FC<{
     flyingState.phase,
     flyingState.activeSpotlightIndex,
     flyingState.cameraMode,
+    flyingState.cameraStartedAt,
     flyingState.roundNumber,
     flyingState.totalRounds,
     flyingState.usedQuestionIds,
     flyingState.results,
-    mergedContestants,
     startQuestionRound,
     syncState,
     roomCode,
@@ -413,7 +411,7 @@ export const FlyingTVRoot: React.FC<{
       if (!payload) return;
 
       const contestantId = String(payload.contestantId || payload.playerId || payload.id || '');
-      if (!contestantId) return;
+      if (!contestantId || contestantId === 'host_tv') return;
 
       const contestantName = String(
         payload.contestantName || payload.playerName || payload.name || 'متسابق'
@@ -427,7 +425,7 @@ export const FlyingTVRoot: React.FC<{
       const answer = stripEmojis(String(rawAnswer || '').trim());
 
       const curr = stateRef.current;
-      if (curr.phase !== 'QUESTION' || !answer ||
+      if (curr.phase !== 'QUESTION' || !answer || answer.length > 140 ||
           payload.roundIndex !== curr.roundNumber || payload.questionId !== curr.currentQuestion?.id ||
           Object.hasOwn(curr.submissions, contestantId)) return;
 
@@ -630,8 +628,19 @@ export const FlyingTVRoot: React.FC<{
   // 3. Question, Calculating & Revealing: Continuous Vertical Pixel World
   // -------------------------------------------------------------
   const isQuestionPhase = flyingState.phase === 'QUESTION';
-  const isCalculatingPhase = false;
   const isRevealingPhase = flyingState.phase === 'REVEALING';
+
+  if (isRevealingPhase) return <section data-flying-reveal dir="rtl" className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#070b1c] text-white">
+    <header className="flex shrink-0 items-center justify-between px-5 py-3 text-sm font-bold">
+      <span>الجولة {flyingState.roundNumber} / {flyingState.totalRounds}</span>
+      {flyingState.cameraMode === 'global_overview' && <span>{flyingState.roundNumber >= flyingState.totalRounds ? 'التتويج' : 'الجولة التالية'} خلال {autoAdvanceSeconds} ث</span>}
+    </header>
+    <div className="min-h-0 flex-1">
+      <FlyingSkyWorld contestants={flyingRevealRoster(flyingState.results)} results={flyingState.results}
+        cumulativeMeters={flyingState.cumulativeMeters} activeSpotlightIndex={flyingState.activeSpotlightIndex}
+        cameraMode={flyingState.cameraMode} totalRounds={flyingState.totalRounds} cameraStartedAt={flyingState.cameraStartedAt} />
+    </div>
+  </section>;
 
   return (
     <div
@@ -642,12 +651,11 @@ export const FlyingTVRoot: React.FC<{
       <div className="absolute inset-0">
         <FlyingSkyWorld
           contestants={contestantsList}
-          results={isRevealingPhase ? flyingState.results : {}}
+          results={{}}
           cumulativeMeters={flyingState.cumulativeMeters}
-          activeSpotlightIndex={
-            isRevealingPhase ? flyingState.activeSpotlightIndex : 0
-          }
-          cameraMode={isRevealingPhase ? flyingState.cameraMode : 'global_overview'}
+          activeSpotlightIndex={0}
+          cameraMode="global_overview"
+          totalRounds={flyingState.totalRounds}
         />
       </div>
 
@@ -680,20 +688,7 @@ export const FlyingTVRoot: React.FC<{
                 </div>
               )}
 
-              {isCalculatingPhase && (
-                <div className="px-4 py-1.5 bg-amber-400 text-black border-4 border-black font-mono font-black text-xs sm:text-sm shadow-[4px_4px_0px_#000] flex items-center gap-2">
-                  <div className="w-3.5 h-3.5 border-2 border-black border-t-transparent animate-spin" />
-                  <span>تقييم الإجابات</span>
-                </div>
-              )}
 
-              {isRevealingPhase && flyingState.cameraMode === 'global_overview' && (
-                <div className="px-4 py-1.5 bg-amber-400 text-black border-4 border-black font-mono font-black text-xs sm:text-sm shadow-[4px_4px_0px_#000]">
-                  {flyingState.roundNumber >= flyingState.totalRounds
-                    ? `منصة التتويج خلال ${autoAdvanceSeconds} ثوان`
-                    : `السؤال التالي خلال ${autoAdvanceSeconds} ثوان`}
-                </div>
-              )}
 
               <button
                 type="button"
@@ -710,7 +705,6 @@ export const FlyingTVRoot: React.FC<{
             </div>
           </div>
 
-          {isRevealingPhase && flyingState.cameraMode==='global_overview' && <div className="relative z-30 mx-auto w-full max-w-lg px-3"><RoundCelebration award="أندر إجابة" names={roundLeaders(Object.values(flyingState.results).map(r=>({name:r.contestantName,score:r.roundMeters,eligible:!r.needsReview})))}/></div>}
       {/* Question Text in Prominent 16-Bit Font */}
           <div className="text-center py-1">
             <h1 className="font-mono font-black text-xl sm:text-3xl text-white leading-snug tracking-wide">
@@ -739,66 +733,12 @@ export const FlyingTVRoot: React.FC<{
           )}
 
           {/* Evaluation Progress Indicator during CALCULATING phase */}
-          {isCalculatingPhase && (
-            <div className="text-center py-1 text-xs text-zinc-400 font-mono font-bold">
-              يتم الآن كشف الإجابات المكررة وتقييم ندرة الأجوبة الصحيحة...
-            </div>
-          )}
         </div>
       </header>
 
       {/* =========================================================
           BOTTOM PIXEL-BOX LEADERBOARD OR CONTESTANT STATUS
           ========================================================= */}
-      {isRevealingPhase && flyingState.cameraMode === 'global_overview' ? (
-        <footer className="relative z-30 w-full max-w-5xl mx-auto p-4 mb-2 flex flex-col items-center">
-          <div className="w-full bg-[#0B0F17] border-4 border-black shadow-[6px_6px_0px_#000] p-3 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-xs font-mono font-black text-amber-400 shrink-0">
-              <Trophy className="w-4 h-4 text-amber-400" />
-              <span>ترتيب الارتفاع:</span>
-            </div>
-
-            <div className="flex-1 flex items-center gap-2 overflow-x-auto py-1">
-              {getRankedFlyingContestants(
-                flyingState.cumulativeMeters,
-                mergedContestants,
-                flyingState.results
-              ).map((player, idx) => (
-                <div
-                  key={player.id}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border-2 border-black text-xs shrink-0 shadow-[2px_2px_0px_#000]"
-                >
-                  <span
-                    className="w-2.5 h-2.5 border border-black shrink-0"
-                    style={{ backgroundColor: getGhostColor(idx) }}
-                  />
-                  <span className="font-mono font-black text-zinc-400">#{player.rank}</span>
-                  <span className="font-mono font-black text-white truncate max-w-[95px]">
-                    {player.name}
-                  </span>
-                  <span className="font-mono font-black text-black bg-amber-400 px-2 py-0.5 border border-black">
-                    {player.totalMeters} م
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                if (flyingState.roundNumber >= flyingState.totalRounds) {
-                  syncState({ ...stateRef.current, phase: 'PODIUM' });
-                } else {
-                  startQuestionRound(flyingState.roundNumber + 1, flyingState.usedQuestionIds);
-                }
-              }}
-              className="px-4 py-2 bg-white text-black border-4 border-black shadow-[4px_4px_0px_#000] font-mono font-black text-xs shrink-0 hover:translate-x-[-2px] hover:translate-y-[-2px] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-transform cursor-pointer"
-            >
-              {flyingState.roundNumber >= flyingState.totalRounds ? 'عرض التتويج' : 'السؤال التالي'}
-            </button>
-          </div>
-        </footer>
-      ) : (
         <footer className="relative z-30 w-full max-w-5xl mx-auto p-4 mb-2 flex flex-wrap items-center justify-center gap-2">
           {contestantsList.map((c, idx) => {
             const hasSub = Boolean(flyingState.submissions[c.id]);
@@ -822,7 +762,6 @@ export const FlyingTVRoot: React.FC<{
             );
           })}
         </footer>
-      )}
     </div>
   );
 };

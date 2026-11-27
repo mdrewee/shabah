@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from '@jest/globals';
 import { GUIDE_LANDMARKS_POOL, getRandomGuideLandmarks } from '../src/data/guideLandmarks';
-import { acceptsGuidePin, createInitialGuideState, loadPersistedGuideState, savePersistedGuideState } from '../src/pages/games/guide/guideSync';
-import { evaluateGuess } from '../src/services/guideScoring';
+import { acceptsGuidePin, allGuidePinsLocked, createInitialGuideState, loadPersistedGuideState, savePersistedGuideState } from '../src/pages/games/guide/guideSync';
+import { evaluateGuess, GUIDE_SCORING_LEGEND } from '../src/services/guideScoring';
 
 beforeEach(() => {
   const cache = new Map<string, string>();
@@ -39,13 +39,16 @@ test('pins require current member, current round, finite bounded coords and a fi
   const state = { ...createInitialGuideState('TEST'), phase: 'GUESSING' as const };
   const pin = { contestantId: 'p', roundNumber: state.roundNumber, landmarkId: state.currentLandmark.id, lat: 0, lng: 0 };
   expect(acceptsGuidePin(state, pin, ['p'])).toBe(true);
+  expect(acceptsGuidePin(state, { ...pin, contestantId: 'host_tv' }, ['host_tv'])).toBe(false);
   for (const bad of [{ ...pin, lat: NaN }, { ...pin, lng: 181 }, { ...pin, roundNumber: 0 }, { ...pin, landmarkId: 'old' }, { ...pin, contestantId: 'unknown' }]) {
     expect(acceptsGuidePin(state, bad, ['p'])).toBe(false);
   }
   expect(acceptsGuidePin({ ...state, guesses: { p: { ...pin, contestantName: 'p', submittedAt: 1 } } }, pin, ['p'])).toBe(false);
+  expect(allGuidePinsLocked({ ...state, guesses: { p: { ...pin, contestantName: 'p', submittedAt: 1 } } }, ['p', 'host_tv'])).toBe(true);
 });
 
 test('points depend on distance consistently across continent boundaries', () => {
+  expect(GUIDE_SCORING_LEGEND).toContain('حتى ٣٥٠٠ كم = ٣، حتى ٦٠٠٠ كم = ١');
   for (const [distance, points] of [[50,10],[51,8],[200,8],[201,6],[900,6],[901,3],[3379,3],[3500,3],[3501,1],[6000,1],[6001,0]]) {
     expect(evaluateGuess(distance, true).points).toBe(points);
     expect(evaluateGuess(distance, false).points).toBe(points);

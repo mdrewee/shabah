@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach,expect,jest,test } from '@jest/globals';
 import { webcrypto } from 'node:crypto';
 import { openJudgeReading,publicJudgeState,acceptJudgeVote,scoreJudgeParty } from '../src/pages/games/judge/judgeParty';
-import { JUDGE_CASES_POOL } from '../src/data/judgePredicaments';
+import { getNextUnplayedJudgeCase, JUDGE_CASES_POOL } from '../src/data/judgePredicaments';
 import { evaluateAllExcuses } from '../src/services/judgeEngine';
 import { callGeminiWithFallback } from '../src/services/geminiClient';
 import { JudgePartyStage } from '../src/pages/games/judge/components/JudgePartyStage';
@@ -44,10 +44,31 @@ test('ballot rejects self votes, unknown cards/members, duplicates, expired and 
   const other=state.party!.cards.find(c=>state.party!.authors![c.id]==='b')!.id;
   const vote={playerId:'a',cardId:other,caseId:state.currentPredicament.id,roundNumber:1};
   for(const p of [{...vote,cardId:own},{...vote,cardId:'fake'},{...vote,playerId:'fake'},{...vote,roundNumber:2}])expect(acceptJudgeVote(state,p,['a','b','c'],2000)).toBe(state);
-  expect(acceptJudgeVote(state,vote,['a','b','c'],10000)).toBe(state);
+  expect(acceptJudgeVote(state,vote,['a','b','c'],state.party!.phaseEndsAt)).toBe(state);
   const next=acceptJudgeVote(state,vote,['a','b','c'],2000);
   expect(next.party?.votes?.a).toBe(other);
   expect(acceptJudgeVote(next,vote,['a','b','c'],2000)).toBe(next);
+});
+
+test('the TV cannot turn a duel into a jury and a no-vote jury gives the best written excuse a bonus', () => {
+  const tv = { id: 'host_tv', name: 'شاشة العرض' };
+  const duel = openJudgeReading(initial(), [...participants.slice(0, 2), tv], 1000);
+  expect(duel.party?.mode).toBe('duel');
+  expect(duel.party?.participants).toHaveLength(2);
+  expect(duel.party?.phaseEndsAt).toBe(13000);
+  const jury = openJudgeReading(initial(), [...participants, tv], 1000);
+  jury.party!.aiVerdicts = judged(jury).map((row, index) => ({ ...row, score: index === 0 ? 4 : 0 }));
+  const result = scoreJudgeParty(jury);
+  expect(result.verdicts.a.score).toBe(2);
+  expect(result.verdicts.b.score).toBe(0);
+  expect(result.verdicts.host_tv).toBeUndefined();
+});
+
+test('the next case comes from a different category', () => {
+  for (const category of new Set(JUDGE_CASES_POOL.map(c => c.category))) {
+    const previous = JUDGE_CASES_POOL.find(c => c.category === category)!;
+    expect(getNextUnplayedJudgeCase([previous.id]).category).not.toBe(category);
+  }
 });
 
 test('jury votes dominate points, bonus is small, totals reveal once',()=>{

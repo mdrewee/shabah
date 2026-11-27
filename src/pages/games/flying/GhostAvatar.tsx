@@ -89,6 +89,7 @@ export interface GhostAvatarProps {
   showAnswerCard?: boolean;
   isSpotlight?: boolean;
   size?: 'sm' | 'md' | 'lg';
+  spriteOnly?: boolean;
 }
 
 export const GhostAvatar: React.FC<GhostAvatarProps> = ({
@@ -102,6 +103,7 @@ export const GhostAvatar: React.FC<GhostAvatarProps> = ({
   showAnswerCard = false,
   isSpotlight = false,
   size = 'md',
+  spriteOnly = false,
 }) => {
   const ghostColor = getGhostColor(colorIndex);
   const shadeColor = getDarkerShade(ghostColor);
@@ -118,7 +120,7 @@ export const GhostAvatar: React.FC<GhostAvatarProps> = ({
           RETRO PIXEL-BOX INFO CARD ABOVE GHOST
           Pure 16-Bit Arcade Brutalist Card (Zero Round Corners)
           ========================================================= */}
-      <div
+      {!spriteOnly && <><div
         className={`mb-2 flex flex-col items-center text-center bg-[#0B0F17] text-white border-4 border-black shadow-[4px_4px_0px_#000] p-2.5 transition-all duration-200 ${
           isSpotlight
             ? 'min-w-[200px] max-w-[250px] scale-105 z-30 shadow-[6px_6px_0px_#000]'
@@ -163,13 +165,13 @@ export const GhostAvatar: React.FC<GhostAvatarProps> = ({
       <div className="flex flex-col items-center -mt-2 mb-1">
         <div className="w-4 h-1 bg-black" />
         <div className="w-2 h-1 bg-black" />
-      </div>
+      </div></>}
 
       {/* =========================================================
           RETRO 16-BIT PIXEL GHOST SPRITE (96x108 SVG Canvas)
           Drawn on a pure pixel grid with crispEdges
           ========================================================= */}
-      <div className="relative w-20 h-24 flex items-center justify-center motion-safe:animate-pixel-float" style={{ filter: showAnswerCard && tier && FLYING_RARITY[tier].power >= 3 ? `drop-shadow(0 0 ${FLYING_RARITY[tier].power * 5}px ${FLYING_RARITY[tier].color})` : undefined }}>
+      <div className={`relative flex items-center justify-center ${spriteOnly ? 'w-full aspect-[8/9]' : 'w-20 h-24 motion-safe:animate-pixel-float'}`} style={{ filter: showAnswerCard && tier && FLYING_RARITY[tier].power >= 3 ? `drop-shadow(0 0 ${FLYING_RARITY[tier].power * 5}px ${FLYING_RARITY[tier].color})` : undefined }}>
         <svg
           viewBox="0 0 16 18"
           className="w-full h-full"

@@ -75,7 +75,7 @@ export const GameEntryModal: React.FC<GameEntryModalProps> = ({
 
             {/* 2. Subtitle */}
             <p className="text-sm font-bold text-[#0A0A0A]/60 text-center mb-5">
-              يظهر اسمك لكل الموجودين في اللوبي
+              {game.title} · يظهر اسمك لكل الموجودين في اللوبي
             </p>
 
             {/* 3. Name Input */}
@@ -84,14 +84,15 @@ export const GameEntryModal: React.FC<GameEntryModalProps> = ({
               value={playerName}
               onChange={(e) => onNameChange(e.target.value)}
               placeholder="اسمك هنا..."
-              maxLength={18}
               aria-label="اسم اللاعب"
               disabled={isSubmitting}
               className="placeholder-neutral-400 font-black text-center text-lg h-13 rounded-xl border-2 border-[#0A0A0A] w-full mb-4 bg-white text-[#0A0A0A] focus:outline-none"
             />
 
+            {playerName.length >= 18 && <p role="status" className="mb-3 text-center text-sm font-bold text-amber-800">الحد الأقصى للاسم ١٨ حرفًا.</p>}
+
             {error && (
-              <div className="w-full py-1.5 px-3 mb-3 bg-red-100 border border-red-400 rounded-lg text-red-700 text-xs font-black">
+              <div role="alert" className="w-full py-1.5 px-3 mb-3 bg-red-100 border border-red-400 rounded-lg text-red-700 text-xs font-black">
                 {error}
               </div>
             )}

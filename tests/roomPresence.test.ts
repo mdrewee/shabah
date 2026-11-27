@@ -7,6 +7,20 @@ jest.mock('../src/lib/supabaseClient', () => ({
   supabase: { channel: jest.fn(), rpc: jest.fn(), getChannels: () => [] },
 }));
 
+test('a verified refresh snapshot is available before the lazy mobile screen mounts', async () => {
+  const rpc = jest.mocked(supabase.rpc);
+  const roomCode = 'SR24';
+  const payload = { _hostSequence: 1001, phase: 'INPUT', roundNumber: 3 };
+  rpc.mockReturnValueOnce(Promise.resolve({ data: { event: 'ARABIC_STATE_SYNC', payload }, error: null }) as never);
+  expect(await roomBus.restoreRoomSnapshot(roomCode)).toBe(true);
+  expect(roomBus.getLatestGameState(roomCode, 'ARABIC_STATE_SYNC')).toEqual(payload);
+  expect(roomBus.getLatestGameState(roomCode, 'GUIDE_STATE_SYNC')).toBeUndefined();
+
+  rpc.mockReturnValueOnce(Promise.resolve({ data: null, error: null }) as never);
+  expect(await roomBus.restoreRoomSnapshot(roomCode)).toBe(true);
+  expect(roomBus.getLatestGameState(roomCode, 'ARABIC_STATE_SYNC')).toBeUndefined();
+});
+
 test('switching games keeps the room code and clears readiness after server approval', async () => {
   const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => 'a'.repeat(64) } });

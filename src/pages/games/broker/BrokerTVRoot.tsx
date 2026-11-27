@@ -1,5 +1,5 @@
 import {useRoundTransition} from '../../../hooks/useRoundTransition';
-import { beginBrokerNegotiation, nextBrokerRound, finishBrokerRound, acceptsBrokerPitch } from './brokerRound';
+import { beginBrokerNegotiation, nextBrokerRound, finishBrokerRound, acceptsBrokerPitch, allBrokerTurnsFinished } from './brokerRound';
 import { evaluateBrokerPitch } from '../../../services/brokerEngine';
 import { useGameState } from '../../../hooks/useGameState';
 import React, { useState, useEffect, useRef } from 'react';
@@ -113,15 +113,26 @@ export const BrokerTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
       const cur = brokerStateRef.current;
       const member = mergedContestantsRef.current.find(c => c.id === p?.playerId);
       const bid = cur.contestantBids[p?.playerId];
+      if (p?.action === 'finishTurn') {
+        if (!member || member.id === 'host_tv' || !bid?.bulletsRemaining || pendingPitches.current.has(member.id) ||
+            cur.phase !== 'NEGOTIATION' || p.roundNumber !== cur.roundNumber ||
+            p.itemId !== cur.currentItem.id || p.gameStartedAt !== cur.gameStartedAt) return;
+        const updated = { ...cur, contestantBids: { ...cur.contestantBids, [member.id]: { ...bid, bulletsRemaining: 0 } } };
+        setBrokerState(updated);
+        roomBus.broadcastBrokerSync(roomCode, updated);
+        return;
+      }
       if (!member || !acceptsBrokerPitch(cur, p, mergedContestantsRef.current.map(c => c.id), pendingPitches.current.has(p?.playerId))) return;
       pendingPitches.current.set(p.playerId, p.requestId);
       try {
         const result = await evaluateBrokerPitch({ item: cur.currentItem, pitch: p.pitch,
-          currentBid: bid.currentBid, isFirstBid: bid.currentBid === 0, playerName: member.name });
+          currentBid: bid.currentBid, isFirstBid: bid.currentBid === 0, playerName: member.name,
+          attemptsUsed: 7 - bid.bulletsRemaining, priorArgument: bid.bestQuote, lastBidIncrease: bid.lastBidIncrease });
         const latest = brokerStateRef.current;
         if (latest.phase !== 'NEGOTIATION' || latest.roundNumber !== cur.roundNumber ||
             latest.currentItem.id !== cur.currentItem.id || latest.gameStartedAt !== cur.gameStartedAt || Date.now() >= (latest.roundEndsAt || 0)) throw new Error('انتهت الجولة');
-        const updated = { ...bid, currentBid: result.newBid, bulletsRemaining: bid.bulletsRemaining - 1,
+        const updated = { ...bid, currentBid: result.newBid,
+          bulletsRemaining: result.newBid >= cur.currentItem.estimatedValue ? 0 : bid.bulletsRemaining - 1,
           lastRequestId: p.requestId, lastBidTimestamp: result.bidIncrease > 0 ? Date.now() : bid.lastBidTimestamp,
           lastBidIncrease: result.bidIncrease,
           bestQuote: result.persuasionScore > (bid.bestPitchScore || 0) ? p.pitch : bid.bestQuote,
@@ -131,12 +142,6 @@ export const BrokerTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
         setBrokerState(next);
         roomBus.broadcastBrokerSync(roomCode, next);
         roomBus.emit('AI_RESPONSE', roomCode, { kind:'broker', requestId:p.requestId, result });
-        const activeIds = mergedContestantsRef.current.map(c => c.id);
-        if (activeIds.length && activeIds.every(id => next.contestantBids[id]?.bulletsRemaining === 0)) {
-          const finished = finishBrokerRound(next, activeIds);
-          setBrokerState(finished);
-          roomBus.broadcastBrokerSync(roomCode, finished);
-        }
       } catch {
         roomBus.emit('AI_RESPONSE', roomCode, { kind:'broker', requestId:p.requestId, error:true });
       } finally { if (pendingPitches.current.get(p.playerId) === p.requestId) pendingPitches.current.delete(p.playerId); }
@@ -224,6 +229,10 @@ export const BrokerTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
     setBrokerState(next);
     roomBus.broadcastBrokerSync(roomCode, next);
   };
+
+  useEffect(() => {
+    if (allBrokerTurnsFinished(brokerStateRef.current, mergedContestants.map(c => c.id))) handleRoundTimeout();
+  }, [brokerState.phase, brokerState.contestantBids, mergedContestants]);
 
   // Start Game from Lobby: initialize 5 rounds, item 1, go to SHOWCASE
   const handleStartGame = () => {
@@ -372,7 +381,7 @@ export const BrokerTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
         winnerName={brokerState.winnerName || 'لا توجد سومات'}
         winningBid={brokerState.winningBid || 0}
         winningQuote={brokerState.winningQuote || undefined}
-        contestants={Object.values(brokerState.contestantBids)}
+        contestants={Object.values(brokerState.contestantBids).filter(p => p.playerId !== 'host_tv')}
         isHost
         onNextRound={handleAdvanceFromRound}
         onReturnToLobby={handleReturnToLobby}
@@ -384,7 +393,7 @@ export const BrokerTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
   if (brokerState.phase === 'FINAL_PODIUM') {
     return (
       <BrokerFinalPodium
-        contestants={Object.values(brokerState.contestantBids)}
+        contestants={Object.values(brokerState.contestantBids).filter(p => p.playerId !== 'host_tv')}
         totalRounds={brokerState.totalRounds}
         onReturnToLobby={handleReturnToLobby}
         isHost

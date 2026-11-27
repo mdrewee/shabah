@@ -28,7 +28,7 @@ export function savePersistedBrokerState(roomCode: string, state: BrokerRoomStat
 export function sortAndRankContestants(
   bids: Record<string, ContestantBidState>
 ): ContestantBidState[] {
-  const list = Object.values(bids);
+  const list = Object.values(bids).filter(p => p.playerId !== 'host_tv');
   list.sort((a, b) => {
     if (b.currentBid !== a.currentBid) {
       return b.currentBid - a.currentBid;

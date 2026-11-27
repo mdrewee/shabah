@@ -10,12 +10,13 @@ const remarks = [
   'الشبح يراجع حكمه قبل ما يعلنه',
 ];
 
-export function ShabahThinkingScreen({ title = 'الشبح يحلّل الإجابات', onRetry, onReturnToLobby, failureMessage, onCancel }: {
+export function ShabahThinkingScreen({ title = 'الشبح يحلّل الإجابات', onRetry, onReturnToLobby, failureMessage, onCancel, showWaitingGame = true }: {
   title?: string;
   onRetry?: () => void;
   onReturnToLobby?: () => void;
   failureMessage?: string;
   onCancel?:()=>void;
+  showWaitingGame?: boolean;
 }) {
   const confirm = useConfirmation();
   const [seconds, setSeconds] = useState(0);
@@ -35,7 +36,7 @@ export function ShabahThinkingScreen({ title = 'الشبح يحلّل الإجا
       <p role="status" className="mt-2 max-w-md text-xs leading-6 text-zinc-300">
         {failureMessage || (seconds >= 35 ? 'التحليل أخذ وقت أطول من المعتاد. ننتظر النتيجة، ويمكن للمضيف إعادة المحاولة أو الرجوع للوبي.' : remarks[Math.floor(seconds / 6) % remarks.length])}
       </p>
-      {!failureMessage && <WaitingChase/>}
+      {showWaitingGame && !failureMessage && <WaitingChase/>}
       <div aria-hidden="true" className="mt-6 flex justify-center gap-2">
         {[0, 1, 2].map((index) => <span key={index}
           className="h-2 w-2 rounded-full bg-cyan-200 motion-safe:animate-pulse"

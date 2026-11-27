@@ -1,7 +1,6 @@
 import {RoundCelebration,roundLeaders} from '../../../../components/common/RoundCelebration';
 import {ResultNavigator,resultCardId} from '../../../../components/common/ResultNavigator';
-import {WaitingChase} from '../../../../components/common/WaitingChase';
-import { searchDraftPlayers } from '../draftPlayers';
+import { canonicalDraftName, fitsDraftSlot, isDraftPlayerTaken, resolveDraftPlayer, searchDraftPlayers } from '../draftPlayers';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   CoachSlotKey,
@@ -14,8 +13,7 @@ import {
 } from '../types';
 import { ShabahTacticalPitch } from './ShabahTacticalPitch';
 import {
-  hybridFootballSearch,
-  searchLocalFootballPlayers,
+  normalizeFootballSearch,
   FootballSearchResult,
 } from '../footballDataService';
 import { formatPercent, toArabicNumber } from '../../../../utils/numberFormat';
@@ -23,20 +21,6 @@ import { Search, CheckCircle, AlertCircle, Clock, Check, X, Lock, ShieldCheck } 
 import { sound } from '../../../../lib/audio';
 import { roomBus } from '../../../../lib/roomBus';
 import { TOTAL_COACH_ROUNDS } from '../coachConfig';
-
-/**
- * Robust local search normalizer preventing runtime ReferenceError
- */
-export function normalizeFootballSearch(text: string): string {
-  if (!text) return '';
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/[أإآ]/g, 'ا')
-    .replace(/ة/g, 'ه')
-    .replace(/ى/g, 'ي')
-    .replace(/[\u064B-\u065F]/g, ''); // إزالة التشكيل
-}
 
 const defaultRoundTime = 30; // 30 ثانية لكل جولة مباشرة
 
@@ -145,7 +129,7 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
 
   // Immediate 100% In-Memory Local Search (Zero Latency, Zero Network, Zero CORS)
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
+    const val = e.target.value.slice(0, 140);
     setSearchInput(val);
     setErrorMessage(null);
 
@@ -176,20 +160,12 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
     sound.playClick();
     setErrorMessage(null);
 
-    const norm = normalizeFootballSearch(player.name);
-    const claim = claimedPlayers[norm];
-
-    // Local instant lock check
-    if (claim) {
-      sound.playBuzz?.();
-      setErrorMessage(claim.contestantId === contestantId ? 'اللاعب موجود في تشكيلتك بالفعل؛ اختر لاعباً آخر.' : `اللاعب حجزه ${claim.contestantName} قبلك! اختر لاعباً آخر بسرعة`);
+    if (isDraftPlayerTaken(player.name, [...Object.keys(claimedPlayers), ...usedPlayersAcrossMatch])) {
+      setErrorMessage('هذا اللاعب تم اختياره مسبقاً');
       return;
     }
-
-    // Global match blocklist check
-    if (usedPlayersAcrossMatch && usedPlayersAcrossMatch.includes(norm)) {
-      sound.playBuzz?.();
-      setErrorMessage('هذا اللاعب تم استخدامه في جولة سابقة! اختر لاعباً آخر');
+    if (!fitsDraftSlot(player.position, selectedSlotKey)) {
+      setErrorMessage('مركز اللاعب لا يطابق الخانة المختارة.');
       return;
     }
 
@@ -220,20 +196,17 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
     setErrorMessage(null);
 
     const clean = searchInput.trim();
-    if (!clean) return;
-
-    const norm = normalizeFootballSearch(clean);
-    const claim = claimedPlayers[norm];
-
-    if (claim) {
-      sound.playBuzz?.();
-      setErrorMessage(claim.contestantId === contestantId ? 'اللاعب موجود في تشكيلتك بالفعل؛ اختر لاعباً آخر.' : `اللاعب حجزه ${claim.contestantName} قبلك! اختر لاعباً آخر بسرعة`);
+    if (clean.length < 2) {
+      setErrorMessage('اكتب اسم اللاعب أولاً.');
       return;
     }
 
-    if (usedPlayersAcrossMatch && usedPlayersAcrossMatch.includes(norm)) {
-      sound.playBuzz?.();
-      setErrorMessage('هذا اللاعب تم استخدامه في جولة سابقة! اختر لاعباً آخر');
+    if (isDraftPlayerTaken(clean, [...Object.keys(claimedPlayers), ...usedPlayersAcrossMatch])) {
+      setErrorMessage('هذا اللاعب تم اختياره مسبقاً');
+      return;
+    }
+    if (!fitsDraftSlot(resolveDraftPlayer(clean)?.position, selectedSlotKey)) {
+      setErrorMessage('مركز اللاعب لا يطابق الخانة المختارة.');
       return;
     }
 
@@ -404,58 +377,6 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
       </div>
 
       {claimPending && <p role="status" className="text-amber-300 text-sm">بانتظار تأكيد حجز اللاعب…</p>}
-      {/* 2. Step 1: Select Position (Strict Selection Route) */}
-      <div className="w-full flex flex-col gap-1.5 p-3 rounded-2xl bg-zinc-950 border border-zinc-800 shadow-md">
-        <div className="flex items-center justify-between text-xs font-black">
-          <span className="text-zinc-300">الخطوة ١: حدد المركز في تشكيلتك:</span>
-          <span className="text-emerald-400 font-mono text-[11px]">
-            المركز المحدد: {activeSlotConfig.label}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-5 gap-1.5 w-full mt-1">
-          {COACH_SLOTS_ORDER.map((slotKey) => {
-            const pick = squad.slots[slotKey];
-            const isFilled = Boolean(pick?.playerName && !pick.playerName.includes('خانة فارغة'));
-            const isSelected = selectedSlotKey === slotKey;
-            const slotLabel = COACH_SLOT_CONFIG[slotKey].label;
-
-            return (
-              <button
-                key={slotKey}
-                type="button"
-                onClick={() => {
-                  sound.playClick();
-                  if (!hasPickedThisRound) setSelectedSlotKey(slotKey);
-                }}
-                className={`p-2 rounded-xl border flex flex-col items-center justify-center text-center transition-all cursor-pointer active:scale-95 ${
-                  isSelected
-                    ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.4)] ring-2 ring-emerald-300'
-                    : isFilled
-                    ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500'
-                    : 'bg-black border-dashed border-zinc-700 text-zinc-400 hover:border-zinc-500'
-                }`}
-              >
-                {isFilled ? (
-                  <>
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-zinc-800 text-emerald-400">
-                      {slotLabel}
-                    </span>
-                    <span className="font-black text-[10px] truncate max-w-full mt-1">
-                      {pick?.playerName}
-                    </span>
-                  </>
-                ) : (
-                  <span className="font-black text-[10px] leading-tight text-center py-1">
-                    اختر {slotLabel}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* 3. Steps 2 & 3: Search & Confirm Exclusive Player Lock */}
       {hasPickedThisRound || isSelectedSlotFilled ? (
         /* Slot Already Filled by contestant */
@@ -473,10 +394,9 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
             </span>
           </div>
 
-          <p className="text-xs font-bold text-zinc-400 mt-1">
-            تم اعتماد اختيارك. انتظر الجولة التالية لاختيار لاعب جديد.
+          <p role="status" className="text-sm font-bold text-emerald-300 mt-1">
+            تم اعتماد اختيارك.
           </p>
-          {hasPickedThisRound && <WaitingChase/>}
         </div>
       ) : (
         /* Active Search & Claim State */
@@ -502,9 +422,10 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                 <Search className="w-5 h-5 text-neutral-400 absolute right-3 top-3.5 pointer-events-none" />
               </div>
 
+              {searchInput.length >= 140 && <p role="status" className="text-sm text-amber-800">الحد الأقصى ١٤٠ حرفًا.</p>}
               {/* Error message */}
               {errorMessage && (
-                <div className="p-2.5 rounded-xl bg-red-100 border border-red-400 text-red-700 text-xs font-black flex items-center gap-1.5 animate-shake">
+                <div role="alert" className="p-2.5 rounded-xl bg-red-100 border border-red-400 text-red-700 text-xs font-black flex items-center gap-1.5 animate-shake">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   <span>{errorMessage}</span>
                 </div>
@@ -514,17 +435,18 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
               {suggestions.length > 0 && (
                 <div className="max-h-56 overflow-y-auto flex flex-col gap-1.5 border-t border-neutral-200 pt-2">
                   {suggestions.map((p) => {
-                    const norm = normalizeFootballSearch(p.name);
+                    const norm = normalizeFootballSearch(canonicalDraftName(p.name));
                     const claim = claimedPlayers[norm];
                     const isClaimedByOther = Boolean(claim);
                     const isUsedPrev = usedPlayersAcrossMatch && usedPlayersAcrossMatch.includes(norm);
-                    const isBlocked = isClaimedByOther || isUsedPrev;
+                    const wrongPosition = !fitsDraftSlot(p.position, selectedSlotKey);
+                    const isBlocked = isClaimedByOther || isUsedPrev || wrongPosition;
 
                     return (
                       <button
                         key={p.id}
                         type="button"
-                        disabled={isBlocked || claimPending || localSecondsLeft<=0}
+                        disabled={claimPending || localSecondsLeft<=0}
                         onClick={() => handleSelectSuggestedPlayer(p)}
                         className={`w-full p-2.5 rounded-xl text-right flex items-center justify-between border transition-all ${
                           isBlocked
@@ -552,12 +474,14 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
                         {isClaimedByOther ? (
                           <span className="px-2 py-1 rounded bg-red-100 text-red-700 text-[10px] font-black flex items-center gap-1 shrink-0">
                             <Lock className="w-3 h-3 text-red-600" />
-                            <span>حجزه: {claim.contestantName}</span>
+                            <span>هذا اللاعب تم اختياره مسبقاً</span>
                           </span>
                         ) : isUsedPrev ? (
                           <span className="px-2 py-1 rounded bg-zinc-200 text-zinc-600 text-[10px] font-black shrink-0">
-                            استُخدم سابقاً
+                            هذا اللاعب تم اختياره مسبقاً
                           </span>
+                        ) : wrongPosition ? (
+                          <span className="text-xs font-bold text-red-700">مركز غير مطابق</span>
                         ) : (
                           <span className="px-3 py-1.5 rounded-lg bg-[#0A0A0A] hover:bg-emerald-600 text-white text-xs font-black shrink-0 transition-colors">
                             اعتماد كـ {activeSlotConfig.label}
@@ -571,16 +495,14 @@ export const CoachDraftMobileView: React.FC<CoachDraftMobileViewProps> = ({
 
               <p className="text-[11px] text-neutral-500">الأسماء خارج البنك تخضع للتحقق؛ اكتب الاسم الكامل لتجنب تشابه الأسماء.</p>
               {/* Custom Name Entry Button */}
-              {searchInput.trim().length >= 2 && (
-                <button
-                  type="button"
-                  onClick={handleConfirmCustomName}
-                  disabled={claimPending || localSecondsLeft<=0}
-                  className="w-full py-3 rounded-xl bg-[#0A0A0A] hover:bg-emerald-700 text-white font-black text-xs sm:text-sm transition-transform active:scale-95 cursor-pointer shadow-[2px_2px_0px_#0A0A0A]"
-                >
-                  اعتماد "{searchInput.trim()}" كـ {activeSlotConfig.label}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleConfirmCustomName}
+                disabled={claimPending || localSecondsLeft<=0}
+                className="w-full py-3 rounded-xl bg-[#0A0A0A] hover:bg-emerald-700 text-white font-black text-xs sm:text-sm transition-transform active:scale-95 cursor-pointer shadow-[2px_2px_0px_#0A0A0A]"
+              >
+                {searchInput.trim().length >= 2 ? `اعتماد «${searchInput.trim()}»` : 'اعتماد الاسم المكتوب'} · {activeSlotConfig.label}
+              </button>
             </div>
           </div>
         </div>
