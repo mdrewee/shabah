@@ -22,7 +22,6 @@ import {
   createInitialFlyingState,
   getPersistedFlyingState,
   savePersistedFlyingState,
-  clearPersistedFlyingState,
   getRankedFlyingContestants,
 } from './flyingSync';
 import { stripEmojis } from './flyingEngine';
@@ -112,24 +111,8 @@ const FlyingMobilePlayer: React.FC<{
   const [submittedAnswer, setSubmittedAnswer] = useState(() => flyingState.submissions[playerId]?.answer ?? '');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  const handleReturnToLobby = useCallback(() => {
-    sound.playClick();
-    clearPersistedFlyingState(roomCode);
-    const lobbyState: FlyingRoomState = {
-      ...createInitialFlyingState(roomCode),
-      phase: 'LOBBY',
-      cumulativeMeters: {},
-      submissions: {},
-      results: {},
-    };
-    stateRef.current = lobbyState;
-    setFlyingState(lobbyState);
-    savePersistedFlyingState(roomCode, lobbyState);
-    setHasSubmittedThisRound(false);
-    setAnswerInput('');
-    setEmptyWarning(false);
-    setSubmittedAnswer('');
-    roomBus.broadcastReturnToLobby(roomCode);
+  const handleReturnToLobby = useCallback(async () => {
+    if (!await roomBus.broadcastReturnToLobby(roomCode)) alert('تعذر الرجوع للوبي، حاول مرة أخرى.');
   }, [roomCode]);
 
   const questionSeconds = useSafeCountdown(flyingState.phase === 'QUESTION'
@@ -282,6 +265,7 @@ const FlyingMobilePlayer: React.FC<{
       };
       stateRef.current = lobbyState;
       setFlyingState(lobbyState);
+      setEmptyWarning(false);
       setHasSubmittedThisRound(false);
       setAnswerInput('');
       setSubmittedAnswer('');

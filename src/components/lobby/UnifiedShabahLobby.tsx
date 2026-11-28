@@ -20,6 +20,8 @@ export interface ShabahLobbyPlayer {
   isOnline?: boolean;
 }
 
+export type LobbyManualStart = { disabled: boolean; onStart: () => void };
+
 export interface UnifiedShabahLobbyProps {
   roomCode: string;
   gameId?: string;
@@ -34,6 +36,7 @@ export interface UnifiedShabahLobbyProps {
   isReady?: boolean;
   onToggleReady?: () => void;
   onStartGame?: () => void;
+  manualStart?: LobbyManualStart;
   onKickPlayer?: (playerId: string) => void;
   onGameSync?: (gameId?: string) => void;
   minPlayers?: number;
@@ -55,6 +58,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
   isReady: propIsReady,
   onToggleReady,
   onStartGame,
+  manualStart,
   onKickPlayer,
   onGameSync,
   minPlayers = 1,
@@ -283,7 +287,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
   const [autoStartCountdown, setAutoStartCountdown] = useState<number | null>(null);
 
   useEffect(() => {
-    if (gameStartedNotification) {
+    if (gameStartedNotification || manualStart) {
       setAutoStartCountdown(null);
       return;
     }
@@ -305,7 +309,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
     } else {
       setAutoStartCountdown(null);
     }
-  }, [readyCount, totalCount, canHostStart, gameStartedNotification]);
+  }, [readyCount, totalCount, canHostStart, gameStartedNotification, Boolean(manualStart)]);
 
   // Requirement 6: Contextual Top Button (إنهاء الغرفة vs خروج)
   const handleTopExitClick = async () => {
@@ -603,7 +607,7 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
       </main>
 
       {/* 3. Bottom Action Bar with Requirement 7 Iridescent Hover */}
-      {isHostRole && !canHostStart && <p role="status" className="text-center text-sm text-amber-200">
+      {isHostRole && !manualStart && !canHostStart && <p role="status" className="text-center text-sm text-amber-200">
         {totalCount > matchedGame.maxPlayers
           ? `الحد الأقصى ${matchedGame.maxPlayers} لاعبين · الموجودون الآن ${totalCount}`
           : `نحتاج ${requiredPlayers} لاعبين للبدء · الموجودون الآن ${totalCount}`}
@@ -612,7 +616,11 @@ export const UnifiedShabahLobby: React.FC<UnifiedShabahLobbyProps> = ({
         <div className="shabah-border-wrap">
           <div className="shabah-border-inner">
             <div className="shabah-surface p-3 sm:p-4">
-              {role === 'contestant' ? (
+              {manualStart ? (isHostRole
+                ? <button type="button" disabled={manualStart.disabled || gameStartedNotification}
+                    onClick={manualStart.onStart} className="shabah-btn-black min-h-12 w-full rounded-xl py-3 font-black disabled:cursor-not-allowed disabled:opacity-50">ابدأ</button>
+                : <p role="status" className="py-3 text-center font-bold text-neutral-800">بانتظار الهوست</p>
+              ) : role === 'contestant' ? (
                 <div className="flex flex-col gap-2.5 w-full">
                   <button
                     type="button"

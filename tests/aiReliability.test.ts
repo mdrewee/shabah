@@ -13,14 +13,14 @@ beforeEach(()=>{
 });
 afterEach(()=>{jest.useRealTimers();});
 
-test('ten simultaneous AI jobs are bounded to three active calls and all finish',async()=>{
+test('ten simultaneous AI jobs are bounded to six active calls and all finish',async()=>{
   const gates:Array<()=>void>=[];let active=0,peak=0;
   invoke.mockImplementation(async()=>{active++;peak=Math.max(peak,active);await new Promise<void>(resolve=>gates.push(resolve));active--;return {data:{text:'ok'},error:null} as any;});
   const tasks=Array.from({length:10},()=>requestRoomAI('ABCD','test',{}));
-  await tick();expect(invoke).toHaveBeenCalledTimes(3);
+  await tick();expect(invoke).toHaveBeenCalledTimes(6);
   while(invoke.mock.calls.length<10 || gates.length){gates.splice(0).forEach(resolve=>resolve());await tick();}
   expect(await Promise.all(tasks)).toEqual(Array(10).fill('ok'));
-  expect(peak).toBe(3);
+  expect(peak).toBe(6);
 });
 
 test('a temporary upstream error retries once; access/configuration errors do not retry',async()=>{
@@ -40,10 +40,10 @@ test('expired queued AI jobs never make a late request',async()=>{
   jest.useFakeTimers();Object.defineProperty(globalThis,'window',{configurable:true,value:{setTimeout,clearTimeout}});
   invoke.mockImplementation(async(_name,options)=>new Promise(resolve=>options?.signal?.addEventListener('abort',()=>resolve({data:null,error:new Error('aborted')} as any),{once:true})));
   const settled=Promise.allSettled(Array.from({length:10},()=>requestRoomAI('ABCD','test',{})));
-  await tick();expect(invoke).toHaveBeenCalledTimes(3);
+  await tick();expect(invoke).toHaveBeenCalledTimes(6);
   await jest.advanceTimersByTimeAsync(41000);
   expect((await settled).every(result=>result.status==='rejected')).toBe(true);
-  expect(invoke).toHaveBeenCalledTimes(3);
+  expect(invoke).toHaveBeenCalledTimes(6);
   invoke.mockResolvedValue({data:{text:'next'},error:null} as any);
   expect(await requestRoomAI('ABCD','test',{})).toBe('next');
 });

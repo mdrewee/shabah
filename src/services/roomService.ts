@@ -24,6 +24,8 @@ export async function createRoom(
   gameId: string,
   hostId: string
 ): Promise<{ ok: true; code: string } | { ok: false; error: string }> {
+  const game = normalizeGameId(gameId);
+  if (!game) return { ok: false, error: 'هذه اللعبة غير متاحة.' };
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
@@ -45,7 +47,7 @@ export async function createRoom(
       ).join('');
       const { data, error, status } = await supabase.rpc('create_shabah_room', {
         code,
-        game: normalizeGameId(gameId) || 'ai-judge',
+        game,
         player: hostId,
         secret: token,
       }).abortSignal(controller.signal);

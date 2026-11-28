@@ -7,7 +7,6 @@
 export type ShabahGameCanonicalId =
   | 'ai-coach'
   | 'ai-broker'
-  | 'ai-judge'
   | 'ai-arabic'
   | 'ai-guide'
   | 'ai-flying';
@@ -20,12 +19,6 @@ export function normalizeGameId(
   const clean = rawId.trim().toLowerCase();
 
   switch (clean) {
-    case 'ai-judge':
-    case 'ai-lawyer':
-    case 'judge':
-    case 'lawyer':
-      return 'ai-judge';
-
     case 'ai-coach':
     case 'draft-5':
     case 'draft':

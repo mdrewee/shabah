@@ -285,16 +285,10 @@ export const GuideTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
     }
   }, [roomCode]);
 
-  const handleReturnToLobby = useCallback(() => {
+  const handleReturnToLobby = useCallback(async () => {
     if (!window.confirm('ترجع للوبي وتنهي الجولة الحالية؟')) return;
-    sound.stopAllAudio();
-    const nextState: GuideRoomState = {
-      ...createInitialGuideState(roomCode),
-      phase: 'LOBBY',
-    };
-    roomBus.broadcastReturnToLobby(roomCode);
-    syncState(nextState);
-  }, [roomCode, syncState]);
+    if (!await roomBus.broadcastReturnToLobby(roomCode)) alert('تعذر الرجوع للوبي، حاول مرة أخرى.');
+  }, [roomCode]);
 
   // Audio Kill-Switch on phase changes
   useEffect(() => {

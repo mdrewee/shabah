@@ -8,15 +8,19 @@ export function RoomHostControls({ roomCode, syncEvent }: { roomCode: string; sy
   const navigate = useNavigate();
   const [phase, setPhase] = useState('LOBBY');
   const [error, setError] = useState('');
-  useEffect(() => roomBus.on(syncEvent, (event: any) => {
-    const state = event?.data ?? event;
-    if (state?.phase) setPhase(state.phase);
-  }, roomCode), [roomCode, syncEvent]);
+  useEffect(() => {
+    const offLobby = roomBus.on('RETURN_TO_LOBBY', () => { setPhase('LOBBY'); setError(''); }, roomCode);
+    const offSync = roomBus.on(syncEvent, (event: any) => {
+      const state = event?.data ?? event;
+      if (state?.phase) setPhase(state.phase);
+    }, roomCode);
+    return () => { offLobby(); offSync(); };
+  }, [roomCode, syncEvent]);
   if (phase === 'LOBBY') return null;
   return <nav aria-label="تحكم المضيف" dir="rtl" className="sticky top-0 z-50 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-white/15 bg-zinc-950/95 px-3 py-2 text-xs font-bold text-white backdrop-blur">
     <span className="text-zinc-400">المضيف · <bdi>{roomCode}</bdi></span>
     <div className="flex flex-wrap gap-2">
-      {syncEvent !== 'JUDGE_STATE_SYNC' && ['JUDGING', 'CALCULATING', 'EVALUATING'].includes(phase) && <button type="button" onClick={() => window.location.reload()} className="min-h-10 rounded-xl border border-cyan-300/30 px-3 text-cyan-200">إعادة التحليل</button>}
+      {['JUDGING', 'CALCULATING', 'EVALUATING'].includes(phase) && <button type="button" onClick={() => window.location.reload()} className="min-h-10 rounded-xl border border-cyan-300/30 px-3 text-cyan-200">إعادة التحليل</button>}
       <button type="button" onClick={async () => {
         if (!await confirm('ترجع الجميع للوبي وتنهي الجولة الحالية؟')) return;
         setError('');

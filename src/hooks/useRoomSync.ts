@@ -111,10 +111,9 @@ export function useRoomSync(
     const resetReadiness = () => {
       try {
         // Reset readiness in local component state and update roomBus
-        setConnectedPlayers((prev) => prev.map((p) => ({ ...p, isReady: false })));
+        setConnectedPlayers((prev) => prev.some(p => p.isReady) ? prev.map((p) => ({ ...p, isReady: false })) : prev);
         const curPlayerId = playerIdRef.current;
         if (curPlayerId && !isHostRef.current) {
-          roomBus.setPlayerReady(cleanCode, curPlayerId, false);
           void roomBus.trackPlayer(cleanCode, {
             id: curPlayerId,
             name: playerNameRef.current || 'متسابق',

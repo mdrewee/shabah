@@ -11,6 +11,7 @@ function RouteScrollReset() {
 
 const NameEntryView = React.lazy(() => import('./pages/NameEntryView').then(({ NameEntryView }) => ({ default: NameEntryView })));
 const TVScreenView = React.lazy(() => import('./pages/TVScreenView').then(({ TVScreenView }) => ({ default: TVScreenView })));
+const LetterRushDisplay = React.lazy(() => import('./pages/games/arabic/LetterRushStage').then(({ LetterRushDisplay }) => ({ default: LetterRushDisplay })));
 const PlayerMobileView = React.lazy(() => import('./pages/PlayerMobileView').then(({ PlayerMobileView }) => ({ default: PlayerMobileView })));
 const OfficeDashboard = React.lazy(() => import('./pages/OfficeDashboard'));
 const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard'));
@@ -55,7 +56,7 @@ export function App() {
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/subscription" element={<SubscriptionPage />} />
 
-          {/* 1. Home View (Shabah Hero + Coverflow 5 Games + Room Code Box) */}
+          {/* 1. Home View (Shabah Hero + Coverflow + Room Code Box) */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/account" element={<ShabahAccountPage/>}/>
           <Route path="/games" element={<ShabahGamesPage/>}/>
@@ -68,7 +69,7 @@ export function App() {
           <Route path="/join" element={<NameEntryView />} />
           <Route path="/room/:code/join" element={<NameEntryView />} />
 
-          {/* 3. Official 5 Shabah Games Routes (/game/ai-judge, /game/ai-coach, /game/ai-broker, /game/ai-arabic, /game/ai-guide) */}
+          <Route path="/display/letter-rush/:code" element={<LetterRushDisplay />} />
           <Route path="/game/:gameId" element={<TVScreenView />} />
           <Route path="/game/:gameId/tv" element={<TVScreenView />} />
           <Route path="/game/:gameId/:code" element={<TVScreenView />} />
@@ -76,21 +77,18 @@ export function App() {
           <Route path="/game/:gameId/play" element={<PlayerMobileView />} />
           <Route path="/game/:gameId/:code/play" element={<PlayerMobileView />} />
 
-          {/* 4. Room Host / TV Views for the 5 Games */}
+          {/* 4. Room Host / TV Views */}
           <Route path="/room/:code" element={<NameEntryView />} />
           <Route path="/room/:code/tv" element={<TVScreenView />} />
           <Route path="/room/:code/board" element={<TVScreenView />} />
-          <Route path="/room/:code/ai/ai-lawyer-tv" element={<TVScreenView />} />
           <Route path="/room/:code/football/draft-5-tv" element={<TVScreenView />} />
           <Route path="/room/:code/ai/the-scammer-tv" element={<TVScreenView />} />
           <Route path="/room/:code/words/scattergories-tv" element={<TVScreenView />} />
           <Route path="/room/:code/tourism-tv" element={<TVScreenView />} />
           <Route path="/room/:code/flying-tv" element={<TVScreenView />} />
 
-          {/* 5. Contestant Mobile Views for the 5 Games */}
+          {/* 5. Contestant Mobile Views */}
           <Route path="/room/:code/play" element={<PlayerMobileView />} />
-          <Route path="/room/:code/ai/ai-lawyer" element={<PlayerMobileView />} />
-          <Route path="/room/:code/ai/ai-lawyer-play" element={<PlayerMobileView />} />
           <Route path="/room/:code/football/draft-5" element={<PlayerMobileView />} />
           <Route path="/room/:code/football/draft-5-play" element={<PlayerMobileView />} />
           <Route path="/room/:code/ai/the-scammer" element={<PlayerMobileView />} />

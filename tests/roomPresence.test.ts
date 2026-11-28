@@ -25,7 +25,7 @@ test('switching games keeps the room code and clears readiness after server appr
   const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => 'a'.repeat(64) } });
   const rpc = jest.mocked(supabase.rpc);
-  const mockRoom = {code:'QB23', selectedGameId:'ai-judge', players:[{id:'p1', isReady:true}]} as RoomState;
+  const mockRoom = {code:'QB23', selectedGameId:'ai-coach', players:[{id:'p1', isReady:true}]} as RoomState;
   const getRoom = jest.spyOn(roomBus,'getRoom').mockReturnValue(mockRoom);
   const write = jest.spyOn(roomBus,'writeLocal').mockImplementation(() => {});
   const changed = jest.fn();
@@ -102,7 +102,7 @@ test('an empty presence sync clears the roster and stays scoped to its room', as
   const offEnded = roomBus.on('GAME_ENDED', ended, 'AB23');
   let currentRound = { phase: 'defending', roundNumber: 2, timerSeconds: 17 };
   const offRequest = roomBus.on('REQUEST_ROOM_STATE', () => {
-    roomBus.broadcastJudgeSync('AB23', currentRound);
+    roomBus.broadcastCoachSync('AB23', currentRound);
   }, 'AB23');
   Object.defineProperty(globalThis, 'window', { configurable: true, value: {} });
   try {
@@ -135,9 +135,9 @@ test('an empty presence sync clears the roster and stays scoped to its room', as
     expect(channel.send).not.toHaveBeenCalled();
     callbacks.get('room_event')?.({ payload: { roomCode: 'AB23', type: 'REQUEST_ROOM_STATE' } });
     await Promise.resolve();
-    expect(rpc).toHaveBeenLastCalledWith('issue_shabah_room_command', expect.objectContaining({code: 'AB23', command: 'JUDGE_STATE_SYNC', body: expect.objectContaining(currentRound)}));
+    expect(rpc).toHaveBeenLastCalledWith('issue_shabah_room_command', expect.objectContaining({code: 'AB23', command: 'COACH_STATE_SYNC', body: expect.objectContaining(currentRound)}));
     expect(channel.send).toHaveBeenCalledWith(expect.objectContaining({ event: 'HOST_COMMAND' }));
-    expect(callbacks.has('JUDGE_STATE_SYNC')).toBe(false);
+    expect(callbacks.has('COACH_STATE_SYNC')).toBe(false);
 
     currentRound = { ...currentRound, timerSeconds: 16 };
     callbacks.get('room_event')?.({ payload: { roomCode: 'AB23', type: 'REQUEST_ROOM_STATE' } });
@@ -156,10 +156,10 @@ test('an empty presence sync clears the roster and stays scoped to its room', as
     await Promise.resolve();
 
     const stateReceived = jest.fn();
-    const offState = roomBus.on('JUDGE_STATE_SYNC', stateReceived, 'AB23');
+    const offState = roomBus.on('COACH_STATE_SYNC', stateReceived, 'AB23');
     const verified = async (id: string, sequence: number | null) => {
       rpc.mockReturnValueOnce(Promise.resolve({ data: sequence === null ? null : {
-        event: 'JUDGE_STATE_SYNC', payload: { phase: 'RESULTS', _hostSequence: sequence }
+        event: 'COACH_STATE_SYNC', payload: { phase: 'RESULTS', _hostSequence: sequence }
       }, error: null }) as never);
       callbacks.get('HOST_COMMAND')?.({payload: {id}});
       await Promise.resolve();

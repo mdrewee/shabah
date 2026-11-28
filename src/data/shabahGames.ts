@@ -15,18 +15,6 @@ export interface ShabahGame {
 
 export const SHABAH_GAMES: ShabahGame[] = [
   {
-    id: 'ai-judge',
-    title: 'الشبح القاضي',
-    badgeText: 'ورطات وأعذار',
-    shortExplanation: 'محكمة التصريف: ورطة قصيرة، عذر ذكي أو مضحك، ثم تصويت مجهول وكشف الأسماء. كل صوت ٣ نقاط ومكافأة الشبح نقطتان. مع لاعبين اثنين: الشبح يحكم من ١٠.',
-    cardImage: '/images/games/judge-card-v2.jpg',
-    glowColor: 'purple',
-    minPlayers: 2,
-    maxPlayers: 10,
-    duration: '١٠–١٥ دقيقة تقريبًا',
-    route: '/game/ai-judge'
-  },
-  {
     id: 'ai-coach',
     title: 'الشبح المدرب',
     badgeText: 'تحدي التشكيلات',
@@ -54,7 +42,7 @@ export const SHABAH_GAMES: ShabahGame[] = [
     id: 'ai-arabic',
     title: 'الشبح العربي',
     badgeText: 'حروف وسرعة',
-    shortExplanation: 'سباق حروف وفئات عمودية سريعة؛ اكتب إجاباتك والشبح الفصيح يصحح فوراً ويفضح الشطحات مع إمكانية الاعتراض.',
+    shortExplanation: 'العب «حرف عشوائي» بالإجابات المكتوبة أو «ضغط الحروف» بالإجابات الشفهية والتحكيم من المضيف.',
     cardImage: '/images/games/arabic-card-v2.jpg',
     glowColor: 'blue',
     minPlayers: 2,

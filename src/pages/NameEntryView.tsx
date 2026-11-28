@@ -13,9 +13,6 @@ import { normalizeGameId } from '../utils/gameIds';
 
 function mapShabahIdToEngineId(gameId: string): string {
   switch (gameId) {
-    case 'ai-judge':
-    case 'ai-lawyer':
-      return 'ai-lawyer';
     case 'ai-coach':
     case 'draft-5':
       return 'draft-5';
@@ -32,7 +29,7 @@ function mapShabahIdToEngineId(gameId: string): string {
     case 'flying':
       return 'ai-flying';
     default:
-      return 'ai-lawyer';
+      return gameId;
   }
 }
 
@@ -90,7 +87,12 @@ export const NameEntryView: React.FC = () => {
     try {
       // Case 1: Creating/Starting a Game from Home ([العب])
       if (queryGame && !queryRoom) {
-        const engineGameId = mapShabahIdToEngineId(queryGame);
+        const canonicalGameId = normalizeGameId(queryGame);
+        if (!canonicalGameId) {
+          setErrorMsg('هذه اللعبة غير متاحة.');
+          return;
+        }
+        const engineGameId = mapShabahIdToEngineId(canonicalGameId);
 
         const result = await createRoom(engineGameId, pid);
         if (!result.ok) {
@@ -117,7 +119,10 @@ export const NameEntryView: React.FC = () => {
         );
 
         sound.playClick();
-        const canonicalGameId = selectedGame ? selectedGame.id : 'ai-judge';
+        if (canonicalGameId === 'ai-arabic') {
+          navigate('/room/' + code + '/play', { replace: true, state: { createdRoom: { code, gameId: canonicalGameId } } });
+          return;
+        }
         navigate(`/game/${canonicalGameId}/${code}`, { replace: true });
         return;
       }
@@ -139,8 +144,12 @@ export const NameEntryView: React.FC = () => {
         ? normalizeGameId(queryGame)
         : (roomCheckResult?.gameId ? normalizeGameId(roomCheckResult.gameId) : null);
 
+      if (!detectedGame) {
+        setErrorMsg('هذه اللعبة غير متاحة.');
+        return;
+      }
       if (!queryRoom) {
-        const result = await createRoom(detectedGame || 'ai-judge', pid);
+        const result = await createRoom(detectedGame, pid);
         if (!result.ok) {
           setErrorMsg(result.error);
           return;
@@ -174,7 +183,7 @@ export const NameEntryView: React.FC = () => {
       sound.playClick();
       navigate(`/room/${targetRoomCode}/play`, {
         replace: true,
-        state: queryRoom ? undefined : { createdRoom: { code: targetRoomCode, gameId: detectedGame || 'ai-judge' } },
+        state: queryRoom ? undefined : { createdRoom: { code: targetRoomCode, gameId: detectedGame } },
       });
     } finally {
       setIsSubmitting(false);

@@ -30,7 +30,12 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
   onSubmit,
   roundStartTime,
 }) => {
-  const [answers, setAnswers] = useState<Record<number, string>>(() => ({ ...initialAnswers }));
+  const draftKey = `shabah_arabic_draft_${roomCode}_${contestantId}_${roundStartTime}`;
+  const [answers, setAnswers] = useState<Record<number, string>>(() => {
+    if (hasSubmitted) return { ...initialAnswers };
+    try { return JSON.parse(sessionStorage.getItem(draftKey) || '{}'); }
+    catch { return {}; }
+  });
 
   const confirm = useConfirmation();
   const inputId = useId();
@@ -55,6 +60,12 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
     const duration = roundStartTime > 0 ? Date.now() - roundStartTime : 60000;
     onSubmit({ ...answersRef.current }, duration);
   }, [roundStartTime, onSubmit]);
+
+  useEffect(() => {
+    if (hasSubmitted) {
+      try { sessionStorage.removeItem(draftKey); } catch {}
+    }
+  }, [draftKey, hasSubmitted]);
 
   // Auto focus first input on mount
   useEffect(() => {
@@ -92,11 +103,10 @@ export const ArabicMobileInput: React.FC<ArabicMobileInputProps> = ({
   const handleChange = (index: number, val: string) => {
     val = val.slice(0, 140);
     setEmptyWarning(false);
-    setAnswers((prev) => ({
-      ...prev,
-      [index]: val,
-    }));
-    answersRef.current[index] = val;
+    const next = { ...answersRef.current, [index]: val };
+    answersRef.current = next;
+    setAnswers(next);
+    try { sessionStorage.setItem(draftKey, JSON.stringify(next)); } catch {}
   };
 
   const handleSubmitEarly = async () => {

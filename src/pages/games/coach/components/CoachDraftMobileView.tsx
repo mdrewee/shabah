@@ -20,9 +20,9 @@ import { formatPercent, toArabicNumber } from '../../../../utils/numberFormat';
 import { Search, CheckCircle, AlertCircle, Clock, Check, X, Lock, ShieldCheck } from 'lucide-react';
 import { sound } from '../../../../lib/audio';
 import { roomBus } from '../../../../lib/roomBus';
-import { TOTAL_COACH_ROUNDS } from '../coachConfig';
+import { DRAFT_ROUND_TIME, TOTAL_COACH_ROUNDS } from '../coachConfig';
 
-const defaultRoundTime = 30; // 30 ثانية لكل جولة مباشرة
+const defaultRoundTime = DRAFT_ROUND_TIME;
 
 interface CoachDraftMobileViewProps {
   roomCode?: string;

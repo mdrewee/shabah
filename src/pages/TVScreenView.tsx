@@ -5,19 +5,20 @@ import { UnifiedShabahLobby } from '../components/lobby/UnifiedShabahLobby';
 import { checkRoomExists, isRoomHost } from '../services/roomService';
 import { SHABAH_GAMES } from '../data/shabahGames';
 import { normalizeGameId, ShabahGameCanonicalId } from '../utils/gameIds';
+import { RoomHostControls } from '../components/common/RoomHostControls';
 import { RoomReactions } from '../components/common/RoomReactions';
 
 const CoachTVRoot = React.lazy(() => import('./games/coach/CoachTVRoot').then(({ CoachTVRoot }) => ({ default: CoachTVRoot })));
 const BrokerTVRoot = React.lazy(() => import('./games/broker/BrokerTVRoot').then(({ BrokerTVRoot }) => ({ default: BrokerTVRoot })));
-const ArabicTVRoot = React.lazy(() => import('./games/arabic/ArabicTVRoot').then(({ ArabicTVRoot }) => ({ default: ArabicTVRoot })));
-const JudgeTVRoot = React.lazy(() => import('./games/judge/JudgeTVRoot').then(({ JudgeTVRoot }) => ({ default: JudgeTVRoot })));
+const ArabicRoomDisplay = React.lazy(() => import('./games/arabic/ArabicRoomDisplay').then(({ ArabicRoomDisplay }) => ({ default: ArabicRoomDisplay })));
 const GuideTVRoot = React.lazy(() => import('./games/guide/GuideTVRoot').then(({ GuideTVRoot }) => ({ default: GuideTVRoot })));
 const FlyingTVRoot = React.lazy(() => import('./games/flying/FlyingTVRoot').then(({ FlyingTVRoot }) => ({ default: FlyingTVRoot })));
 
 export const TVScreenView: React.FC = () => {
-  const { code } = useParams<{ code?: string }>();
+  const { code, gameId } = useParams<{ code?: string; gameId?: string }>();
   const [searchParams] = useSearchParams();
   const roomCode = code || searchParams.get('room') || '';
+  if (gameId && !normalizeGameId(gameId)) return <p dir="rtl" role="status">هذه اللعبة غير متاحة</p>;
   return roomCode && isRoomHost(roomCode)
     ? <React.Fragment key={roomCode}><RoomReactions roomCode={roomCode.toUpperCase()}/><HostTVScreen /></React.Fragment>
     : <Navigate to="/" replace />;
@@ -116,19 +117,22 @@ const HostTVScreen: React.FC = () => {
 
   const finalGameId = loadedGameId || SHABAH_GAMES[0].id;
 
+  const withHostControls = (syncEvent: string, game: React.ReactNode) => <>
+    <RoomHostControls roomCode={roomCode} syncEvent={syncEvent} />
+    {game}
+  </>;
+
   switch (finalGameId) {
-    case 'ai-judge':
-      return <JudgeTVRoot />;
     case 'ai-coach':
-      return <CoachTVRoot />;
+      return withHostControls('COACH_STATE_SYNC', <CoachTVRoot />);
     case 'ai-broker':
-      return <BrokerTVRoot />;
+      return withHostControls('BROKER_STATE_SYNC', <BrokerTVRoot />);
     case 'ai-arabic':
-      return <ArabicTVRoot />;
+      return <ArabicRoomDisplay roomCode={roomCode} />;
     case 'ai-guide':
-      return <GuideTVRoot />;
+      return withHostControls('GUIDE_STATE_SYNC', <GuideTVRoot />);
     case 'ai-flying':
-      return <FlyingTVRoot />;
+      return withHostControls('FLYING_STATE_SYNC', <FlyingTVRoot />);
     default: {
       const matchedGame = SHABAH_GAMES.find((g) => g.id === finalGameId) || SHABAH_GAMES[0];
       return (

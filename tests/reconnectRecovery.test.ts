@@ -19,7 +19,7 @@ test('reconnect keeps player identity and asks for the authoritative game state 
     let finishRemoval!: (status: 'ok') => void;
     jest.mocked(supabase.removeChannel).mockReturnValueOnce(new Promise(resolve => { finishRemoval = resolve; }));
     roomBus.retryConnection('RT23');roomBus.retryConnection('RT23');
-    await jest.advanceTimersByTimeAsync(2000);
+    await jest.advanceTimersByTimeAsync(5000);
     expect(supabase.channel).toHaveBeenCalledTimes(1);
     finishRemoval('ok');
     await jest.advanceTimersByTimeAsync(0);

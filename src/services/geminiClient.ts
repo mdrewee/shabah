@@ -12,7 +12,7 @@ let activeRequests=0;
 const waitingRequests:Array<()=>void>=[];
 async function acquireAI(signal:AbortSignal):Promise<()=>void> {
   if(signal.aborted)throw new Error('انتهت مهلة التحليل، حاول مرة أخرى');
-  if(activeRequests>=3)await new Promise<void>((resolve,reject)=>{
+  if(activeRequests>=6)await new Promise<void>((resolve,reject)=>{
     const start=()=>{signal.removeEventListener('abort',abort);resolve();};
     const abort=()=>{const index=waitingRequests.indexOf(start);if(index>=0)waitingRequests.splice(index,1);reject(new Error('انتهت مهلة انتظار التحليل، حاول مرة أخرى'));};
     waitingRequests.push(start);signal.addEventListener('abort',abort,{once:true});

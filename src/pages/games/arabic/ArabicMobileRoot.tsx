@@ -6,6 +6,7 @@ import { useRoom, roomBus } from '../../../lib/roomBus';
 import { useRoomSync } from '../../../hooks/useRoomSync';
 import { sound } from '../../../lib/audio';
 import { UnifiedShabahLobby } from '../../../components/lobby/UnifiedShabahLobby';
+import type { LobbyManualStart } from '../../../components/lobby/UnifiedShabahLobby';
 import { ArabicRoomState, ObjectionState, PlayerArabicEvaluation } from './types';
 import { createInitialArabicState, getRankedContestants } from './arabicSync';
 import {
@@ -19,7 +20,11 @@ import { ArabicMobileResults } from './components/ArabicMobileResults';
 import { ArabicFinalPodium } from './components/ArabicFinalPodium';
 import { Clock } from 'lucide-react';
 
-export const ArabicMobileRoot: React.FC<{onNextRound?:()=>void}> = ({onNextRound}) => {
+export const ArabicMobileRoot: React.FC<{
+  onNextRound?: () => void;
+  lobbyControls?: React.ReactNode;
+  lobbyStart?: LobbyManualStart;
+}> = ({ onNextRound, lobbyControls, lobbyStart }) => {
   const { code: rawCode } = useParams<{ code?: string }>();
   const navigate = useNavigate();
   const roomCode = (rawCode || 'SHBH').trim().toUpperCase();
@@ -194,13 +199,9 @@ export const ArabicMobileRoot: React.FC<{onNextRound?:()=>void}> = ({onNextRound
   };
 
   // Handle Return to Lobby
-  const handleReturnToLobby = () => {
+  const handleReturnToLobby = async () => {
     if (!isRoomHost(roomCode) || !window.confirm('ترجع للوبي وتنهي الجولة؟')) return;
-    roomBus.broadcastReturnToLobby(roomCode);
-    setArabicState((prev) => ({
-      ...prev,
-      phase: 'LOBBY',
-    }));
+    if (!await roomBus.broadcastReturnToLobby(roomCode)) alert('تعذر الرجوع للوبي، حاول مرة أخرى.');
   };
 
   // 1. Lobby Phase
@@ -213,6 +214,8 @@ export const ArabicMobileRoot: React.FC<{onNextRound?:()=>void}> = ({onNextRound
         role="contestant"
         isPlayerHost={isRoomHost(roomCode)}
         currentPlayerId={playerId}
+        extraControls={lobbyControls}
+        manualStart={lobbyStart}
         onExit={() => {
           roomBus.leavePlayer(roomCode, playerId);
           navigate('/');

@@ -520,36 +520,6 @@ class SoundEngine {
     this.playPlayerJoin();
   }
 
-  public playGavelStrike() {
-    if (this.isMuted) return;
-    playGavelStrike();
-  }
 }
 
 export const sound = new SoundEngine();
-
-export function playGavelStrike() {
-  try {
-    const AudioCtx =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    // ضربة أولى حادة تتبعها ضربة ثانية سريعة وصدى خشبي
-    [0, 0.22].forEach((timeOffset) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(120, ctx.currentTime + timeOffset);
-      osc.frequency.exponentialRampToValueAtTime(30, ctx.currentTime + timeOffset + 0.15);
-      gain.gain.setValueAtTime(0.8, ctx.currentTime + timeOffset);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + timeOffset + 0.18);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(ctx.currentTime + timeOffset);
-      osc.stop(ctx.currentTime + timeOffset + 0.2);
-    });
-  } catch (err) {
-    console.warn('Gavel strike audio error:', err);
-  }
-}

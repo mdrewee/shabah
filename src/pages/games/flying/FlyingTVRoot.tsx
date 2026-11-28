@@ -144,20 +144,8 @@ export const FlyingTVRoot: React.FC<{
     startQuestionRound(1, []);
   }, [roomCode, startQuestionRound]);
 
-  const handleReturnToLobby = useCallback(() => {
-    sound.playClick();
-    clearPersistedFlyingState(roomCode);
-    const lobbyState: FlyingRoomState = {
-      ...createInitialFlyingState(roomCode),
-      phase: 'LOBBY',
-      cumulativeMeters: {},
-      submissions: {},
-      results: {},
-    };
-    stateRef.current = lobbyState;
-    setFlyingState(lobbyState);
-    savePersistedFlyingState(roomCode, lobbyState);
-    roomBus.broadcastReturnToLobby(roomCode);
+  const handleReturnToLobby = useCallback(async () => {
+    if (!await roomBus.broadcastReturnToLobby(roomCode)) alert('تعذر الرجوع للوبي، حاول مرة أخرى.');
   }, [roomCode]);
 
   // Exclusive AI Evaluation (Runs solely on TV Host)
@@ -236,10 +224,6 @@ export const FlyingTVRoot: React.FC<{
     );
 
     if (generation !== analysisGeneration.current) return;
-    if(evaluatedResults.some(result=>result.needsReview)){
-      syncState({...calcState,analysisFailed:true});
-      return;
-    }
     const nextCumulative = { ...(curr.cumulativeMeters || {}) };
     const resultMap: Record<string, FlyingContestantResult> = {};
 
@@ -464,15 +448,13 @@ export const FlyingTVRoot: React.FC<{
       }
     });
 
-    const unsubLobby = roomBus.on('RETURN_TO_LOBBY', (evt: any) => {
+    const unsubLobby = roomBus.on('RETURN_TO_LOBBY', () => {
       ++analysisGeneration.current;
-      const incomingCode = evt?.roomCode;
-      if (incomingCode && incomingCode !== roomCode) return;
       clearPersistedFlyingState(roomCode);
       const lobbyState = createInitialFlyingState(roomCode);
       stateRef.current = lobbyState;
       setFlyingState(lobbyState);
-    });
+    }, roomCode);
 
     return () => {
       unsubAnswer();

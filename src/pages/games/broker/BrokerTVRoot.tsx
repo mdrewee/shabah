@@ -306,12 +306,8 @@ export const BrokerTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
     roomBus.broadcastBrokerSync(roomCode, next);
   };
 
-  const handleReturnToLobby = () => {
-    sound.playClick();
-    const nextState = createInitialBrokerState(roomCode, true);
-    setBrokerState(nextState);
-    roomBus.broadcastReturnToLobby(roomCode);
-    roomBus.broadcastBrokerSync(roomCode, nextState);
+  const handleReturnToLobby = async () => {
+    if (!await roomBus.broadcastReturnToLobby(roomCode)) alert('تعذر الرجوع للوبي، حاول مرة أخرى.');
   };
 
   const handleExit = async () => {

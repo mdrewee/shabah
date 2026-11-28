@@ -37,13 +37,6 @@ export const CATEGORIES_REGISTRY: CategoryItem[] = [
         route: '/room/:code/ai/the-scammer',
         icon: 'Gavel',
       },
-      {
-        id: 'ai-lawyer',
-        title: 'المحامي الـ AI',
-        description: 'قضية تورط الكل ومطلوب منك ترقع لنفسك.. والقاضي يحلل عذرك ويجلد ترقيعك!',
-        route: '/room/:code/ai/ai-lawyer',
-        icon: 'Scale',
-      },
     ],
   },
 

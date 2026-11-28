@@ -75,12 +75,13 @@ test('a TV offer opens in a realistic range, and internal reasoning is removed',
     priorArgument: pitch().pitch })).bidIncrease).toBe(0);
 });
 
-test('unavailable or invalid AI never invents a valuation', async () => {
+test('unavailable or invalid AI uses the baseline once, preserving the bid on follow-ups', async () => {
   ai.mockResolvedValue(null);
-  await expect(evaluateBrokerPitch(pitch('سسسسسسسسسسسسسسسسسسسسسسسسسسسسسسسسسسسسسسسسسس'))).rejects.toThrow();
+  await expect(evaluateBrokerPitch(pitch())).resolves.toMatchObject({newBid:item.openingBaseline});
+  await expect(evaluateBrokerPitch({...pitch(), currentBid: 160, isFirstBid: false})).resolves.toMatchObject({newBid:160,bidIncrease:0});
   ai.mockResolvedValue(JSON.stringify({accepted:'false',finalOpeningPrice:100}));
   const log=jest.spyOn(console,'warn').mockImplementation(()=>{});
-  try { await expect(evaluateBrokerPitch(pitch())).rejects.toThrow(); } finally { log.mockRestore(); }
+  try { await expect(evaluateBrokerPitch(pitch())).resolves.toMatchObject({newBid:item.openingBaseline}); } finally { log.mockRestore(); }
 });
 
 test('ordinary and creative persuasion receive increasing rewards with a firm value ceiling',async()=>{

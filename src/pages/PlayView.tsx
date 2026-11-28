@@ -1,5 +1,5 @@
 import { checkRoomExists, isRoomHost } from '../services/roomService';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation, useNavigationType } from 'react-router-dom';
 import { roomBus } from '../lib/roomBus';
 import {
@@ -12,25 +12,23 @@ import { useRoomSync } from '../hooks/useRoomSync';
 import { RoomHostControls } from '../components/common/RoomHostControls';
 import { RoomReactions } from '../components/common/RoomReactions';
 
+const ArabicGameRoom = React.lazy(() => import('./games/arabic/ArabicGameRoom').then(({ ArabicGameRoom }) => ({ default: ArabicGameRoom })));
 const CoachTVRoot = React.lazy(() => import('./games/coach/CoachTVRoot').then(({ CoachTVRoot }) => ({ default: CoachTVRoot })));
 const BrokerTVRoot = React.lazy(() => import('./games/broker/BrokerTVRoot').then(({ BrokerTVRoot }) => ({ default: BrokerTVRoot })));
-const JudgeTVRoot = React.lazy(() => import('./games/judge/JudgeTVRoot').then(({ JudgeTVRoot }) => ({ default: JudgeTVRoot })));
-const ArabicTVRoot = React.lazy(() => import('./games/arabic/ArabicTVRoot').then(({ ArabicTVRoot }) => ({ default: ArabicTVRoot })));
 const GuideTVRoot = React.lazy(() => import('./games/guide/GuideTVRoot').then(({ GuideTVRoot }) => ({ default: GuideTVRoot })));
 const CoachMobileRoot = React.lazy(() => import('./games/coach/CoachMobileRoot').then(({ CoachMobileRoot }) => ({ default: CoachMobileRoot })));
 const BrokerMobileRoot = React.lazy(() => import('./games/broker/BrokerMobileRoot').then(({ BrokerMobileRoot }) => ({ default: BrokerMobileRoot })));
-const ArabicMobileRoot = React.lazy(() => import('./games/arabic/ArabicMobileRoot').then(({ ArabicMobileRoot }) => ({ default: ArabicMobileRoot })));
-const JudgeMobileRoot = React.lazy(() => import('./games/judge/JudgeMobileRoot').then(({ JudgeMobileRoot }) => ({ default: JudgeMobileRoot })));
 const GuideMobileRoot = React.lazy(() => import('./games/guide/GuideMobileRoot').then(({ GuideMobileRoot }) => ({ default: GuideMobileRoot })));
 const FlyingMobileView = React.lazy(() => import('./games/flying/FlyingMobileView').then(({ FlyingMobileView }) => ({ default: FlyingMobileView })));
 
 export const PlayView: React.FC = () => {
-  const { code = '' } = useParams<{ code?: string }>();
+  const { code = '', gameId } = useParams<{ code?: string; gameId?: string }>();
   const { state } = useLocation();
   const navigationType = useNavigationType();
   const created = state?.createdRoom;
   const createdGame = navigationType !== 'POP' && created?.code === code && typeof created.gameId === 'string' && isRoomHost(code)
     ? normalizeGameId(created.gameId) : null;
+  if (gameId && !normalizeGameId(gameId)) return <p dir="rtl" role="status">هذه اللعبة غير متاحة</p>;
   return <VerifiedPlayView key={code} roomCode={code} createdGame={createdGame} />;
 };
 
@@ -86,7 +84,6 @@ const ActivePlayView: React.FC<{ roomCode: string; initialGameId: ShabahGameCano
   roomCode,
   initialGameId,
 }) => {
-  const arabicNextRound=useRef<()=>void>(()=>{});
   const [playerId] = useState<string>(() => getOrCreatePlayerId());
   const [playerName] = useState<string>(() => {
     return getPersistedPlayerName() || getOrCreatePlayerName('متسابق');
@@ -117,19 +114,17 @@ const ActivePlayView: React.FC<{ roomCode: string; initialGameId: ShabahGameCano
   // Strict dynamic game routing based on authoritative gameId:
   const renderGame=()=>{
   switch (initialGameId) {
-    case 'ai-judge':
-      return <div className="flex h-[100dvh] flex-col overflow-hidden">{isRoomHost(roomCode) && <><RoomHostControls roomCode={roomCode} syncEvent="JUDGE_STATE_SYNC" /><JudgeTVRoot mobileContestants={connectedPlayers} /></>}<div className="min-h-0 flex-1 overflow-y-auto"><JudgeMobileRoot /></div></div>;
     case 'ai-coach':
-      return <>{isRoomHost(roomCode) && <CoachTVRoot mobileContestants={connectedPlayers} />}<CoachMobileRoot /></>;
+      return <>{isRoomHost(roomCode) && <><RoomHostControls roomCode={roomCode} syncEvent="COACH_STATE_SYNC" /><CoachTVRoot mobileContestants={connectedPlayers} /></>}<CoachMobileRoot /></>;
     case 'ai-broker':
       return <div className="flex h-[100dvh] flex-col overflow-hidden">
         {isRoomHost(roomCode) && <><RoomHostControls roomCode={roomCode} syncEvent="BROKER_STATE_SYNC" /><BrokerTVRoot mobileContestants={connectedPlayers} /></>}
         <div className="min-h-0 flex-1 overflow-y-auto"><BrokerMobileRoot /></div>
       </div>;
     case 'ai-arabic':
-      return <>{isRoomHost(roomCode) && <ArabicTVRoot mobileContestants={connectedPlayers} onNextRoundReady={advance=>{arabicNextRound.current=advance;}} />}<ArabicMobileRoot onNextRound={()=>arabicNextRound.current()} /></>;
+      return <ArabicGameRoom roomCode={roomCode} playerId={playerId} playerName={playerName} players={connectedPlayers} />;
     case 'ai-guide':
-      return <>{isRoomHost(roomCode) && <GuideTVRoot mobileContestants={connectedPlayers} />}<GuideMobileRoot /></>;
+      return <>{isRoomHost(roomCode) && <><RoomHostControls roomCode={roomCode} syncEvent="GUIDE_STATE_SYNC" /><GuideTVRoot mobileContestants={connectedPlayers} /></>}<GuideMobileRoot /></>;
     case 'ai-flying':
       return <div className="flex h-[100dvh] flex-col overflow-hidden">
         {isRoomHost(roomCode) && <RoomHostControls roomCode={roomCode} syncEvent="FLYING_STATE_SYNC" />}
@@ -137,7 +132,8 @@ const ActivePlayView: React.FC<{ roomCode: string; initialGameId: ShabahGameCano
       </div>;
   }
   };
-  return <><RoomReactions roomCode={roomCode} playerId={playerId} inline={initialGameId === 'ai-guide' || initialGameId === 'ai-coach'}/>{renderGame()}</>;
+  return <>{initialGameId !== 'ai-arabic' && <RoomReactions roomCode={roomCode} playerId={playerId} inline={initialGameId === 'ai-guide' || initialGameId === 'ai-coach'}/>}
+    {renderGame()}</>;
 };
 
 export default PlayView;

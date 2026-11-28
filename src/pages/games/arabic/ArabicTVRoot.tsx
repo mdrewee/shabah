@@ -7,11 +7,11 @@ import { useRoom, roomBus } from '../../../lib/roomBus';
 import { useRoomSync } from '../../../hooks/useRoomSync';
 import { sound } from '../../../lib/audio';
 import { UnifiedShabahLobby } from '../../../components/lobby/UnifiedShabahLobby';
+import type { LobbyManualStart } from '../../../components/lobby/UnifiedShabahLobby';
 import { ArabicRoomState, ObjectionState, ContestantEvaluation } from './types';
 import {
   createInitialArabicState,
   savePersistedArabicState,
-  clearPersistedArabicState,
   getRankedContestants,
 } from './arabicSync';
 import {
@@ -29,7 +29,12 @@ import { ArabicTVResults } from './components/ArabicTVResults';
 import { ArabicFinalPodium } from './components/ArabicFinalPodium';
 import { Clock } from 'lucide-react';
 
-export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; name: string }>; onNextRoundReady?:(advance:()=>void)=>void }> = ({ mobileContestants,onNextRoundReady }) => {
+export const ArabicTVRoot: React.FC<{
+  mobileContestants?: Array<{ id: string; name: string }>;
+  onNextRoundReady?: (advance: () => void) => void;
+  lobbyControls?: React.ReactNode;
+  lobbyStart?: LobbyManualStart;
+}> = ({ mobileContestants, onNextRoundReady, lobbyControls, lobbyStart }) => {
   const { code: rawCode } = useParams<{ code?: string }>();
   const navigate = useNavigate();
   const roomCode = (rawCode || 'SHBH').trim().toUpperCase();
@@ -300,19 +305,10 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
     }
   }, [roomCode]);
 
-  const handleReturnToLobby = useCallback(() => {
+  const handleReturnToLobby = useCallback(async () => {
     if (!window.confirm('ترجع للوبي وتنهي الجولة؟')) return;
-    clearPersistedArabicState(roomCode);
-    const nextState: ArabicRoomState = {
-      ...createInitialArabicState(roomCode),
-      phase: 'LOBBY',
-      roundNumber: 1,
-      usedLetters: [],
-      usedCategories: [],
-    };
-    roomBus.broadcastReturnToLobby(roomCode);
-    syncState(nextState);
-  }, [roomCode, syncState]);
+    if (!await roomBus.broadcastReturnToLobby(roomCode)) alert('تعذر الرجوع للوبي، حاول مرة أخرى.');
+  }, [roomCode]);
 
   // -------------------------------------------------------------
   // Countdown Timer for INPUT Phase
@@ -606,6 +602,7 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
   }, [mobileContestants, arabicState.phase, startRoundInput]);
 
   useEffect(() => roomBus.on('RETURN_TO_LOBBY', () => {
+    if (stateRef.current.phase === 'LOBBY') return;
     ++analysisGeneration.current;
     const fresh = createInitialArabicState(roomCode, true);
     syncState(fresh);
@@ -622,6 +619,8 @@ export const ArabicTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; na
         gameId="ai-arabic"
         gameTitle="الشبح العربي"
         role="host"
+        extraControls={lobbyControls}
+        manualStart={lobbyStart}
       />
     );
   }

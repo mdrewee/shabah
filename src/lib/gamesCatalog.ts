@@ -42,30 +42,10 @@ export const AVATAR_PRESETS: PlayerAvatar[] = [
 
 export const SHABAH_FEATURED_GAMES: GameModeInfo[] = [
   {
-    id: 'ai-judge',
-    title: SHABAH_GAMES[0].title,
-    subtitle: 'ورطات وأعذار',
-    description: SHABAH_GAMES[0].shortExplanation,
-    minPlayers: 2,
-    maxPlayers: 10,
-    roundDurationMinutes: 5,
-    tag: 'ورطات وأعذار',
-    categoryLabel: 'ورطات وأعذار',
-    category: 'ai',
-    icon: 'Scale',
-    badgeColor: 'olive',
-    shabahMood: 'judging',
-    shabahRemark: 'تتحداني؟',
-    rulesSummary: [
-      'شبح يحطك في تهمة أو ورطة محرجة! اكتب أقوى عذر يطلعك منها.',
-      'الشبح بيحكم بينكم ويقصف جبهة صاحب أضعف عذر ويعلن البريء.',
-    ],
-  },
-  {
     id: 'ai-coach',
-    title: SHABAH_GAMES[1].title,
+    title: SHABAH_GAMES[0].title,
     subtitle: 'تحدي التشكيلات',
-    description: SHABAH_GAMES[1].shortExplanation,
+    description: SHABAH_GAMES[0].shortExplanation,
     minPlayers: 2,
     maxPlayers: 10,
     roundDurationMinutes: 6,
@@ -83,9 +63,9 @@ export const SHABAH_FEATURED_GAMES: GameModeInfo[] = [
   },
   {
     id: 'ai-broker',
-    title: SHABAH_GAMES[2].title,
+    title: SHABAH_GAMES[1].title,
     subtitle: 'تثمين وصيدة',
-    description: SHABAH_GAMES[2].shortExplanation,
+    description: SHABAH_GAMES[1].shortExplanation,
     minPlayers: 2,
     maxPlayers: 10,
     roundDurationMinutes: 5,
@@ -103,9 +83,9 @@ export const SHABAH_FEATURED_GAMES: GameModeInfo[] = [
   },
   {
     id: 'ai-arabic',
-    title: SHABAH_GAMES[3].title,
+    title: SHABAH_GAMES[2].title,
     subtitle: 'حروف وسرعة',
-    description: SHABAH_GAMES[3].shortExplanation,
+    description: SHABAH_GAMES[2].shortExplanation,
     minPlayers: 2,
     maxPlayers: 10,
     roundDurationMinutes: 5,
@@ -123,9 +103,9 @@ export const SHABAH_FEATURED_GAMES: GameModeInfo[] = [
   },
   {
     id: 'ai-guide',
-    title: SHABAH_GAMES[4].title,
+    title: SHABAH_GAMES[3].title,
     subtitle: 'تلميحات ودول',
-    description: SHABAH_GAMES[4].shortExplanation,
+    description: SHABAH_GAMES[3].shortExplanation,
     minPlayers: 2,
     maxPlayers: 10,
     roundDurationMinutes: 5,
@@ -143,14 +123,13 @@ export const SHABAH_FEATURED_GAMES: GameModeInfo[] = [
   },
 ];
 
-// Internal ID aliases so existing engines (ai-lawyer, draft-5, the-scammer, scattergories, geo-blind-tourism) resolve metadata cleanly
+// Internal ID aliases so existing engines (draft-5, the-scammer, scattergories, geo-blind-tourism) resolve metadata cleanly
 export const ALL_GAME_MODES: GameModeInfo[] = [
   ...SHABAH_FEATURED_GAMES,
-  { ...SHABAH_FEATURED_GAMES[0], id: 'ai-lawyer' },
-  { ...SHABAH_FEATURED_GAMES[1], id: 'draft-5' },
-  { ...SHABAH_FEATURED_GAMES[2], id: 'the-scammer' },
-  { ...SHABAH_FEATURED_GAMES[3], id: 'scattergories' },
-  { ...SHABAH_FEATURED_GAMES[4], id: 'geo-blind-tourism' },
+  { ...SHABAH_FEATURED_GAMES[0], id: 'draft-5' },
+  { ...SHABAH_FEATURED_GAMES[1], id: 'the-scammer' },
+  { ...SHABAH_FEATURED_GAMES[2], id: 'scattergories' },
+  { ...SHABAH_FEATURED_GAMES[3], id: 'geo-blind-tourism' },
 ];
 
 export const GAME_CATEGORIES: GameCategory[] = [

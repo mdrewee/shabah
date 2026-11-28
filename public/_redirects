@@ -5,6 +5,9 @@
 /room-api/command  https://gvzhhpdylhnwdkslcnsu.supabase.co/rest/v1/rpc/issue_shabah_room_command  200
 /room-api/read-command  https://gvzhhpdylhnwdkslcnsu.supabase.co/rest/v1/rpc/read_shabah_room_command  200
 /room-api/rooms   https://gvzhhpdylhnwdkslcnsu.supabase.co/rest/v1/rooms  200
+/room-api/read-letter  https://gvzhhpdylhnwdkslcnsu.supabase.co/rest/v1/rpc/read_ghost_letter  200
+/room-api/play-letter  https://gvzhhpdylhnwdkslcnsu.supabase.co/rest/v1/rpc/play_ghost_letter  200
+/display/letter-rush/* /index.html  200
 /room/*          /index.html  200
 /game/*          /index.html  200
 /view/*          /index.html  200

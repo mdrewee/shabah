@@ -802,13 +802,8 @@ export const CoachTVRoot: React.FC<{ mobileContestants?: Array<{ id: string; nam
     roomBus.broadcastCoachSync(roomCode, nextState);
   };
 
-  const handleReturnToLobby = () => {
-    sound.playClick();
-    const nextState = createInitialCoachState(roomCode, coachState.mode, true);
-    setCoachState(nextState);
-    savePersistedCoachState(roomCode, nextState);
-    roomBus.broadcastReturnToLobby(roomCode);
-    roomBus.broadcastCoachSync(roomCode, nextState);
+  const handleReturnToLobby = async () => {
+    if (!await roomBus.broadcastReturnToLobby(roomCode)) alert('تعذر الرجوع للوبي، حاول مرة أخرى.');
   };
 
   const handleExit = async () => {

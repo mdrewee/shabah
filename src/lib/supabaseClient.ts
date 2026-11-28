@@ -14,6 +14,8 @@ const roomRpcPaths = new Map([
   ['/rest/v1/rpc/read_shabah_room_snapshot', '/room-api/snapshot'],
   ['/rest/v1/rpc/issue_shabah_room_command', '/room-api/command'],
   ['/rest/v1/rpc/read_shabah_room_command', '/room-api/read-command'],
+  ['/rest/v1/rpc/read_ghost_letter', '/room-api/read-letter'],
+  ['/rest/v1/rpc/play_ghost_letter', '/room-api/play-letter'],
 ]);
 
 // Singleton Supabase Client Instance (prevents GoTrueClient duplicate instantiation warning)

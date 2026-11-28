@@ -9,9 +9,14 @@ export function RoomSessionTools(){
   const navigate=useNavigate();
   const isJoinScreen=/^\/room\/[^/]+(?:\/join)?\/?$/.test(pathname);
   const [error, setError] = useState<string>();
+  const [restoring, setRestoring] = useState(false);
   useEffect(()=>{
     if(!code || isJoinScreen)return;
-    const tick=()=>setError(navigator.onLine === false ? 'انقطع الإنترنت. تحقق من اتصالك.' : roomBus.getRoomConnectionError(code));
+    const tick=()=>{
+      const issue = navigator.onLine === false ? 'انقطع الإنترنت. تحقق من اتصالك.' : roomBus.getRoomConnectionError(code);
+      setError(issue);
+      setRestoring(!issue && roomBus.isRoomRestoring(code));
+    };
     const online=()=>{roomBus.retryConnection(code);tick();};
     const onVisible=()=>{if(document.visibilityState==='visible' && navigator.onLine!==false)online();};
     const off=roomBus.on('ROOM_TERMINATED',event=>{
@@ -39,7 +44,9 @@ export function RoomSessionTools(){
     document.addEventListener('visibilitychange',keepAwake);
     return()=>{active=false;document.removeEventListener('visibilitychange',keepAwake);void lock?.release().catch(()=>{});};
   },[code,isJoinScreen]);
-  if(!code || isJoinScreen || !error)return null;
+  if(!code || isJoinScreen)return null;
+  if(restoring && !error) return <div role="status" className="fixed inset-0 z-[1600] grid place-items-center bg-zinc-950 text-white">جاري استعادة حالة الغرفة…</div>;
+  if(!error)return null;
   return <aside dir="rtl" role="alert" className="fixed bottom-20 start-3 z-[1600] max-w-[calc(100%-1.5rem)] rounded-xl bg-zinc-950 p-3 text-sm text-amber-200 shadow-xl">
     <span>{error}</span>
     <button type="button" onClick={()=>{setError(undefined);roomBus.retryConnection(code,true);}} className="ms-3 underline">إعادة المحاولة</button>

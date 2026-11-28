@@ -268,6 +268,14 @@ ${isOpening?'هذه أول رسالة: افتح عرض شراء من فتحة ا
     console.warn('[BrokerEngine] Gemini call failed, evaluation unavailable:', err);
   }
 
-  // Step 4: Reliable heuristic fallback
-  throw new Error('تعذر تقييم الحجة؛ أعد المحاولة دون خصم رصاصة');
+  // Preserve the current offer on follow-ups and use the item's baseline for a grounded opening.
+  const newBid = isOpening ? openingBaseline : currentBid;
+  return {
+    persuasionScore: 2,
+    reply: 'تعذر التحليل. حسبنا السومة مبدئيًا: ' + toArabicDigits(newBid) + ' ريال.',
+    bidIncrease: newBid - currentBid,
+    newBid,
+    soundFx: isOpening ? 'cash' : 'buzz',
+    publicAnnouncement: '',
+  };
 }

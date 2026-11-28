@@ -166,13 +166,9 @@ export const GuideMobileRoot: React.FC = () => {
   };
 
   // Handle Return to Lobby
-  const handleReturnToLobby = () => {
-    if (!isRoomHost(roomCode) || !window.confirm('ترجع للوبي وتنهي الجولة الحالية؟')) return;
-    roomBus.broadcastReturnToLobby(roomCode);
-    setGuideState((prev) => ({
-      ...prev,
-      phase: 'LOBBY',
-    }));
+  const handleReturnToLobby = async () => {
+    if (!window.confirm('ترجع للوبي وتنهي الجولة الحالية؟')) return;
+    if (!await roomBus.broadcastReturnToLobby(roomCode)) alert('تعذر الرجوع للوبي، حاول مرة أخرى.');
   };
 
   // 1. Lobby Phase

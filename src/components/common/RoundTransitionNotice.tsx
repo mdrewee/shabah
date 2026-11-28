@@ -10,7 +10,7 @@ export function RoundTransitionNotice(){
   const [now,setNow]=useState(Date.now());
   useEffect(()=>{
     setTransition(undefined);if(!code)return;
-    const events=['GUIDE_STATE_SYNC','BROKER_STATE_SYNC','COACH_STATE_SYNC','JUDGE_STATE_SYNC'];
+    const events=['GUIDE_STATE_SYNC','BROKER_STATE_SYNC','COACH_STATE_SYNC'];
     const off=events.map(event=>roomBus.on(event as any,packet=>{
       const state=packet.data,value=state?.roundTransition;
       if(!state)return;

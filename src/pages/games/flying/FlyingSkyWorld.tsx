@@ -30,7 +30,7 @@ function FlyerFigure({player, result, index, meters, focused, isMe}: {
       {rejected && <p className="flying-answer-reason" title={result.comment}>
         {result.comment?.trim() || 'الإجابة لا تطابق شرط السؤال'}
       </p>}
-      <span>{result.needsReview ? 'تحتاج مراجعة' : rarity?.label}</span>
+      <span>{result.needsReview ? 'تعذر التحليل · الارتفاع محفوظ' : rarity?.label}</span>
     </div>}
     <div className="flying-sprite">
       <GhostAvatar name={player.name} totalMeters={meters} tier={result?.tier} colorIndex={index} spriteOnly />

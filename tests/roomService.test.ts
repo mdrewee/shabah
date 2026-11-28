@@ -27,14 +27,14 @@ test('retries a code collision and keeps the host credential only after success'
   });
   rpc.mockReturnValueOnce(reply(true));
 
-  const result = await createRoom('ai-judge', 'p_host');
+  const result = await createRoom('ai-coach', 'p_host');
 
   expect(result.ok).toBe(true);
   if (!result.ok) throw new Error(result.error);
   expect(rpc).toHaveBeenCalledTimes(2);
   expect(rpc).toHaveBeenLastCalledWith('create_shabah_room', {
     code: result.code,
-    game: 'ai-judge',
+    game: 'ai-coach',
     player: 'p_host',
     secret: expect.stringMatching(/^[0-9a-f]{64}$/),
   });
@@ -45,7 +45,7 @@ test('failed remote creation does not leave a local host credential', async () =
   rpc.mockReturnValueOnce(reply(null, new Error('Offline'), 0));
   const warning = jest.spyOn(console, 'warn').mockImplementation(() => {});
   try {
-    expect(await createRoom('ai-judge', 'p_host')).toMatchObject({ ok: false });
+    expect(await createRoom('ai-coach', 'p_host')).toMatchObject({ ok: false });
     expect(storage.size).toBe(0);
   } finally {
     warning.mockRestore();
@@ -56,7 +56,7 @@ test('unavailable host storage stops creation before a cloud room is allocated',
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
     setItem() { throw new DOMException('Storage full', 'QuotaExceededError'); },
   } });
-  expect(await createRoom('ai-judge', 'p_host')).toMatchObject({ok:false,error:expect.stringContaining('بيانات المضيف')});
+  expect(await createRoom('ai-coach', 'p_host')).toMatchObject({ok:false,error:expect.stringContaining('بيانات المضيف')});
   expect(rpc).not.toHaveBeenCalled();
 });
 
@@ -64,7 +64,7 @@ test.each([[404,'PGRST202','تحديثًا'],[403,'42501','رفض الاتصال
   rpc.mockReturnValueOnce(reply(null,{code,message:'private provider detail'},status));
   const warning=jest.spyOn(console,'warn').mockImplementation(()=>{});
   try {
-    const result=await createRoom('ai-judge','p_host');
+    const result=await createRoom('ai-coach','p_host');
     expect(result).toMatchObject({ok:false,error:expect.stringContaining(message)});
     expect(JSON.stringify(result)).not.toContain('private provider detail');
     expect(storage.size).toBe(0);expect(rpc).toHaveBeenCalledTimes(1);
@@ -76,7 +76,7 @@ test('room creation aborts a stalled request after twenty seconds',async()=>{
   rpc.mockReturnValueOnce({abortSignal:(signal:AbortSignal)=>new Promise(resolve=>signal.addEventListener('abort',()=>resolve({data:null,error:{code:'ABORTED'},status:0})))} as never);
   const warning=jest.spyOn(console,'warn').mockImplementation(()=>{});
   try {
-    const pending=createRoom('ai-judge','p_host');
+    const pending=createRoom('ai-coach','p_host');
     await jest.advanceTimersByTimeAsync(20000);
     expect(await pending).toMatchObject({ok:false,error:expect.stringContaining('انتهت مهلة')});
     expect(storage.size).toBe(0);
